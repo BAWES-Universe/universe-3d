@@ -9,13 +9,15 @@ export function buildEnvironment(world,root,{box,cylinder,sphere,ground,material
  const floor=ground('walkable-ground',0,0,0,w,d,theme==='garden'?'grass':theme==='studio'?'wood':'slate',theme==='garden'?'#d0dabc':theme==='studio'?'#ccc0b9':'#ae9ec2',root,true);
  if(w<26||d<22){ground('compact-court',0,.023,0,Math.min(w-1,6),Math.min(d-1,6),'stone','#d5d2ba',root);return floor;}
  if(theme==='garden'){
-  const pad=(name,x,z,pw,pd,kind='stone',tint='#ddd8bd')=>{b(name+'-border',x,.008,z,pw+.22,.028,pd+.22,'#8a9b87');ground(name,x,.03,z,pw,pd,kind,tint,root);};
+  // Explicit millimeter layers avoid unlike overlapping pads sharing a depth.
+  // These remain decorative/non-pickable and below custom floor images at .05m.
+  const pad=(name,x,z,pw,pd,kind='stone',tint='#ddd8bd',y=.03)=>{b(name+'-border',x,.008,z,pw+.22,.028,pd+.22,'#8a9b87');ground(name,x,y,z,pw,pd,kind,tint,root);};
   const north=3-d/2,south=d/2;
   pad('commons-promenade',0,(north+4.65)/2,3.35,4.65-north);
   pad('commons-entry',0,(9.35+south)/2,3.35,south-9.35);
   pad('portal-walk',0,-6,w-5.5,3.1);
-  pad('table-deck',-6,-1.8,7.7,6.8,'wood','#d1b8a0');
-  pad('quiet-terrace',6,-3,8,6.4,'stone','#c0c8b0');
+  pad('table-deck',-6,-1.8,7.7,6.8,'wood','#d1b8a0',.034);
+  pad('quiet-terrace',6,-3,8,6.4,'stone','#c0c8b0',.038);
   // Arrival is a slight widening of the same path paving, never a raised plate.
   pad('arrival-court',0,7,4.8,4.7,'stone','#ddd8bd');
   // Short deck seams and recessed metal corner fittings give furniture a place.

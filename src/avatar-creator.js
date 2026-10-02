@@ -26,7 +26,7 @@ const button=(label,action,attrs={})=>el('button',{type:'button',...attrs,onclic
 export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChange=()=>{},toast=()=>{}}){
   if(!root)throw new Error('Avatar creator requires a root element');
   root.classList.add('avatar-creator');root.hidden=true;
-  let opened=false,destroyed=false,saving=false,draft,baseline,activeTab='body',engine,scene,camera,rig,observer,lastTime=0,animation='idle',returnFocus,commitOverride,generation=0;
+  let opened=false,destroyed=false,saving=false,draft,baseline,activeTab='body',engine,scene,camera,rig,observer,lastTime=0,animation='idle',returnFocus,commitOverride,generation=0,renderedFrames=0;
   const titleId=`avatar-title-${Math.random().toString(36).slice(2)}`;
   const dialog=el('section',{class:'avatar-dialog',role:'dialog','aria-modal':'true','aria-labelledby':titleId,tabindex:'-1'});
   const title=el('h2',{id:titleId,text:'Make yourself at home'});
@@ -79,7 +79,7 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
       const fill=new HemisphericLight('wardrobe-fill',new Vector3(0,.15,-1),scene);fill.intensity=.20;fill.diffuse=Color3.FromHexString('#c9bfff');
       const mat=new StandardMaterial('wardrobe-plinth',scene);mat.diffuseColor=Color3.FromHexString('#ddd4ec');mat.specularColor=Color3.Black();const base=CreateCylinder('wardrobe-plinth',{height:.08,diameter:1.45,tessellation:64},scene);base.position.y=-.059;base.material=mat;
       rig=createAvatarRig(scene,draft,{id:'wardrobe-preview'});lastTime=performance.now();
-      engine.runRenderLoop(()=>{if(!opened)return;const now=performance.now(),dt=Math.min(.1,(now-lastTime)/1000);lastTime=now;rig.update({dt,time:now/1000,heading:0,moving:animation!=='idle',running:animation==='run'});scene.render();});
+      engine.runRenderLoop(()=>{if(!opened)return;const now=performance.now(),dt=Math.min(.1,(now-lastTime)/1000);lastTime=now;rig.update({dt,time:now/1000,heading:0,moving:animation!=='idle',running:animation==='run'});scene.render();renderedFrames++;});
       observer=new ResizeObserver(()=>engine?.resize());observer.observe(canvas);engine.resize();
     }catch(e){stopPreview();previewError.textContent='The live 3D preview could not start. Your saved character is safe. Try reopening in a WebGL-capable browser.';previewError.hidden=false;}
   }
@@ -104,7 +104,7 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
   function onKey(event){if(!opened)return;if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();return;}if(event.key==='Tab'){const focusables=[...dialog.querySelectorAll('button:not(:disabled),canvas,[tabindex="0"]')].filter(n=>n.offsetParent!==null&&!n.closest('[inert]'));const first=focusables[0],last=focusables.at(-1);if(event.shiftKey&&(document.activeElement===first||document.activeElement===dialog)){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}event.stopPropagation();}
   const canvasKey=event=>{const actions={ArrowLeft:()=>orbit(-Math.PI/12),ArrowRight:()=>orbit(Math.PI/12),ArrowUp:()=>{if(camera)camera.beta=Math.max(.7,camera.beta-.12);},ArrowDown:()=>{if(camera)camera.beta=Math.min(1.75,camera.beta+.12);},'+':()=>{if(camera)camera.radius=Math.max(2.6,camera.radius-.2);},'-':()=>{if(camera)camera.radius=Math.min(5.5,camera.radius+.2);},Home:front};if(actions[event.key]){event.preventDefault();actions[event.key]();}};
   canvas.addEventListener('keydown',canvasKey);root.addEventListener('keydown',onKey);root.addEventListener('keyup',event=>{if(opened)event.stopPropagation();});
-  return {open,close,isOpen:()=>opened,getDraft:()=>normalizeAppearance(draft),getPreviewState:()=>({camera:camera?{alpha:camera.alpha,beta:camera.beta,radius:camera.radius}:null,meshCount:rig?.meshes.length||0}),destroy(){close(true);destroyed=true;root.removeEventListener('keydown',onKey);root.replaceChildren();}};
+  return {open,close,isOpen:()=>opened,getDraft:()=>normalizeAppearance(draft),getPreviewState:()=>({renderedFrames,active:!!engine,camera:camera?{alpha:camera.alpha,beta:camera.beta,radius:camera.radius}:null,meshCount:rig?.meshes.length||0}),destroy(){close(true);destroyed=true;root.removeEventListener('keydown',onKey);root.replaceChildren();}};
 }
 
 // Small, genuine 3D portraits for onboarding and social UI. Requests are serialized

@@ -1,3 +1,11 @@
+## Creator presentation · current increment
+
+- The world framebuffer is retained while the creator draws; no duplicate world draw loop
+- Application synchronization and authority cleanup keep running; resume uses current actor positions and a deferred resize without accumulated animation time
+- Two decorative ground surfaces now use distinct depths; no collision, footprint or resolution policy changed
+- Fresh integrated evidence:495 CPU/API passes,1 disclosed historical compatibility skip,7 creator and29 framing/picking/resident browser checks pass
+- Physical-device FPS, battery use and production capacity remain unverified
+
 ## Private resident tests · current increment
 
 - Manager-only API, shared file-backed SQLite journal, exact replay and uncertain-outcome handling are implemented

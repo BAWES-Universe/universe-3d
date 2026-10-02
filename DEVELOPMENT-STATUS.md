@@ -1,14 +1,12 @@
-# Development status · 2026-10-02 17:38 UTC
+# Development status · 2026-10-02 18:04 UTC
 
-This increment adds a durable manager-only resident test protocol and deliberate private Test controls on framing commit `3ea185d805bcd706cbd732dbeb55bcc712b09bdb`. The normal app still has no model provider configured. Explicit local-loopback fixtures verify the real protocol, authority and saved command path; no external AI, MCP, credentials or deployment is claimed. See `server/RESIDENT-TURNS.md`.
+This increment pauses world presentation while the 3D character creator is open, retaining its backdrop without drawing the world twice. Presence, chat, media policy and authoritative cleanup continue. Closing resumes the latest actor state, applies deferred resize and discards hidden animation time. Two overlapping decorative ground layers now have distinct depths below custom floor images. No resolution/DPR policy changes are included. See `CREATOR-PRESENTATION.md`.
 
-Current tested main bundle: `717eb58ed91f884240d235098a935ccd42e0f3be73b2483ed7af25c7ab014d6c`; CSS: `245cfec2a2f26beb7973dce3351a87f346e9fce93deb2046fba5e92bf35c6c9e`.
+Fresh integrated evidence on resident commit `d443234a19b9d2d9872138913388bb144f7d874e`: 495 CPU/API tests pass, with the same one explicitly skipped historical adapter-compatibility case. Seven actual-game creator cases and all 29 framing/picking/resident-authoring checks pass with no page errors. The measured world draw counter stays unchanged while creator frames and presence/media requests continue. This is a draw-count/lifecycle result, not an FPS, battery or physical-phone claim.
 
-Fresh integrated checks: 488 CPU/API tests pass; one historical compatibility fixture is explicitly skipped because its old adapter is absent. Seven GPU-free UI cases and six actual-game cases pass, covering deliberate creation, saved model permission, private reply/command, exact lost-response replay, focus preservation, reload and native touch at 320px/200% root text. Nine existing resident authoring checks also pass with the new UI. Build, syntax and package startup pass. Existing core/image/media checks remain tied to their recorded revisions until exact-head CI runs for this increment. Counts overlap; none is a whole-feature parity certification.
+The tested main bundle is `85f4bd9f209632f0c7daaa660f7ef9c317b914979740fdc579047d73c38862f4`. CSS is byte-identical to the resident checkpoint. Existing groups remain, and CI adds a presentation group. Remote CI for this exact increment is pending; prior green CI does not certify this work tree.
 
-Tests become available only for a saved, enabled, clean resident with Respond to players on, a trusted server adapter and current management rights. Model permissions default off independently of manual tools. Read-only receipt polling is bounded; POST is never retried automatically. Restarted or unknown work is never regenerated. Cancellation cannot undo an already accepted command. Public resident conversation remains unconnected.
-
-No running service is changed. The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. Publication/CI status must be checked against the exact new commit; prior green CI does not certify this work tree.
+The ordinary app still has no AI provider or relay configured. Private resident protocol tests are local-loopback fixtures, not external AI/MCP integration. No running service changes. The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated.
 
 ## Earlier feature verification
 
@@ -31,13 +29,13 @@ Received committed Silent geometry immediately stops active and acquired-pending
 
 The prior Silent lifecycle follow-up was based on the green image/DPR checkpoint `93ae7de9f529f252ecba13230369b404a663ef04`. That Silent source passed remote CI at `40bf07b51b3e9c7441b796dfa673139fa8c9fe4d`; its results are scoped to that revision.
 
-CI runs core, authoring, images, media, framing and residents as separate serial groups on independent runners. No checks are removed. Live audio/video packet behavior, cross-stream/session authoritative policy ordering and physical devices remain unverified.
+CI runs core, authoring, images, media, framing, residents and presentation as separate serial groups on independent runners. No checks are removed. Live audio/video packet behavior, cross-stream/session authoritative policy ordering and physical devices remain unverified.
 
 ## Next checks
 
 1. Verify the exact work-branch commit and all CI jobs
 2. Complete separately authorized container/TLS/proxy/storage and real-media acceptance before deployment or live-provider claims
-3. Verify the new resident increment remotely; external provider compatibility remains a separate rollout
+3. Restore and verify the ordinary P2P ICE/relay adapter; actual relay/provider rollout requires separate operator facts and approval
 4. Add asset editing/archive/delete with atomic reference handling; current image creation and placement do not include those controls
 
 Remaining broader parity includes real AV and AI/MCP/provider integration, Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, persistent chunks, composite asset workshop, terrain and creator game logic. Physical-phone performance, backup/restore and production capacity remain unverified.

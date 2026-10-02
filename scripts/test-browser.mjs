@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ presentation:['creator-render.actual-game.mjs'],
  residents:['resident-test-ui.browser.mjs','resident-turn.full.mjs'],
  framing:['panel-framing.browser.mjs','panel-framing-picking.browser.mjs','tranche-bots.browser.mjs'],
  core:['fallback.browser.mjs','camera-walkthrough.browser.mjs','editor-direct.browser.mjs','picking-dpr.browser.mjs','avatar-live.browser.mjs','avatar-layout-final.browser.mjs','express.full.mjs'],
@@ -10,7 +11,7 @@ const groups={
  images:['image-library-shell.browser.mjs','editor-image.browser.mjs','image-library.full.mjs'],
  authoring:['tranche-smoke.browser.mjs','tranche-actions.browser.mjs','tranche-personal.browser.mjs','tranche-bots.browser.mjs']
 };
-const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media framing or residents');
+const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media framing, residents or presentation');
 await mkdir('evidence',{recursive:true});const results=[];
 for(const file of groups[group]){
  console.log('\n=== '+file+' ===');const start=Date.now();

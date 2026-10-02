@@ -1,3 +1,4 @@
+import {createWorldPresentation} from './world-presentation.js';
 import {createBabylonImageTexturePool,createBabylonImageObjectView,pickWithImageAlpha} from './babylon-image-object-view.js';
 import {resolvedImage,imageGeometry} from './image-asset-context.js';
 import {Engine} from '@babylonjs/core/Engines/engine.js';
@@ -34,6 +35,7 @@ import {labelFits,WORLD_LABEL_OCCLUDERS} from './label-layout.js';
 const hex=h=>Color3.FromHexString(h);
 
 export async function createRenderer(canvas,labels){
+ const presentation=createWorldPresentation();let drawnFrames=0,lastRenderDt=0,resizePending=false,labelsHiddenBeforePause=null;
  const engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true,alpha:false},false);
  engine.setHardwareScalingLevel(Math.max(1,window.devicePixelRatio/1.5));
  const scene=new Scene(engine);scene.clearColor=new Color4(.065,.058,.096,1);scene.skipPointerMovePicking=true;
@@ -167,7 +169,7 @@ export async function createRenderer(canvas,labels){
   framing={...framingGoal,offset:framingTransition.step(framingGoal?.offset,dt)};
  }
  function project(v){return Vector3.Project(v,Matrix.Identity(),scene.getTransformMatrix(),camera.viewport.toGlobal(engine.getRenderWidth(),engine.getRenderHeight()));}
- function screenPoint(x,z,y=0){const p=project(new Vector3(x,y,z));const sx=p.x*canvas.clientWidth/engine.getRenderWidth(),sy=p.y*canvas.clientHeight/engine.getRenderHeight();return {x:sx,y:sy,visible:p.z>=0&&p.z<=1&&sx>=0&&sx<=canvas.clientWidth&&sy>=0&&sy<=canvas.clientHeight};}
+ function screenPoint(x,z,y=0){if(presentation.isSuppressed())return{x:0,y:0,visible:false};const p=project(new Vector3(x,y,z));const sx=p.x*canvas.clientWidth/engine.getRenderWidth(),sy=p.y*canvas.clientHeight/engine.getRenderHeight();return {x:sx,y:sy,visible:p.z>=0&&p.z<=1&&sx>=0&&sx<=canvas.clientWidth&&sy>=0&&sy<=canvas.clientHeight};}
  function positionLabel(el,v){const p=screenPoint(v.x,v.z,v.y);el.style.display='';el.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-100%)`;pendingLabels.push({el,visible:p.visible});}
  function resolveLabelVisibility(){
   const viewport=canvas.getBoundingClientRect(),obstacles=[];
@@ -182,11 +184,23 @@ export async function createRenderer(canvas,labels){
   pendingLabels.length=0;
  }
 
- function resize(){engine.resize();updateCamera();}
+ function setPresentationSuspended(value){
+  if(!presentation.setSuspended(value))return;
+  if(value){if(labelsHiddenBeforePause===null)labelsHiddenBeforePause=labels.hidden;labels.hidden=true;}
+  // Keep labels hidden on close until the first current-state world draw completes.
+ }
+ function restoreLabels(){if(labelsHiddenBeforePause!==null){labels.hidden=labelsHiddenBeforePause;labelsHiddenBeforePause=null;}}
+ function resize(){if(presentation.isSuppressed()){resizePending=true;return;}engine.resize();updateCamera();}
  function render(dt,actualDt=dt){
+  const frame=presentation.nextFrame(dt,actualDt);if(!frame)return;
+  dt=frame.dt;actualDt=frame.actualDt;
+  if(resizePending){resizePending=false;engine.resize();}
+  // Restore before measuring label rects (hidden elements have zero bounds).
+  // The following layout + world draw complete in this same task before paint.
+  restoreLabels();
   tick+=dt;frameTimes.push(actualDt*1000);if(frameTimes.length>300)frameTimes.shift();const s=rig.step(dt);updateCamera();updateFraming(actualDt);updateCamera();
   for(const a of avatars.values()){
-   const p=a.p,rate=p.self?1:1-Math.exp(-dt*20);a.x+=(p.x-a.x)*rate;a.z+=(p.z-a.z)*rate;
+   const p=a.p,rate=p.self||frame.resumed?1:1-Math.exp(-dt*20);a.x+=(p.x-a.x)*rate;a.z+=(p.z-a.z)*rate;
    const motion=resolveAvatarMotion(p);
    a.rig.update({position:{x:a.x,y:.08,z:a.z},...motion,dt,time:tick});
    a.shadow.position.set(a.x,.084,a.z);positionLabel(a.el,new Vector3(a.x,2.48,a.z));
@@ -194,9 +208,10 @@ export async function createRenderer(canvas,labels){
   for(const motion of motions){if(motion.kind==='portal'){const p=1+Math.sin(tick*1.8+motion.phase)*.025;motion.mesh.scaling.setAll(p);}}
   for(const marker of [destination,guide])if(marker){const p=1+Math.sin(tick*4)*.09;marker.scaling.setAll(p);marker.position.y=.105+Math.sin(tick*3)*.014;}
   if(botPreview){botPreview.tick(dt,tick);positionLabel(botPreviewLabel,new Vector3(botPreview.position.x,2.8,botPreview.position.z));}
-  for(const l of worldLabels)positionLabel(l.el,l.position);resolveLabelVisibility();engine._drawCalls?.fetchNewFrame();scene.render();
+  for(const l of worldLabels)positionLabel(l.el,l.position);resolveLabelVisibility();engine._drawCalls?.fetchNewFrame();scene.render();drawnFrames++;lastRenderDt=dt;
  }
  function pick(clientX,clientY){
+  if(presentation.isSuppressed())return {id:undefined,type:undefined,point:null};
   updateCamera();const rect=canvas.getBoundingClientRect(),scale=engine.getHardwareScalingLevel();
   // Babylon divides ray inputs by hardware scale. Convert CSS to its input
   // space once, including framebuffer rounding; never apply DPR separately.
@@ -226,12 +241,12 @@ export async function createRenderer(canvas,labels){
  const act=fn=>(...args)=>{fn(...args);updateCamera();};
  resize();window.addEventListener('resize',resize);
  function setBotPreview(bot){if(!bot){botPreview?.dispose();botPreview=null;botPreviewLabel?.remove();botPreviewLabel=null;return;}if(!botPreview){botPreview=createBotMapPreview(scene,bot,world);botPreviewLabel=label('resident-draft','Draft · '+bot.name,'player-label');}else{botPreview.set(bot);botPreviewLabel.textContent='Draft · '+bot.name;}}
- return {sync,syncPeople,render,pick,select,screenPoint,setGhost,setBotPreview,setImageContext,getImageStates,setImageStateListener(fn){imageStateListener=fn;notifyImageStates();},async retryImage(id){if(!imageContext.canRead)return false;const view=imageViews.get(id);if(!view)return false;const result=await view.retry();return result.status==='ready';},
+ return {sync,syncPeople,render,setPresentationSuspended,pick,select,screenPoint,setGhost,setBotPreview,setImageContext,getImageStates,setImageStateListener(fn){imageStateListener=fn;notifyImageStates();},async retryImage(id){if(!imageContext.canRead)return false;const view=imageViews.get(id);if(!view)return false;const result=await view.retry();return result.status==='ready';},
   setDestination(target){if(destination&&target&&Math.hypot(destination.position.x-target.x,destination.position.z-target.z)<.01)return;destination?.dispose();destination=marker('walk-destination',target,'#ffe6a4',.75);},
   setGuide(target){guide?.dispose();guide=marker('quest-marker',target,'#e9c74c',1.7);},
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},
   focusPoint:act((x,z)=>rig.focusPoint(x,z)),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
   getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width,framing:structuredClone({...framing,targetOffset:framingGoal?.offset||null})}),getCameraAngle:()=>rig.getState().yaw,
-  getStats:()=>({engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState()}),
-  dispose(){setBotPreview(null);ghostImage?.dispose();for(const view of imageViews.values())view.dispose();imageViews.clear();imagePool.dispose();window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
+  getStats:()=>({presentation:{...presentation.snapshot(),drawnFrames,lastRenderDt,resizePending,avatarCount:avatars.size,actors:[...avatars].map(([id,a])=>({id,x:a.x,z:a.z}))},engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState(),hardwareScalingLevel:engine.getHardwareScalingLevel(),renderWidth:engine.getRenderWidth(),renderHeight:engine.getRenderHeight()}),
+  dispose(){restoreLabels();setBotPreview(null);ghostImage?.dispose();for(const view of imageViews.values())view.dispose();imageViews.clear();imagePool.dispose();window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
 }
