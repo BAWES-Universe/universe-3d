@@ -33,7 +33,15 @@ try{
   await alice.locator('#dock-chat').click();const composer=alice.getByRole('textbox',{name:'Message the room',exact:true});await composer.fill('This draft stays exactly here');await composer.evaluate(el=>el.setSelectionRange(3,9));await alice.keyboard.press('Meta+k');await alice.getByRole('combobox').waitFor();await alice.getByRole('combobox').fill('camera');await alice.keyboard.press('Escape');await alice.waitForTimeout(250);assert.equal(await alice.locator('#social').isVisible(),true);assert.equal(await composer.inputValue(),'This draft stays exactly here');assert.deepEqual(await composer.evaluate(el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]),[true,3,9]);assert.equal(await alice.evaluate(()=>history.state.surface),'chat');
  });
  await check('palette person opens that actual direct-message recipient; member sees no build command',async()=>{
-  await alice.keyboard.press('Control+k');await alice.getByRole('combobox').fill('Ari expression proof');const option=alice.getByRole('option').filter({hasText:'Open direct message'});assert.equal(await option.count(),1);await alice.waitForFunction(()=>{const image=document.querySelector('.command-person-portrait');return image&&image.naturalWidth>0});assert.match(await alice.locator('.command-person-portrait').getAttribute('src'),/^data:image\/png;base64,/);await option.click();await alice.getByRole('textbox',{name:'Message Ari expression proof',exact:true}).waitFor();await alice.waitForTimeout(200);assert.equal(await alice.locator('#social').isVisible(),true);
+  await alice.keyboard.press('Control+k');await alice.getByRole('combobox').fill('Ari expression proof');const option=alice.getByRole('option').filter({hasText:'Open direct message'});assert.equal(await option.count(),1);await alice.waitForFunction(()=>{const image=document.querySelector('.command-person-portrait');return image&&image.naturalWidth>0});assert.match(await alice.locator('.command-person-portrait').getAttribute('src'),/^data:image\/png;base64,/);
+  await alice.evaluate(()=>{window.stableCommandOption=document.querySelector('[role=option]');window.stableCommandPortrait=document.querySelector('.command-person-portrait');});
+  const bobId=await bob.evaluate(()=>window.__universe.getState().user.id);
+  for(const status of ['away','busy','online']){
+   const update=await bob.request.patch(base+'/api/me',{data:{status}});assert.equal(update.status(),200);
+   await alice.waitForFunction(({id,status})=>window.__universe.getState().people.some(person=>person.id===id&&person.status===status),{id:bobId,status});
+   assert.equal(await alice.evaluate(()=>window.stableCommandOption===document.querySelector('[role=option]')&&window.stableCommandOption.isConnected&&window.stableCommandPortrait===document.querySelector('.command-person-portrait')),true,'Live presence refresh replaced the pending click target');
+  }
+  await option.click();await alice.getByRole('textbox',{name:'Message Ari expression proof',exact:true}).waitFor();await alice.waitForTimeout(200);assert.equal(await alice.locator('#social').isVisible(),true);
   await bob.locator('#quick-actions').click();await bob.getByRole('combobox').fill('Build this place');assert.equal(await bob.getByRole('option').count(),0);await bob.keyboard.press('Escape');
  });
  }

@@ -44,7 +44,7 @@ export function mountPalette({ root, getState, getActions = () => [], onPerson, 
   if (!root || typeof getState !== 'function') throw new Error('mountPalette needs root and getState');
   const prefix = `universe-commands-${++sequence}`;
   let destroyed = false, opened = false, group = 'all', selected = 0, results = [], focusBefore = null, selectionBefore = null, executing = false;
-  let portraitOwner = null;
+  let portraitOwner = null, renderedView = null;
   const portraits = new Map();
   root.classList.add('command-root'); root.hidden = true;
   const panel = node('section', 'command-panel');
@@ -100,6 +100,12 @@ export function mountPalette({ root, getState, getActions = () => [], onPerson, 
     const next = results.findIndex(item => item.id === previous);
     selected = Math.max(0, Math.min(results.length - 1, next >= 0 ? next : selected));
     for (const [value, button] of filterButtons) button.setAttribute('aria-pressed', String(value === group));
+    // Presence packets update positions frequently. Keep a stable click/portrait
+    // target unless visible content or authorization actually changes.
+    const view = JSON.stringify([portraitOwner, ...results.map(command => [command.id, command.group, command.label, command.description || '', command.icon, command.shortcut || '', command.icon === 'person' ? [personId(command.person || {}), command.person?.appearance, command.person?.woka] : null])]);
+    status.textContent = results.length ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : search.value ? `No matches for “${search.value}”. Try another word.` : 'Nothing available in this category yet.';
+    if (view === renderedView) { activate(selected, false); return; }
+    renderedView = view;
     list.replaceChildren();
     let previousGroup;
     for (const [index, command] of results.entries()) {
@@ -135,7 +141,7 @@ export function mountPalette({ root, getState, getActions = () => [], onPerson, 
     if (destroyed || opened || !getState()?.user) return;
     focusBefore = document.activeElement; selectionBefore = null;
     if (typeof focusBefore?.selectionStart === 'number') selectionBefore = [focusBefore.selectionStart, focusBefore.selectionEnd, focusBefore.selectionDirection];
-    opened = true; group = 'all'; selected = 0; search.value = ''; root.hidden = false;
+    opened = true; renderedView = null; group = 'all'; selected = 0; search.value = ''; root.hidden = false;
     onOpenChange(true); refresh(); search.focus();
   }
   function close({ restoreFocus = true } = {}) {

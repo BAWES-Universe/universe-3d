@@ -88,6 +88,12 @@ try{
   await page.evaluate(()=>{window.pendingPortraits.shift()();window.holdPortrait=false});await page.locator('.command-person-portrait').waitFor();assert.deepEqual(await page.evaluate(()=>window.portraitCalls.at(-1)),{id:'ari',appearance:{palette:'plum',hair:'crop'}});assert.match(await page.locator('.command-person-portrait').getAttribute('src'),/^data:image\/png;base64,/);assert.equal(await page.locator('[style*="woka-"]').count(),0);
   await page.getByRole('combobox').fill('Camera');assert.equal(await page.locator('.command-person-portrait').count(),0);await page.keyboard.press('Escape');
  });
+ await check('presence-only refresh keeps the actual clickable option and portrait DOM stable',async()=>{
+  await page.getByRole('button',{name:'Quick menu',exact:true}).click();await page.getByRole('combobox').fill('Ari');await page.locator('.command-person-portrait').waitFor();
+  await page.evaluate(()=>{window.stableOption=document.querySelector('[role=option]');window.stablePortrait=document.querySelector('.command-person-portrait');for(let i=0;i<80;i++){window.state.people[1]={...window.state.people[1],x:i/10,z:i/20,lastSeen:i};window.palette.refresh();}});
+  assert.equal(await page.evaluate(()=>window.stableOption===document.querySelector('[role=option]')&&window.stableOption.isConnected&&window.stablePortrait===document.querySelector('.command-person-portrait')),true);
+  await page.getByRole('option').click();assert.equal(await page.locator('#palette').isHidden(),true);assert(await page.evaluate(()=>window.runs.includes('person:ari')));
+ });
  await check('open-menu role revocation is revalidated at execution',async()=>{
   await page.evaluate(()=>window.state.room.role='owner');await page.getByRole('button',{name:'Quick menu',exact:true}).click();await page.getByRole('combobox').fill('Build');assert.equal(await page.getByRole('option').count(),1);await page.evaluate(()=>window.state.room.role='member');await page.keyboard.press('Enter');assert.equal(await page.getByRole('option').count(),0);assert.equal(await page.evaluate(()=>window.runs.includes('build')),false);await page.keyboard.press('Escape');
  });
