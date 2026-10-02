@@ -6,6 +6,7 @@ import { resolve, sep, extname } from 'node:path';
 import { Store } from './store.mjs';
 import * as v from './validation.mjs';
 import { createMediaPolicy } from './media.mjs';
+import {validateProximityMembershipConfig} from './proximity-authority.mjs';
 import {createMediaIce,readIceRelayConfig,readIceBody} from './media-ice.mjs';
 import { createQuestService } from './quests.mjs';
 import { createRoomFileService } from './files.mjs';
@@ -32,10 +33,11 @@ const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','
 const STATUS = ['online','away','busy','dnd','invisible'];
 const MIME = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.mp4':'video/mp4' };
 
-export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}) } = {}) {
+export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
+  if(proximityMembershipConfig!==undefined)proximityMembershipConfig=validateProximityMembershipConfig(proximityMembershipConfig);
   const store = new Store(database, seeds, clock, {claimUnownedOnCreate:runtimeConfig.mode==='local'});
   const accessGate=createAccessGate({store,config:runtimeConfig});
   try{accessGate.assertReady();}catch(error){store.close();throw error;}
@@ -98,7 +100,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   }
   function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id }; }
   function join(roomId,s) {
-    store.authorize(roomId,s.user_id);
+    store.authorize(roomId,s.user_id);media.assertAdmission(s,roomId);
     leave(s.token_hash,s.user_id);
     store.run('UPDATE sessions SET current_room_id=? WHERE token_hash=?',roomId,s.token_hash);
     sessionRoles.set(s.token_hash,store.role(store.roomRow(roomId),s.user_id));
@@ -128,10 +130,12 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     for(const [token,clients] of connections) {
       const session=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
       if(!session || session.user_id!==userId || session.current_room_id!==data.roomId)continue;
-      for(const client of clients)sse(client.res,event,event==='media-policy'?ice.decorate(session,data):data);
+      if(event==='media-signal'&&!media.authorizeDelivery(session,data))continue;
+      const scoped=event==='media-policy'&&proximityMembershipConfig!==undefined&&data.roomId&&!data.proximityAuthorityUnavailable?media.policy(userId,data.roomId,session):data;
+      for(const client of clients)sse(client.res,event,event==='media-policy'?ice.decorate(session,scoped):data);
     }
   }
-  const media=createMediaPolicy({store,presence,emitUser:emitMediaUser,now});
+  const media=createMediaPolicy({store,presence,emitUser:emitMediaUser,now,proximityMembershipConfig});
   const ice=createMediaIce({config:iceRelayConfig,store,presence,media,now});
   const quests=createQuestService({store,presence,media,emitUser,now,enabled:questsEnabled});
   const expressions=createExpressionService({store,presence,emitRoom,now,limit});
@@ -311,10 +315,15 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         const bounds=store.room(roomId,userId).scene.bounds;if(bounds){for(const [axis,dim]of[['x','width'],['z','depth']])if(fields[axis]!==undefined&&Number.isFinite(bounds[dim])&&Math.abs(fields[axis])>bounds[dim]/2+1)v.fail(400,'OUT_OF_BOUNDS','Position is outside the room');}
         const previous=presence.get(`${roomId}:${userId}`);putPresence(userId,roomId,fields);expressions.movement(roomId,userId,previous,presence.get(`${roomId}:${userId}`));quests.observeMovement(userId,roomId,previous,presence.get(`${roomId}:${userId}`));if(fields.emote&&fields.emote!==previous?.emote)quests.observeWave(userId,roomId,fields.emote);return send(res,200,{ok:true,presence:presence.get(`${roomId}:${userId}`)});
       }
-      if(path==='/api/media'&&method==='GET')return send(res,200,ice.decorate(s,media.policy(userId,s.current_room_id)));
-      if(path==='/api/media/state'&&method==='POST'){const b=await body(req);const live=session(req);v.boolean(b.enabled,'enabled');ice.optIn(live,b.enabled);const policy=media.state(userId,live.current_room_id,b.enabled);quests.reconcileRoom(live.current_room_id);return send(res,200,ice.decorate(live,policy));}
+      if(path==='/api/media'&&method==='GET')return send(res,200,ice.decorate(s,media.policy(userId,s.current_room_id,s)));
+      if(path==='/api/media/state'&&method==='POST'){const b=await body(req);const live=session(req);v.boolean(b.enabled,'enabled');
+        // A delayed body must not rebind an old gesture to the session's new room.
+        // Configured proximity additionally binds the current own admission.
+        if((proximityMembershipConfig!==undefined||b.roomId!==undefined)&&b.roomId!==live.current_room_id)v.fail(403,'STALE_MEDIA_CONTEXT','Media consent belongs to a different room');
+        if(proximityMembershipConfig!==undefined){const before=media.policy(userId,live.current_room_id,live),memberId=before.proximityMembership?.memberId;if((before.context.kind==='proximity'||b.memberId!==undefined)&&(!memberId||b.memberId!==memberId))v.fail(403,'STALE_MEDIA_ADMISSION','Media consent belongs to a different admission');}
+        ice.optIn(live,b.enabled);const policy=media.state(userId,live.current_room_id,b.enabled,live);quests.reconcileRoom(live.current_room_id);return send(res,200,ice.decorate(live,policy));}
       if(path==='/api/media/ice'&&method==='POST'){ice.begin(s);const b=await readIceBody(req),live=session(req);if(live.token_hash!==s.token_hash||live.user_id!==userId)v.fail(401,'AUTH_REQUIRED');return send(res,200,ice.issue(live,b),{'Pragma':'no-cache'});}
-      if(path==='/api/media/signal'&&method==='POST'){limit(`signal:${userId}`,240);const b=await body(req);return send(res,200,media.signal(userId,session(req).current_room_id,b));}
+      if(path==='/api/media/signal'&&method==='POST'){limit(`signal:${userId}`,240);const b=await body(req);const live=session(req);return send(res,200,media.signal(userId,live.current_room_id,b,live));}
       if(path==='/api/signal')v.fail(410,'USE_MEDIA_SIGNAL','Use the area-authorized /api/media/signal endpoint');
       if(path==='/api/events'&&method==='GET') {
         let clients=connections.get(s.token_hash);if(!clients){clients=new Set();connections.set(s.token_hash,clients);}if(clients.size>=4)v.fail(429,'TOO_MANY_CONNECTIONS');
@@ -326,12 +335,12 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     } catch(e) { if(e.status)send(res,e.status,{error:e.code,code:e.code,message:e.message,...e.details});else{console.error('Request failed:',e);send(res,500,{error:'SERVER_ERROR',code:'SERVER_ERROR',message:'The server could not complete the request'});} }
   });
   const heartbeat=setInterval(()=>{
-    if(closed)return;expressions.prune();ice.prune();
+    if(closed)return;expressions.prune();ice.prune();media.sweep();
     for(const [token,clients] of connections){if(!store.get('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?',token,now())){for(const client of clients)client.res.end();connections.delete(token);}else for(const client of clients)if(!client.res.destroyed)client.res.write(': heartbeat\n\n');}
     const changed=new Set();for(const[key,p]of presence)if(now()-p.lastSeen>60000){presence.delete(key);changed.add(p.roomId);}for(const room of changed)broadcastPresence(room);
     for(const[key,bucket]of rates)if(now()-bucket.start>120000)rates.delete(key);
     store.run('DELETE FROM sessions WHERE expires_at<?',now());
   },15000);heartbeat.unref();
   server.requestTimeout=15000;server.headersTimeout=10000;
-  return {server,store,presence,listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
+  return {server,store,presence,listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
 }

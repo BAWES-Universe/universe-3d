@@ -45,8 +45,8 @@ test('device denial is reported and never joins or creates an outgoing track',as
   assert.equal(f.session.snapshot().devices.microphone.status,'error');assert.match(f.session.snapshot().devices.microphone.error,/not allowed/);
   assert.equal(f.calls.filter(c=>c.path.endsWith('/state')).length,0);f.session.destroy();
 });
-test('capture is requested synchronously from the gesture before policy fetch',async()=>{
-  const wait=deferred(); const f=fixture({screen:()=>wait.promise});const promise=f.session.toggleDevice('screen');
+test('known legacy screen capture is requested synchronously from the gesture before policy fetch',async()=>{
+  const wait=deferred(); const f=fixture({screen:()=>wait.promise});f.session.acceptPolicy(f.policy);const promise=f.session.toggleDevice('screen');
   assert.equal(f.displayCalls,1);assert.equal(f.calls.length,0);
   const track=new Track('video');wait.resolve(new Stream([track]));assert.equal(await promise,true);
   assert.equal(f.session.snapshot().devices.screen.status,'on');f.session.destroy();assert.equal(track.readyState,'ended');
@@ -59,11 +59,11 @@ test('leaving stops all local devices and closes real-API-shaped peer lifecycles
   await f.session.setJoined(false);assert.equal(pc.closed,true);assert.equal(stream.getTracks()[0].readyState,'ended');assert.equal(f.session.snapshot().peers.length,0);assert.equal(f.timers.size,0);f.session.destroy();
 });
 test('pending permission response cannot resurrect devices after destroy',async()=>{
-  const wait=deferred(),f=fixture({capture:()=>wait.promise});const promise=f.session.toggleDevice('camera');f.session.destroy();const track=new Track('video');wait.resolve(new Stream([track]));
+  const wait=deferred(),f=fixture({capture:()=>wait.promise});f.session.acceptPolicy(f.policy);const promise=f.session.toggleDevice('camera');f.session.destroy();const track=new Track('video');wait.resolve(new Stream([track]));
   assert.equal(await promise,false);assert.equal(track.readyState,'ended');assert.equal(f.calls.some(c=>c.body?.enabled===true),false);
 });
 test('second click cancels a pending permission response and stops the late stream',async()=>{
-  const wait=deferred(),f=fixture({capture:()=>wait.promise});const first=f.session.toggleDevice('camera');assert.equal(await f.session.toggleDevice('camera'),false);
+  const wait=deferred(),f=fixture({capture:()=>wait.promise});f.session.acceptPolicy(f.policy);const first=f.session.toggleDevice('camera');assert.equal(await f.session.toggleDevice('camera'),false);
   const track=new Track('video');wait.resolve(new Stream([track]));assert.equal(await first,false);assert.equal(track.readyState,'ended');assert.equal(f.session.snapshot().devices.camera.status,'off');f.session.destroy();
 });
 test('room switch stops devices and tears down transports; late signals cannot cross room',async()=>{

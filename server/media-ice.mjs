@@ -67,13 +67,13 @@ export function createMediaIce({config=readIceRelayConfig({}),store,presence,med
   function optIn(s,enabled){retire(s.token_hash);if(enabled){prune();if(sessions.size>=MAX_SCOPES)v.fail(503,'ICE_CAPACITY');sessions.set(s.token_hash,{roomId:s.current_room_id,userId:s.user_id,key:null,scope:null});}}
   function allowed(s,p){
     const current=liveSession(s.token_hash),row=sessions.get(s.token_hash),player=presence.get(`${s.current_room_id}:${s.user_id}`);
-    return current&&current.user_id===s.user_id&&current.current_room_id===s.current_room_id&&row?.roomId===s.current_room_id&&row.userId===s.user_id&&s.current_room_id&&store.canSeeRoom(store.roomRow(s.current_room_id),s.user_id)&&player&&now()-player.lastSeen<60000&&p?.selfId===s.user_id&&p.roomId===s.current_room_id&&p.enabled===true&&['proximity','meeting','stage','audience'].includes(p.context?.kind)&&!(p.context?.kind==='proximity'&&!p.context.canPublish);
+    return current&&current.user_id===s.user_id&&current.current_room_id===s.current_room_id&&row?.roomId===s.current_room_id&&row.userId===s.user_id&&s.current_room_id&&store.canSeeRoom(store.roomRow(s.current_room_id),s.user_id)&&player&&now()-player.lastSeen<60000&&p?.selfId===s.user_id&&p.roomId===s.current_room_id&&p.enabled===true&&(!p.proximityMembership||p.proximityMembership.transport?.p2pAllowed===true)&&['proximity','meeting','stage','audience'].includes(p.context?.kind)&&!(p.context?.kind==='proximity'&&!p.context.canPublish);
   }
   function decorate(s,p){
     const result={...p,iceRequired:true};delete result.iceScope;
     const row=sessions.get(s.token_hash);
     if(!allowed(s,p)){if(row){row.key=null;row.scope=null;}return result;}
-    const key=JSON.stringify([s.user_id,s.current_room_id,p.context.kind,p.context.group,p.context.canPublish]);
+    const key=JSON.stringify([s.user_id,s.current_room_id,p.context.kind,p.context.group,p.context.canPublish,...(p.proximityMembership?[p.proximityMembership.memberId,p.proximityMembership.bubbleId,p.proximityMembership.mediaScope]:[])]);
     if(row.key!==key){row.key=key;row.scope=randomBytes(32).toString('base64url');}
     result.iceScope=row.scope;return result;
   }
@@ -83,7 +83,7 @@ export function createMediaIce({config=readIceRelayConfig({}),store,presence,med
   function rate(key,max){let b=rates.get(key);if(!b||now()-b.start>=RATE_MS){if(!b&&rates.size>=MAX_RATES)v.fail(503,'ICE_CAPACITY');b={start:now(),n:0};rates.set(key,b);}if(++b.n>max)v.fail(429,'ICE_RATE_LIMITED');}
   function begin(s){prune();rate(`s:${s.token_hash}`,8);rate(`u:${s.user_id}`,20);}
   function issue(s,b){
-    const p=decorate(s,media.policy(s.user_id,s.current_room_id));
+    const p=decorate(s,media.policy(s.user_id,s.current_room_id,s));
     if(!p.iceScope||!equal(b.scope,p.iceScope))v.fail(403,'ICE_SCOPE_FORBIDDEN');
     const current=liveSession(s.token_hash),issuedAt=now(),expiresAt=Math.min(Math.floor((issuedAt+config.ttlSeconds*1000)/1000)*1000,Math.floor(current.expires_at/1000)*1000);
     if(expiresAt<=issuedAt+1000)v.fail(401,'ICE_SESSION_EXPIRING');

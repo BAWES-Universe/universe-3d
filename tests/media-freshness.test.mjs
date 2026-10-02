@@ -44,7 +44,7 @@ test('held policy deadline immediately stops an acquired stream awaiting authori
 
 for(const kind of ['microphone','camera','screen']){
  test(`local saved Silent guard stops active ${kind} and peers synchronously while authority GET is held`,async t=>{
-  const f=fixture();t.after(()=>f.session.destroy());await f.session.toggleDevice(kind);await tick();const track=f.session.snapshot().devices[kind].stream.getTracks()[0],peer=Peer.instances.at(-1),wait=deferred();f.intercept((path,o,normal)=>path==='/api/media'?wait.promise:normal());void f.session.refreshPolicy(true);const calls=f.calls.length;
+  const f=fixture();t.after(()=>f.session.destroy());f.session.acceptPolicy(f.policy);await f.session.toggleDevice(kind);await tick();const track=f.session.snapshot().devices[kind].stream.getTracks()[0],peer=Peer.instances.at(-1),wait=deferred();f.intercept((path,o,normal)=>path==='/api/media'?wait.promise:normal());void f.session.refreshPolicy(true);const calls=f.calls.length;
   f.enter();assert.equal(track.readyState,'ended','saved Silent must stop before its banner is rendered');assert.equal(peer.closed,true);assert.equal(f.session.snapshot().localSilent,true);assert.equal(f.session.snapshot().joined,true);assert.equal(f.session.snapshot().peers.length,0);
   for(let i=0;i<240;i++)f.guard();assert.equal(f.calls.length,calls,'frame guard is synchronous and sends no HTTP');assert.equal(await f.session.toggleDevice(kind),false);assert.equal(f.captureCalls,1);wait.resolve(f.policy);
  });

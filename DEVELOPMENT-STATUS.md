@@ -1,18 +1,20 @@
-# Development status · 2026-10-02 21:18 UTC
+# Development status · 2026-10-02 22:28 UTC
 
-## Current increment: usable side-content controls and preserved foreground history
+## Current increment: opt-in all-member proximity and scoped client lifecycle
 
-Embedded room content now leaves an available-width control lane. Dock, builder tools, header actions and camera controls have explicit responsive/scrolling layouts. Native Chat/Places Close buttons remain reachable, the original complete logo keeps its aspect ratio, and decorative room titles cannot intercept clicks. The canvas and camera projection remain full-size. See `HUD-AVAILABILITY.md` and `FRAMING.md`.
+The explicit server factory option now separates conversation membership from microphone consent. Every eligible nearby member counts, while a session must have its own consent for signaling and ICE. Bubble/member/AV/transport scopes fence stale operations and target delivery. Room/admission preconditions prevent a delayed consent body from enabling media in a different room. The legacy default remains unchanged; no deployed settings are assumed. See `PROXIMITY-MEMBERSHIP-CONTRACT.md`.
 
-Coexisting content stays alive while opening or dismissing Chat, Places, Help, Express and quick actions. The exact iframe and unsubmitted form survive foreground navigation. Explicit content dismissal stays closed when a later foreground panel closes; intentional browser-history reopening requires fresh room-action authorization. Opaque tab-local keys, known surface names and room IDs are the only content history metadata. See `CONTENT-HISTORY.md`.
+The matching client preserves safe local capture separately from peer/ICE ownership. One mic/camera click completes authorized joining before prompting; solo capture can stay ready without a peer or ICE and later attach only after current authorization. Other participants' consent changes do not discard the user's local stream. Own denial, consent loss, admission change, Silent, room/account change and invalid policy still stop it. Pending joins can be cancelled, concurrent device intents share joining, and queued consent writes converge in order. Screen sharing requires Join first before opening the browser picker, preserving genuine user activation.
 
-Final source: 636 CPU/API tests passed with the same one documented historical-fixture skip. Syntax (209 files), build, package startup and Dockerfile-copy reconstruction passed. All 11 actual-game history scenarios passed, including native two-frame retention after a server scene-revocation fixture removes the latest action. Final main bundle: `939415b2cf240af7cffbf5d2df3e5a5784f60ae47891e4a46a1ce919507bb88e`; CSS: `cb873a608bbba94329b0b077d707a49dd49ad372bff91e1c2fc7c6c28d3daf52`.
+No SFU is configured. Over-threshold proximity keeps membership but pauses executable P2P/ICE with an explicit SFU-unavailable message. This is selection policy and local lifecycle evidence, not working media packets or a completed transport handoff. Simultaneous AV from two tabs of the same account remains unverified because peer identity is account/aggregate-member based.
 
-Immediately before the final one-line live-frame key-lifetime correction, all 100 scoped browser checks passed: 25 HUD/header/history, 29 framing/picking/resident and 46 image checks. That run used main `bc07636f51442f013a0b37efc6de4ea64fc3707abef6f8527bc16d06a30f720d` with the exact final CSS. The changed history path was then rebuilt and retested as above. Those earlier full-group results are not claimed as byte-identical final-source runs. The new HUD/header/history suites also use bounded 60-second action/capture waits, preserving native input and every assertion. Exact-head remote CI and publication are pending for this increment.
+Final integrated CPU/API checks pass 828 tests with one pre-existing historical-fixture skip. Syntax (221 files), build, package startup/static files and Dockerfile-copy reconstruction pass. The isolated compatible client also passed nine native RTC/signaling/ICE/DOM checks with zero capture attempts before a final strict-grant-boolean correction; that correction passed 249 focused tests. All seven final integrated media browser suites now pass, including the new nine-case native RTC/signaling/ICE/DOM probe, legacy policies, Silent, freshness and native ICE behavior. The new native probe prohibited device capture and recorded zero capture attempts. This remains local signaling/configuration/teardown proof, not working packets, real relay allocation or AV delivery.
 
-The durable baseline is `bd2947c027f90ce0f168f13c12ac91792d4f84a1`, whose eight remote CI jobs passed. It includes the image lifecycle runtime from `c5e9656a0877683c78769a211e82a35cfbfa3471`, both narrowly corrected browser readiness harnesses, and schema2/revision4 of the source parity inventory. The inventory's evidence is deliberately pinned to its inspected `be6d1369` snapshot; it is incomplete and certifies no whole feature contract.
+Final main bundle: `11e74552455ae5f876d6fce046f50c9066c6cfe021abd258749ac8069bd53d17`; CSS remains `cb873a608bbba94329b0b077d707a49dd49ad372bff91e1c2fc7c6c28d3daf52`. Exact-head CI and publication are pending for this increment.
 
-The isolated next proximity-membership work is excluded from this increment. Optional ICE configuration remains unconfigured by default; configuration and SDP tests do not prove live media or a relay.
+The durable baseline `7b3a4baf83afeae176d3bff69c6d58061cef455b` passed all nine remote CI jobs, including HUD/history, framing and images. Its full UI, image lifecycle, normalized parity documents and both browser readiness corrections remain preserved. The parity inventory is deliberately incomplete and certifies no whole feature contract.
+
+The source audit in `MEETING-TRANSPORT-AUDIT.md` resolves the inspected meeting entry path: its LiveKit-named property is not an unconditional SFU selector. Named meetings, stage/audience and cross-room broadcast remain distinct identities/filters on the generic threshold manager; this does not establish deployed values or change current topology.
 
 ## Implemented and locally exercised
 
@@ -31,7 +33,7 @@ Tests exercise explicit boundaries and failure cases. Counts overlap and do not 
 ## Current limitations
 
 - No real relay or AI/MCP provider is configured. Native ICE configuration and SDP restarts do not prove relay allocation, a connected media path or AV packets
-- The existing media graph still has cap-four, opted-in proximity membership. The intended hybrid model, all-member counting and SFU transition/handoff are unfinished
+- Default activation still uses the previous cap-four, opted-in graph. The explicit factory opt-in now has all-member proximity membership and a compatible scoped client. No default cap/threshold/scale is chosen; meeting/stage topology and SFU handoff remain unfinished
 - Issued TURN credentials are bearer credentials until relay expiry. Local revocation stops issuance/client use; it does not invalidate previously issued credentials at the relay
 - One active media tab per account is supported. The existing recipient/signaling graph is account-based even though new credential issuance is session-bound
 - Real device capture, physical-phone performance, network handover, operator-run Docker/proxy/TLS, backups and production capacity remain unverified
@@ -41,10 +43,9 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Publish this scoped controls/history increment and verify every exact-head CI job
-2. Integrate source-grounded proximity membership independently of microphone consent, preserving current recipient authorization and teardown
-3. Confirm deployed media revisions, actual group/transition configuration and the operator's isolated ICE issuer/relay plan before real-media acceptance
-4. Implement the authorized hybrid transport transition contract; real SFU handoff and provider-backed resident interaction remain unverified
-5. Continue source parity and hands-on interaction improvements in small tested commits
+1. Publish this scoped increment and verify every exact-head CI job
+2. Obtain intended cap/threshold/scale and deployed runtime facts before activating the optional proximity policy
+3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
+4. Continue current-source parity and hands-on improvements in small tested increments
 
-The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification has occurred.
+Operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.

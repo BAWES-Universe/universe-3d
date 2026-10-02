@@ -52,7 +52,7 @@ for(const kind of ['microphone','camera','screen']) {
   policyWait.resolve(oldPolicy);assert.equal(await old,false);assert.equal(await newer,true);assert.equal(oldTrack.readyState,'ended');assert.equal(newTrack.readyState,'live');assert.equal(f.session.snapshot().devices[kind].status,'on');
  });
  test(`Active ${kind} stops immediately, and retained opt-in restores only listening eligibility`,async t=>{
-  const peer={id:'b',canSend:true,canReceive:true};const f=fixture({peers:[peer]});t.after(()=>f.session.destroy());await f.session.toggleDevice(kind);await tick();const track=f.session.snapshot().devices[kind].stream.getTracks()[0];
+  const peer={id:'b',canSend:true,canReceive:true};const f=fixture({peers:[peer]});t.after(()=>f.session.destroy());f.session.acceptPolicy(f.policy);await f.session.toggleDevice(kind);await tick();const track=f.session.snapshot().devices[kind].stream.getTracks()[0];
   f.push(silent);assert.equal(track.readyState,'ended');assert.equal(f.session.snapshot().peers.length,0);assert.equal(await f.session.toggleDevice(kind),false);
   const calls=f.deviceCalls+f.screenCalls;f.push({...allowed,peers:[peer]});await tick();assert.equal(f.session.snapshot().joined,true);assert.equal(f.session.snapshot().devices[kind].status,'off');assert.equal(f.deviceCalls+f.screenCalls,calls);assert.equal(f.session.snapshot().peers.length,1);
   assert.equal(await f.session.toggleDevice(kind),true);assert.equal(f.deviceCalls+f.screenCalls,calls+1);
