@@ -6,7 +6,7 @@ import {mountEmbeddedPanels} from './embedded-panels.js';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const legacyAreaActions=area=>[...(area.action==='link'&&area.url?[{id:'legacy-area-link',type:'link',url:area.url,label:area.name,mode:'tab',trigger:'enter'}]:[]),...(area.action==='teleport'&&area.target?[{id:'legacy-area-target',type:'teleport',target:area.target,label:area.name,trigger:'enter'}]:[]),...(area.actions||[])];
 export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve=async()=>{},onDialog,onCloseDialog=()=>{},onNavigate,onOpenChange=()=>{},toast=()=>{}}){
- let scope='',userId='',epoch=0,activeMenu=null,lastFrameRef=null;const inflight=new Map(),resources=new Map(),controls=new Map();
+ let scope='',userId='',epoch=0,activeMenu=null,lastFrameRef=null,lastFrameKey=null,restoreEpoch=0;const inflight=new Map(),resources=new Map(),controls=new Map();
  const areaList=el('div','area-action-list'),audioRoot=el('div','world-audio-controls');controlsRoot.replaceChildren(areaList,audioRoot);
  const frames=mountEmbeddedPanels({root,onOpenChange,toast});
  let storedVolume=1;try{storedVolume=Number(localStorage.getItem('universe-world-volume')??1);}catch{}
@@ -26,18 +26,18 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
   const state=getState(),item=state.scene?.objects.find(o=>o.id===id);if(!state.ready||!item)return false;activeMenu={roomId:state.room.id,entityId:id};
   onDialog({owner:'room-item:'+id,eyebrow:'ROOM ITEM',title:item.name||item.type,text:item.text||'Choose what you’d like to do.',actions:itemActions(item).map(action=>({label:actionName(action),description:action.description,run:()=>activate(reference('item',item,action),{deliberate:true})}))});return true;
  }
- async function activate(ref,{deliberate=false,forceTab=false}={}){
-  const current=find(ref);if(!current||!getState().ready){toast('This action is no longer available');return false;}
-  const id=key(ref);if(inflight.has(id))return false;const requested=JSON.stringify(current.action),started=epoch,token={popup:null};inflight.set(id,token);
+ async function activate(ref,{deliberate=false,forceTab=false,restoring=false,focus=true,isCurrent=()=>true}={}){
+  const current=find(ref);if(!isCurrent()||!current||!getState().ready){toast('This action is no longer available');return false;}
+  const id=key(ref);if(inflight.has(id))return false;const requested=JSON.stringify(current.action),started=epoch,actorId=getState().user?.id,token={popup:null,restoring};inflight.set(id,token);
   // Reserve only on a direct gesture; URL navigation happens after fresh authority.
   if(deliberate&&current.action.type==='link'&&(forceTab||current.action.mode!=='embed')&&safeActionUrl(current.action.url,location.origin)?.kind==='external'){
    try{token.popup=window.open('about:blank','_blank');if(token.popup)token.popup.opener=null;}catch{}
   }
   controls.get(id)?.setAttribute('aria-busy','true');
   try{
-   await beforeResolve({ref,deliberate});if(epoch!==started||inflight.get(id)!==token||!find(ref))return false;
+   await beforeResolve({ref,deliberate});if(!isCurrent()||!getState().ready||getState().user?.id!==actorId||epoch!==started||inflight.get(id)!==token||!find(ref))return false;
    const revision=getState().room.revision,response=await api(`/api/rooms/${encodeURIComponent(ref.roomId)}/actions/resolve`,{method:'POST',body:{entityType:ref.entityType,entityId:ref.entityId,actionId:ref.actionId,revision}});
-   if(epoch!==started||inflight.get(id)!==token||getState().room?.id!==ref.roomId||getState().room.revision!==response.revision||JSON.stringify(find(ref)?.action)!==requested)return false;
+   if(!isCurrent()||!getState().ready||getState().user?.id!==actorId||epoch!==started||inflight.get(id)!==token||getState().room?.id!==ref.roomId||getState().room.revision!==response.revision||JSON.stringify(find(ref)?.action)!==requested)return false;
    const action=response.action;if(['type','url','target','message','volume','loop','width','closable'].some(field=>action[field]!==current.action[field]))throw Error('This action changed. Open the item again.');const safe=action.url?safeActionUrl(action.url,location.origin):null;
    if(action.url&&!safe)throw Error('This item needs a safe HTTP(S), asset or protected document address');
    resources.set(id,{ref,fingerprint:JSON.stringify(current.action)});activeMenu=null;
@@ -51,7 +51,7 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
     if(action.document||safe.kind==='document'){
      const link=el('a');link.href=safe.url;link.download=action.document?.name||'';link.rel='noopener';link.click();
     }else if(action.mode==='embed'&&!forceTab){
-     lastFrameRef={...ref};frames.open({key:id,url:safe.url,title:action.label||action.name||response.entity.name,width:action.width,closable:action.closable,onExternal:()=>activate(ref,{deliberate:true,forceTab:true})});
+     lastFrameRef={...ref};if(!restoring&&!frames.isOpen())lastFrameKey=crypto.randomUUID();frames.open({key:id,url:safe.url,title:action.label||action.name||response.entity.name,width:action.width,closable:action.closable,onExternal:()=>activate(ref,{deliberate:true,forceTab:true})},{focus});
     }else if(token.popup){token.popup.location.replace(new URL(safe.url,location.origin).href);token.popup=null;}
     else if(deliberate){const opened=window.open(new URL(safe.url,location.origin).href,'_blank','noopener,noreferrer');if(!opened)toast('If a new tab did not open, allow popups and activate this link again');}
     else{toast('This link needs your click to open a browser tab');}
@@ -65,8 +65,8 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
   const trigger=action.trigger??(action.type==='audio'||action.type==='teleport'?'enter':'interact');
   if(trigger==='enter')void activate(ref);
  },leave:({area,action})=>{const id=key({roomId:scope,entityType:'area',entityId:area.id,actionId:action.id});controls.get(id)?.parentElement?.remove();controls.delete(id);release(id);}});
- function release(id){const pending=inflight.get(id);try{pending?.popup?.close();}catch{}inflight.delete(id);resources.delete(id);audio.stop(id);frames.close(id);}
- function clear(){epoch++;if(activeMenu)onCloseDialog('room-item:'+activeMenu.entityId);for(const id of resources.keys())onCloseDialog('room-action:'+id);areaController.clear();for(const pending of inflight.values())try{pending.popup?.close();}catch{}inflight.clear();resources.clear();controls.clear();areaList.replaceChildren();audio.clear();frames.clear();activeMenu=null;}
+ function release(id){if(lastFrameRef&&key(lastFrameRef)===id){lastFrameRef=null;restoreEpoch++;}const pending=inflight.get(id);try{pending?.popup?.close();}catch{}inflight.delete(id);resources.delete(id);audio.stop(id);frames.close(id);if(!frames.isOpen()&&!lastFrameRef)lastFrameKey=null;}
+ function clear(){epoch++;restoreEpoch++;lastFrameRef=null;lastFrameKey=null;if(activeMenu)onCloseDialog('room-item:'+activeMenu.entityId);for(const id of resources.keys())onCloseDialog('room-action:'+id);areaController.clear();for(const pending of inflight.values())try{pending.popup?.close();}catch{}inflight.clear();resources.clear();controls.clear();areaList.replaceChildren();audio.clear();frames.clear();activeMenu=null;}
  function update({suppressed=false}={}){
   const state=getState(),room=state.room?.id||'',person=state.user?.id||'';if(scope!==room||userId!==person){clear();scope=room;userId=person;lastFrameRef=null;}
   if(!state.ready||!room){clear();return;}
@@ -74,5 +74,8 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
   const scene={...state.scene,areas:(state.scene.areas||[]).map(area=>({...area,actions:legacyAreaActions(area)}))};areaController.update(room,scene,state.position,{suppressed});
   for(const[id,value]of resources){const actual=find(value.ref);if(!actual||JSON.stringify(actual.action)!==value.fingerprint||(value.ref.entityType==='area'&&!contains(actual.entity,state.position.x,state.position.z))){onCloseDialog('room-action:'+id);release(id);}}
  }
- return {openItem,activate,update,clear,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),close:()=>frames.clear(),restore:()=>lastFrameRef&&activate(lastFrameRef),audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
+ function cancelRestore(){restoreEpoch++;for(const[id,token]of inflight)if(token.restoring)inflight.delete(id);}
+ function close(){cancelRestore();frames.clear();}
+ async function restore(contentKey,{focus=true,isCurrent=()=>true}={}){const state=getState();if(!lastFrameRef||contentKey!==lastFrameKey||scope!==state.room?.id||userId!==state.user?.id||!state.ready)return false;cancelRestore();const current=restoreEpoch;const ok=await activate(lastFrameRef,{restoring:true,focus,isCurrent:()=>current===restoreEpoch&&contentKey===lastFrameKey&&isCurrent()});return current===restoreEpoch&&isCurrent()?ok:null;}
+ return {openItem,activate,update,clear,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
 }

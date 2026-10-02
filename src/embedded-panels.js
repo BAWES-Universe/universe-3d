@@ -29,14 +29,14 @@ export function mountEmbeddedPanels({root,onOpenChange=()=>{},toast=()=>{}}){
   frame.onerror=()=>{if(entries.get(item.key)!==item)return;clearTimeout(item.timer);item.status='The site could not be displayed here. Open it in a new tab, or choose Reload frame.';if(selected===item.key)draw();};
   item.holder.append(frame);item.timer=setTimeout(()=>{if(entries.get(item.key)!==item)return;item.status='Still loading, or the site may prohibit embedding. Open in new tab remains available.';if(selected===item.key)draw();},10000);draw();
  }
- function open(config){
+ function open(config,{focus=true}={}){
   let item=entries.get(config.key);
   if(!item){
    if(entries.size>=5){toast('Close an open content panel before opening another');return false;}
    item={...config,title:config.title||'Room content',holder:element('div','embedded-frame-holder'),status:'Opening content…',frame:null,timer:null};entries.set(item.key,item);frames.append(item.holder);
   }else if(item.url!==config.url){Object.assign(item,config);load(item);}
   selected=item.key;if(root.hidden){focusBefore=document.activeElement;root.hidden=false;onOpenChange(true);}
-  if(!item.frame&&!item.embeddable)load(item);else draw();leave.focus();return true;
+  if(!item.frame&&!item.embeddable)load(item);else draw();if(focus)leave.focus();return true;
  }
  function dispose(item){clearTimeout(item.timer);if(item.frame){item.frame.onload=null;item.frame.onerror=null;item.frame.src='about:blank';}item.holder.remove();}
  function closeEntry(key){const item=entries.get(key);if(!item)return;entries.delete(key);dispose(item);if(!entries.size){hide();return;}if(selected===key)selected=entries.keys().next().value;draw();leave.focus();}

@@ -1,0 +1,120 @@
+/* Available-width policy. The full canvas, source tokens and icon geometry are
+   unchanged. Overflow stays on named native controls, never on the document. */
+#app { --hud-left: 0px; --hud-right: 0px; --hud-width: 100vw; }
+#dock {
+  left: calc(var(--hud-left) + var(--hud-width)/2); right: auto;
+  width: max-content; min-width: 0; max-width: calc(var(--hud-width) - 16px);
+  transform: translateX(-50%); overflow-x: auto; overflow-y: hidden;
+  justify-content: flex-start; scrollbar-width: thin;
+  scroll-padding-inline: 8px; overscroll-behavior-x: contain;
+}
+#dock button, #dock .dock-separator { flex-shrink: 0; }
+#dock-more { right: calc(var(--hud-right) + 10px); }
+#dock-more:not([hidden]) { display: block; }
+#editor.editor-workbench { left: var(--hud-left); right: auto; width: var(--hud-width); }
+.builder-toolbelt {
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+  overscroll-behavior-x: contain; scroll-padding-inline: 8px;
+}
+.builder-toolbelt > button { flex: 0 0 auto; }
+/* The area-content opener formerly sat underneath Build's keyboard-help row. */
+#app:has(#editor:not([hidden])) #area-sounds { top: 265px; z-index: 13; }
+#area-sounds { max-width: min(360px,calc(var(--hud-width) - 32px)); max-height: min(220px,calc(100dvh - 400px)); overflow: auto; overscroll-behavior: contain; }
+.area-action-control button { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+#app:has(#editor:not([hidden])) #area-sounds { max-width: min(330px,calc(var(--hud-width) - 300px)); }
+#app[data-hud-constrained=true] #hud { left: calc(var(--hud-left) + 16px); right: calc(var(--hud-right) + 16px); }
+#app[data-hud-constrained=true] #social { right: calc(var(--hud-right) + 12px); width: min(350px,calc(var(--hud-width) - 24px)); max-width: calc(var(--hud-width) - 24px); }
+#app[data-hud-constrained=true] #area-sounds,
+#app[data-hud-constrained=true] #area-banner,
+#app[data-hud-constrained=true] #quest-open,
+#app[data-hud-constrained=true] #view-controls { left: calc(var(--hud-left) + 12px); }
+#app[data-hud-constrained=true]:has(#social:not([hidden])) #area-sounds { top: auto; bottom: 108px; max-width: calc(var(--hud-width) - 24px); max-height: 64px; z-index: 11; }
+#app[data-hud-constrained=true]:has(#social:not([hidden])) .area-action-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+#app[data-hud-constrained=true]:has(#social:not([hidden])) .area-action-control { flex: 0 0 auto; max-width: 240px; }
+#app[data-hud-constrained=true] #dock { left: calc(var(--hud-left) + (var(--hud-width) - 152px)/2); max-width: max(48px,calc(var(--hud-width) - 168px)); }
+#app[data-hud-constrained=true] #dock-more { right: calc(var(--hud-right) + 164px); }
+#app[data-hud-constrained=true] #quick-actions { top: auto; bottom: 32px; right: calc(var(--hud-right) + 72px); }
+#app[data-hud-constrained=true] #shortcuts-help { top: auto; bottom: 32px; right: calc(var(--hud-right) + 12px); }
+#app[data-hud-constrained=true] #interaction,
+#app[data-hud-constrained=true] #emotes,
+#app[data-hud-constrained=true] #toast { left: calc(var(--hud-left) + var(--hud-width)/2); max-width: calc(var(--hud-width) - 24px); }
+#app[data-hud-constrained=true] #media { right: calc(var(--hud-right) + 12px); max-width: calc(var(--hud-width) - 24px); }
+#app[data-hud-constrained=true] #controls-hint { left: var(--hud-left); width: var(--hud-width); }
+#app[data-hud-constrained=true] #coords { right: calc(var(--hud-right) + 12px); }
+#express { z-index: 11; }
+.express-tray { left: calc(var(--hud-left) + var(--hud-width)/2); max-width: calc(var(--hud-width) - 24px); max-height: calc(100dvh - 145px); overflow: auto; overscroll-behavior: contain; }
+/* Responsive behavior follows the remaining lane, not just browser width. */
+#app[data-hud-compact=true] .builder-toolbelt {
+  display: flex; left: 8px; right: 8px; width: auto; max-width: none;
+  transform: none; bottom: 105px; border-radius: var(--u-pill);
+}
+#app[data-hud-compact=true] .builder-toolbelt .small-btn { min-height: 48px; padding: 8px 10px; font-size: 12px; }
+#app[data-hud-compact=true] .builder-toolbelt .primary { margin-left: 4px; }
+#app[data-hud-compact=true] .builder-tray { left: 8px; right: 8px; width: auto; max-width: none; transform: none; bottom: 178px; max-height: min(230px,calc(100dvh - 380px)); overflow: auto; }
+#app[data-hud-compact=true] .builder-inspector { right: 12px; top: 205px; width: min(250px,60%); max-width: calc(100% - 24px); max-height: max(96px,calc(100dvh - 460px)); }
+#app[data-hud-compact=true] .builder-heading { left: 12px; right: 12px; top: 100px; min-width: 0; max-width: none; padding: 9px 11px; }
+#app[data-hud-compact=true] .builder-title strong { font-size: 16px; }
+#app[data-hud-compact=true] .builder-eyebrow { display: none; }
+#app[data-hud-compact=true] .builder-keyhelp { top: 190px; left: 12px; max-width: 36%; }
+#app[data-hud-compact=true] .builder-keyhelp[open] { z-index: 2; max-width: calc(100% - 24px); }
+#app[data-hud-compact=true]:has(#editor:not([hidden])) #area-sounds { max-width: max(96px,calc(var(--hud-width)*.4 - 24px)); }
+#app[data-hud-compact=true][data-hud-constrained=true] #hud .room-heading { top: 60px; width: 100%; pointer-events: none; }
+#app[data-hud-compact=true][data-hud-constrained=true] #hud .brand { flex: 0 0 150px; width: 150px; }
+#app[data-hud-compact=true][data-hud-constrained=true] #hud .brand-logo { width: 150px; height: 75px; }
+#app[data-hud-compact=true][data-hud-constrained=true] #hud .brand-tag { margin: -10px 0 0 19px; font-size: 5.5px; letter-spacing: .85px; }
+#app[data-hud-compact=true][data-hud-constrained=true] #hud .hud-right { min-width: 0; max-width: max(48px,calc(100% - 154px)); overflow-x: auto; gap: 4px; scrollbar-width: thin; }
+#app[data-hud-compact=true][data-hud-constrained=true] #hud .hud-right > * { flex-shrink: 0; }
+#app[data-hud-short=true] .builder-toolbelt { bottom: 80px; }
+#app[data-hud-short=true] .builder-tray { bottom: 150px; max-height: max(80px,calc(100dvh - 290px)); overflow: auto; }
+#app[data-hud-short=true] .builder-inspector { top: 145px; max-height: max(80px,calc(100dvh - 300px)); }
+#app[data-hud-short=true]:has(#editor:not([hidden])) #area-sounds { top: 155px; max-height: max(48px,calc(100dvh - 310px)); }
+#app[data-hud-short=true] .builder-keyhelp { top: 120px; }
+#app[data-hud-constrained=true] #hud .room-heading { max-width: 100%; }
+#app[data-hud-constrained=true] #room-name,
+#app[data-hud-constrained=true] #world-name,
+#app[data-hud-constrained=true] #room-subtitle { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Unexpected wider resident/side surfaces still get a scrollable narrow lane. */
+#app[data-hud-narrow=true] #dock { left: calc(var(--hud-left) + var(--hud-width)/2); max-width: max(48px,calc(var(--hud-width) - 16px)); }
+#app[data-hud-narrow=true] #dock-more { right: calc(var(--hud-right) + 10px); }
+#app[data-hud-narrow=true] #quick-actions,
+#app[data-hud-narrow=true] #shortcuts-help { bottom: 105px; }
+#app[data-hud-narrow=true] #hud { flex-wrap: wrap; gap: 8px; }
+#app[data-hud-narrow=true] #hud .hud-right { flex: 1 0 100%; max-width: 100%; }
+#app[data-hud-narrow=true] #hud .room-heading { top: 130px; }
+#app[data-hud-constrained=true] #hud .hud-right { padding: 4px; border-radius: var(--u-pill); background: var(--u-surface-flat); box-shadow: var(--u-shadow-flat); }
+#app[data-hud-compact=true]:has(#editor:not([hidden])) #hud .room-heading { visibility: hidden; }
+#dock, .builder-toolbelt, #app[data-hud-constrained=true] #hud .hud-right { scrollbar-color: var(--u-text-muted) var(--u-surface-flat); }
+/* Do not combine intrinsic dock sizing with the older phone inline-size
+   containment: it would collapse the scroll viewport to its padding. */
+#dock { contain: none; }
+#dock button { flex: 0 0 auto; }
+/* Chat can fill a narrow side lane. Keep camera controls in their own scroll
+   row rather than letting chat or the content-action ribbon cover them. */
+#app[data-hud-constrained=true]:has(#social:not([hidden])) #view-controls {
+  display: flex; flex-direction: row; bottom: 180px; width: calc(var(--hud-width) - 24px);
+  max-width: calc(var(--hud-width) - 24px); height: 58px; overflow-x: auto;
+  overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--u-text-muted) var(--u-surface-flat);
+}
+#app[data-hud-constrained=true]:has(#social:not([hidden])) #view-controls button { flex: 0 0 var(--u-control-size); }
+#app[data-hud-constrained=true] #social { bottom: 252px; }
+#app[data-hud-short=true] #area-sounds { top: 145px; max-height: max(48px,calc(100dvh - 245px)); }
+#app[data-hud-short=true]:has(#editor:not([hidden])) #area-sounds { top: 155px; max-width: 96px; max-height: max(48px,calc(100dvh - 310px)); }
+#app[data-hud-short=true] .builder-tray { left: auto; right: 8px; transform: none; width: min(574px,calc(100% - 124px)); }
+/* Short touch layouts retain the 100px joystick's native movement area. */
+#app[data-hud-short=true] #area-sounds { left: calc(var(--hud-left) + 145px); max-width: min(360px,calc(var(--hud-width) - 161px)); }
+#app[data-hud-short=true]:has(#editor:not([hidden])) #area-sounds { max-width: 96px; }
+/* Titles describe the room; they must never intercept controls or canvas input.
+   In medium/wide side lanes, reserve real columns instead of overlay-centering
+   the title across the action strip. Its text can truncate within that column. */
+#hud > .room-heading { pointer-events: none; }
+#app[data-hud-constrained=true][data-hud-compact=false] #hud {
+  display: grid; grid-template-columns: 200px minmax(0,1fr) fit-content(50%); column-gap: 16px;
+}
+#app[data-hud-constrained=true][data-hud-compact=false] #hud .room-heading {
+  position: static; left: auto; top: auto; transform: none; width: auto; min-width: 0;
+}
+#app[data-hud-constrained=true][data-hud-compact=false] #hud .hud-right {
+  min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: thin;
+}
+#app[data-hud-constrained=true][data-hud-compact=false] #hud .hud-right > * { flex-shrink: 0; }

@@ -1,0 +1,29 @@
+/** Native medium-lane header regression. Uses only local seeded/intercepted content. */
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {launch} from '../scripts/browser.mjs';
+import {createGameServer} from '../server/app.mjs';
+const out=process.env.HUD_HEADER_EVIDENCE||'evidence/hud-medium-header';await mkdir(out,{recursive:true});
+const scene={version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:0},objects:[],areas:[{id:'content',name:'Content area',action:'welcome',x:0,z:0,width:20,depth:20,actions:[{id:'open',type:'link',label:'Open header content',url:'https://header-fixture.invalid/',mode:'embed',width:40,closable:true}]}]};
+const dist=new URL('../dist',import.meta.url).pathname,app=createGameServer({dist,seeds:[{id:'framing-world',name:'Framing world',rooms:[{id:'framing-room',name:'Framing room',scene}]}],questsEnabled:false}),{port}=await app.listen(0),browser=await launch(),context=await browser.newContext({viewport:{width:1440,height:950},deviceScaleFactor:2}),page=await context.newPage();
+page.setDefaultTimeout(60000);const checks=[],errors=[];page.on('pageerror',e=>errors.push(e.message));
+const pass=(name,detail={})=>{checks.push({name,status:'passed',...detail});console.log('PASS',name);};
+const boxes=()=>page.evaluate(()=>{const rect=s=>{const r=document.querySelector(s).getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};return{brand:rect('#hud .brand'),title:rect('#hud .room-heading'),actions:rect('#hud .hud-right'),logo:rect('.brand-logo'),lane:Number.parseFloat(document.querySelector('#app').style.getPropertyValue('--hud-width')),titlePointerEvents:getComputedStyle(document.querySelector('#hud .room-heading')).pointerEvents,scrollWidth:document.documentElement.scrollWidth,width:innerWidth};});
+async function assertHeader(){const r=await boxes();assert.equal(r.titlePointerEvents,'none');assert(r.brand.right+1<=r.title.left&&r.title.right+1<=r.actions.left,JSON.stringify(r));assert(r.actions.right<=r.lane+1,JSON.stringify(r));assert.equal(r.logo.width/r.logo.height,2);assert(r.scrollWidth<=r.width);return r;}
+async function hit(selector){const loc=page.locator(selector);await loc.scrollIntoViewIfNeeded();const info=await loc.evaluate(e=>{const r=e.getBoundingClientRect();return{hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),width:r.width,height:r.height};});assert(info.hit,selector+' must receive native input');return loc;}
+async function reload(viewport){await page.setViewportSize(viewport);await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__universe?.getState().ready);await page.getByRole('button',{name:'Open header content',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#app').dataset.hudConstrained==='true');await page.waitForTimeout(750);}
+try{
+ await page.route('https://header-fixture.invalid/**',r=>r.fulfill({contentType:'text/html',body:'<h1>Local medium-lane content</h1>'}));await page.goto(`http://127.0.0.1:${port}/?room=framing-room`,{waitUntil:'domcontentloaded'});await page.getByPlaceholder('Your name').fill('Medium header');await page.locator('#join-button').click();await page.waitForFunction(()=>window.__universe?.getState().ready);
+ assert.equal(await page.locator('#hud .room-heading').evaluate(e=>getComputedStyle(e).pointerEvents),'none','the decorative title is non-hit-testable even without a side panel');
+ for(const viewport of[{width:1440,height:950},{width:1280,height:900}]){
+  await reload(viewport);const before=await boxes();assert.equal(before.lane,viewport.width*.6);assert.equal(await page.locator('#app').getAttribute('data-hud-compact'),'false');
+  // The actual regression was this ordinary button click being intercepted by the title.
+  await page.locator('#manage-bots').click({timeout:3000});await page.getByRole('button',{name:'Close residents',exact:true}).waitFor();await page.getByRole('button',{name:'Close residents',exact:true}).click();
+  await reload(viewport);const geometry=await assertHeader();for(const id of['#manage-bots','#manage-place','#invite'])await hit(id);await page.screenshot({path:out+`/header-${viewport.width}.png`});
+  await page.locator('#manage-place').click();await page.getByRole('button',{name:'Close places',exact:true}).click();
+  pass(`${viewport.width}px viewport with real 40vw embed keeps title separate from source logo/actions; native Bots and Manage open/close`,{geometry});
+ }
+ await reload({width:1440,height:950});const style=await page.addStyleTag({content:'#hud button {font-size:24px !important}'});await page.waitForTimeout(200);const enlarged=await assertHeader();for(const id of['#manage-bots','#manage-place','#invite'])await hit(id);await page.locator('#manage-place').click();await page.getByRole('button',{name:'Close places',exact:true}).click();await style.evaluate(e=>e.remove());pass('Enlarged medium-lane action labels remain natively scrollable without title/brand overlap',{geometry:enlarged});
+ assert.deepEqual(errors,[]);
+}catch(error){console.error(error);checks.push({name:'medium header acceptance',status:'failed',error:error.stack,geometry:await boxes().catch(()=>null)});await page.screenshot({path:out+'/failure.png'}).catch(()=>{});process.exitCode=1;}finally{await writeFile(out+'/results.json',JSON.stringify({checks,errors,bundleSha256:createHash('sha256').update(await readFile(dist+'/main.js')).digest('hex'),cssSha256:createHash('sha256').update(await readFile(dist+'/main.css')).digest('hex'),scope:'Actual local game, ordinary native pointer and browser scroll; no force clicks, synthetic app actions or provider requests. Local software WebGL.'},null,2));await context.close();await browser.close();await app.close();}

@@ -8,7 +8,7 @@ The largest available rectangle is selected with separate horizontal and vertica
 
 The DPR conversion and alpha-aware image ray picker are unchanged. Media freshness authority hooks, labels and current styles are preserved. Camera framing changes no permissions or resident-provider behavior.
 
-## Verification
+## Original framing verification
 
 - 410 CPU/API tests, including 14 new framing cases and an exhaustive small-grid geometry oracle
 - 14 actual-game framing checks, six DPR2 native mouse/touch picking checks and nine resident-authoring checks
@@ -19,6 +19,6 @@ Run `npm run test:browser:framing`. The three serial suites also run as an indep
 
 ## Limits
 
-Existing dock and builder/content controls can still extend underneath an embedded side panel. Action-bar available width is a separate UI issue. The picking fixture uses ordinary keyboard activation for a covered content control; world picks use native mouse/touch. Left-side placement and width transitions use stated CSS fixtures on real panels.
+The dock/builder/content occlusion is corrected by the separate available-width policy described in [HUD-AVAILABILITY.md](HUD-AVAILABILITY.md). The picking fixture now opens content with native mouse/touch rather than its former keyboard workaround. `npm run test:browser:hud` exercises the control hit-test/overflow and coexisting-content history scenarios. `npm run test:browser:framing` retains the framing and DPR2 picking regressions. Left-side placement and width transitions still use stated CSS fixtures on real panels. Camera math and input ownership are unchanged.
 
 The alpha-picking fixture freezes a measured nonzero projection shift with the normal Follow control because Build mode closes the area-owned iframe during editing. The test asserts that the shift stays nonzero and unchanged while opaque and transparent image pixels are picked. No provider, deployment or successful audio/video packet claim follows from these tests.

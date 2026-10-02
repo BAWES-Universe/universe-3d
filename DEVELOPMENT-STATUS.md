@@ -1,14 +1,18 @@
-# Development status · 2026-10-02 19:56 UTC
+# Development status · 2026-10-02 21:18 UTC
 
-## Current increment: image library lifecycle
+## Current increment: usable side-content controls and preserved foreground history
 
-Full room editors can now edit library names, descriptions and searchable tags, confirm reversible archive, inspect archived thumbnails and restore assets. Existing saved instances keep their exact pinned image bytes, alpha picking, collision and per-instance name. Archived assets cannot be newly placed or duplicated; moving/editing a saved instance remains permission-checked. Metadata uses revisioned compare-and-swap, with explicit conflict recovery. No permanent erase is included. See `IMAGE-ASSET-LIFECYCLE.md`.
+Embedded room content now leaves an available-width control lane. Dock, builder tools, header actions and camera controls have explicit responsive/scrolling layouts. Native Chat/Places Close buttons remain reachable, the original complete logo keeps its aspect ratio, and decorative room titles cannot intercept clicks. The canvas and camera projection remain full-size. See `HUD-AVAILABILITY.md` and `FRAMING.md`.
 
-Final integrated CPU/API checks: 599 passed and the same one documented historical-fixture skip; 199-file syntax, build, package startup and container-file simulation pass. All 46 image browser checks passed on byte-identical runtime bundle `ff8c38512e11ea61d64848fd3b6bcbb6efb093bc050fb5ebb25912e643007672`, CSS `a726de7058af0a6613cf0a24a96340ade22792e7b542321c2a0ed7b537a0218e`. These include actual chooser, search/edit/archive/restore, saved-instance byte/pixel/picking/collision preservation, 320px touch placement and negative authority/race checks.
+Coexisting content stays alive while opening or dismissing Chat, Places, Help, Express and quick actions. The exact iframe and unsubmitted form survive foreground navigation. Explicit content dismissal stays closed when a later foreground panel closes; intentional browser-history reopening requires fresh room-action authorization. Opaque tab-local keys, known surface names and room IDs are the only content history metadata. See `CONTENT-HISTORY.md`.
 
-This composition preserves the durable parity docs and the image-capture harness correction at `bb371a420dc8d034fe2e91f1c43a2f916eaabd02`; that test-only correction passed the unchanged baseline's full 18 and mobile 6 image checks. That baseline now passes all eight remote CI jobs. Runtime source matches the separately verified image-lifecycle candidate. Other browser groups have not yet been rerun on this asset bundle locally; exact-head remote CI and publication remain pending.
+Final source: 636 CPU/API tests passed with the same one documented historical-fixture skip. Syntax (209 files), build, package startup and Dockerfile-copy reconstruction passed. All 11 actual-game history scenarios passed, including native two-frame retention after a server scene-revocation fixture removes the latest action. Final main bundle: `939415b2cf240af7cffbf5d2df3e5a5784f60ae47891e4a46a1ce919507bb88e`; CSS: `cb873a608bbba94329b0b077d707a49dd49ad372bff91e1c2fc7c6c28d3daf52`.
 
-The prior P2P runtime at `be6d136961010f986fde7c1ddaf13b66e164621a` passed all eight remote CI jobs. Its optional ICE configuration remains unconfigured by default; configuration/SDP tests do not prove live media or a relay. Current HUD-availability and embedded-history corrections are separate candidates and are not included here. The source parity map is deliberately incomplete and certifies no whole feature contract.
+Immediately before the final one-line live-frame key-lifetime correction, all 100 scoped browser checks passed: 25 HUD/header/history, 29 framing/picking/resident and 46 image checks. That run used main `bc07636f51442f013a0b37efc6de4ea64fc3707abef6f8527bc16d06a30f720d` with the exact final CSS. The changed history path was then rebuilt and retested as above. Those earlier full-group results are not claimed as byte-identical final-source runs. The new HUD/header/history suites also use bounded 60-second action/capture waits, preserving native input and every assertion. Exact-head remote CI and publication are pending for this increment.
+
+The durable baseline is `bd2947c027f90ce0f168f13c12ac91792d4f84a1`, whose eight remote CI jobs passed. It includes the image lifecycle runtime from `c5e9656a0877683c78769a211e82a35cfbfa3471`, both narrowly corrected browser readiness harnesses, and schema2/revision4 of the source parity inventory. The inventory's evidence is deliberately pinned to its inspected `be6d1369` snapshot; it is incomplete and certifies no whole feature contract.
+
+The isolated next proximity-membership work is excluded from this increment. Optional ICE configuration remains unconfigured by default; configuration and SDP tests do not prove live media or a relay.
 
 ## Implemented and locally exercised
 
@@ -37,10 +41,10 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Publish this scoped increment and verify every exact-head CI job
-2. Complete the independently tested HUD availability and coexisting-content history corrections
+1. Publish this scoped controls/history increment and verify every exact-head CI job
+2. Integrate source-grounded proximity membership independently of microphone consent, preserving current recipient authorization and teardown
 3. Confirm deployed media revisions, actual group/transition configuration and the operator's isolated ICE issuer/relay plan before real-media acceptance
-4. Integrate the independently tested bubble-membership model and implement the authorized hybrid transition contract
-5. Continue current-source parity and hands-on interaction improvements in small tested commits
+4. Implement the authorized hybrid transport transition contract; real SFU handoff and provider-backed resident interaction remain unverified
+5. Continue source parity and hands-on interaction improvements in small tested commits
 
 The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification has occurred.

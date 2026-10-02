@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ hud:['hud-availability.browser.mjs','hud-medium-header.browser.mjs','content-history.full.mjs'],
  presentation:['creator-render.actual-game.mjs'],
  residents:['resident-test-ui.browser.mjs','resident-turn.full.mjs'],
  framing:['panel-framing.browser.mjs','panel-framing-picking.browser.mjs','tranche-bots.browser.mjs'],
@@ -11,11 +12,11 @@ const groups={
  images:['image-library-shell.browser.mjs','editor-image.browser.mjs','image-library.full.mjs','image-lifecycle.full.mjs'],
  authoring:['tranche-smoke.browser.mjs','tranche-actions.browser.mjs','tranche-personal.browser.mjs','tranche-bots.browser.mjs']
 };
-const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media framing, residents or presentation');
+const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media, framing, residents, presentation or hud');
 await mkdir('evidence',{recursive:true});const results=[];
 for(const file of groups[group]){
  console.log('\n=== '+file+' ===');const start=Date.now();
- const code=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,['tests/'+file],{stdio:'inherit'});child.once('error',reject);child.once('exit',code=>resolve(code??1));});
+ const code=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,['tests/'+file],{stdio:'inherit',env:{...process.env,...(file==='content-history.full.mjs'?{CONTENT_HISTORY_POINTER_CLOSE:'1'}:{})}});child.once('error',reject);child.once('exit',code=>resolve(code??1));});
  results.push({file,exitCode:code,durationMs:Date.now()-start});
  await writeFile(`evidence/browser-${group}-summary.json`,JSON.stringify({scope:group,results},null,2));
  if(code){process.exitCode=code;break;}
