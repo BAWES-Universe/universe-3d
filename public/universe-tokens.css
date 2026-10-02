@@ -1,0 +1,178 @@
+/* Source: game #598 (966d723d) over #596; Orbit #236 (d7577b79). Audited proposal roles, not an upstream deployment claim. Focus uses a separate layer so active fill never removes the ring. */
+@font-face {
+  font-family: Inter;
+  src: url(/assets/inter-variable.ttf) format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+:root {
+  --u-ink:#14121e;
+  --u-surface-flat:linear-gradient(
+      
+      160deg,rgba(31,28,47,.92),rgba(20,18,30,.94));
+  --u-surface-raised:var(--u-surface-flat);
+  --u-surface-joined:linear-gradient(
+      
+      180deg,rgba(31,28,47,.92),rgba(20,18,30,.94));
+  --u-edge:rgba(167,139,250,.18);
+  --u-shadow-flat:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 1px var(--u-edge);
+  --u-shadow-raised:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 1px var(--u-edge),0 18px 48px -12px rgba(0,0,0,.55),0 0 32px -12px rgba(134,41,252,.55);
+  --u-backdrop:blur(18px) saturate(140%);
+  --u-text:#fff;
+  --u-text-soft:rgba(255,255,255,.88);
+  --u-text-muted:rgba(255,255,255,.72);
+  --u-control-hover:rgba(255,255,255,.08);
+  --u-control-pressed:rgba(255,255,255,.12);
+  --u-secondary:rgba(255,255,255,.06);
+  --u-secondary-border:rgba(255,255,255,.12);
+  --u-secondary-hover:rgba(255,255,255,.12);
+  --u-secondary-hover-border:rgba(255,255,255,.24);
+  --u-primary:linear-gradient(
+      
+      135deg,#8629fc,#4156f6);
+  --u-primary-hover:linear-gradient(
+      
+      135deg,#9a4dfd,#5a6cf8);
+  --u-primary-pressed:linear-gradient(
+      
+      135deg,#7a1fe8,#3a4de0);
+  --u-muted-coral:#e96d51;
+  --u-muted-coral-hover:#d4553a;
+  --u-muted-coral-pressed:#c44a30;
+  --u-selected:rgba(134,41,252,.16);
+  --u-selected-border:rgba(167,139,250,.45);
+  --u-card:hsl(250 22% 15%);
+  --u-card-border:hsl(250 18% 23%);
+  --u-input:hsl(250 40% 6%);
+  --u-danger:hsl(0 72% 56%);
+  --u-status-live:#22c55e;
+  --u-status-waiting:#f59e0b;
+  --u-chat-live:#34d399;
+  --u-pill:9999px;
+  --u-control-size:48px;
+  --u-decision-size:44px;
+  --kind-universe:linear-gradient(
+      
+      135deg,#8629fc,#4156f6);
+  --kind-universe-solid:#a78bfa;
+  --kind-world:linear-gradient(
+      
+      135deg,#10b981,#3b82f6);
+  --kind-world-solid:#2dd4bf;
+  --kind-room:linear-gradient(
+      
+      135deg,#f59e0b,#ec4899);
+  --kind-room-solid:#fbbf24;
+  --kind-star:#e9c74c;
+  --kind-star-solid:#e9c74c;
+  --kind-people:linear-gradient(
+      
+      135deg,#38bdf8,#6366f1);
+  --kind-people-solid:#7dd3fc;
+  --kind-tools:rgba(255,255,255,.1);
+  --kind-tools-solid:#fff;
+}
+@media (min-width: 701px) and (max-width: 1279px) and (pointer: fine) {
+  :root {
+    --u-control-size:40px;
+  }
+}
+.u-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  pointer-events: none;
+}
+.u-icon-sm {
+  width: 16px;
+  height: 16px;
+}
+.u-icon-lg {
+  width: 28px;
+  height: 28px;
+}
+[data-kind=universe] {
+  --kind-fill:var(--kind-universe);
+  --kind-color:var(--kind-universe-solid);
+}
+[data-kind=world] {
+  --kind-fill:var(--kind-world);
+  --kind-color:var(--kind-world-solid);
+}
+[data-kind=room] {
+  --kind-fill:var(--kind-room);
+  --kind-color:var(--kind-room-solid);
+}
+[data-kind=star] {
+  --kind-fill:var(--kind-star);
+  --kind-color:var(--kind-star-solid);
+}
+[data-kind=people] {
+  --kind-fill:var(--kind-people);
+  --kind-color:var(--kind-people-solid);
+}
+[data-kind=tools] {
+  --kind-fill:var(--kind-tools);
+  --kind-color:var(--kind-tools-solid);
+}
+.u-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: var(--u-control-size);
+  min-height: var(--u-control-size);
+  border-radius: var(--u-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--u-text-soft);
+  touch-action: manipulation;
+}
+.u-control[aria-pressed=true],
+.u-control.active {
+  background: var(--u-primary);
+  color: #fff;
+}
+.u-control.is-muted {
+  background: var(--u-muted-coral);
+  color: #fff;
+}
+.u-control:active {
+  background: var(--u-control-pressed);
+}
+.u-control[aria-pressed=true]:active,
+.u-control.active:active {
+  background: var(--u-primary-pressed);
+}
+.u-control.is-muted:active {
+  background: var(--u-muted-coral-pressed);
+}
+@media (hover: hover) {
+  .u-control:hover {
+    background: var(--u-control-hover);
+  }
+  .u-control[aria-pressed=true]:hover,
+  .u-control.active:hover {
+    background: var(--u-primary-hover);
+  }
+  .u-control.is-muted:hover {
+    background: var(--u-muted-coral-hover);
+  }
+}
+.u-control:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -3px;
+}
+.u-control:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+@media (pointer: coarse) {
+  :root {
+    --u-control-size:48px;
+    --u-decision-size:48px;
+  }
+}

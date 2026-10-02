@@ -4,10 +4,12 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {normalizeAppearance} from '../src/avatar-spec.js';
 import {migrateHierarchy,hierarchyMethods} from './hierarchy-store.mjs';
+import {migratePersonalAreas,personalAreaMethods} from './personal-area-store.mjs';
 
 export class Store {
-  constructor(filename, seeds = [], now = Date.now) {
+  constructor(filename, seeds = [], now = Date.now, {claimUnownedOnCreate = true} = {}) {
     this.now=now;
+    this.claimUnownedOnCreate=!!claimUnownedOnCreate;
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true });
     this.db = new DatabaseSync(filename);
     this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -38,6 +40,7 @@ export class Store {
       this.run('INSERT INTO metadata(key,value) VALUES(?,?)', 'seeded', '1');
     });
     migrateHierarchy(this);
+    migratePersonalAreas(this);
   }
   run(sql, ...args) { return this.db.prepare(sql).run(...args); }
   get(sql, ...args) { return this.db.prepare(sql).get(...args); }
@@ -48,9 +51,11 @@ export class Store {
     const userId = randomUUID();
     this.transaction(() => {
       this.run('INSERT INTO users(id,name,woka,created_at) VALUES(?,?,?,?)', userId, name, woka, Date.now());
-      this.run('UPDATE worlds SET owner_id=? WHERE owner_id IS NULL', userId);
-      this.run('UPDATE rooms SET owner_id=? WHERE owner_id IS NULL', userId);
-      this.claimUnowned(userId);
+      if(this.claimUnownedOnCreate){
+        this.run('UPDATE worlds SET owner_id=? WHERE owner_id IS NULL', userId);
+        this.run('UPDATE rooms SET owner_id=? WHERE owner_id IS NULL', userId);
+        this.claimUnowned(userId);
+      }
     });
     return this.user(userId);
   }
@@ -75,4 +80,4 @@ export class Store {
   close() { this.db.close(); }
 }
 
-Object.assign(Store.prototype,hierarchyMethods);
+Object.assign(Store.prototype,hierarchyMethods,personalAreaMethods);

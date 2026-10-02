@@ -20,6 +20,7 @@ import {DirectionalLight} from '@babylonjs/core/Lights/directionalLight.js';
 import {ShadowGenerator} from '@babylonjs/core/Lights/Shadows/shadowGenerator.js';
 import '@babylonjs/core/Culling/ray.js';
 import {CATALOG,dimensions} from './worlds.js';
+import {createBotMapPreview} from './bot-preview.js';
 import {createAvatarRig} from './avatar-rig.js';
 import {resolveAvatarMotion} from './avatar-motion.js';
 import {createCameraRig} from './camera-rig.js';
@@ -38,6 +39,7 @@ export async function createRenderer(canvas,labels){
  const sun=new DirectionalLight('late-afternoon',new Vector3(-.65,-1,.4),scene);sun.position.set(20,32,-18);sun.intensity=.85;sun.diffuse=hex('#fff0ca');
  const shadows=new ShadowGenerator(1024,sun);shadows.usePercentageCloserFiltering=true;shadows.filteringQuality=ShadowGenerator.QUALITY_LOW;shadows.bias=.0008;shadows.normalBias=.012;shadows.setDarkness(.28);
  const surfaces=createEnvironmentMaterials(scene),materials=new Map(),signMaterials=new Map(),worldLabels=[],pendingLabels=[];
+ let botPreview=null,botPreviewLabel=null;
  let nodes=[],avatars=new Map(),world=null,floor=null,grid=[],selection=null,guide=null,ghost=null,destination=null,build=false,ghostKey=null,tick=0,frameTimes=[],motions=[];
  const brandMat=new StandardMaterial('source-bawes',scene);brandMat.diffuseTexture=new Texture('/assets/bawes-logo.png',scene);brandMat.diffuseTexture.hasAlpha=true;brandMat.useAlphaFromDiffuseTexture=true;brandMat.backFaceCulling=false;brandMat.specularColor=Color3.Black();
  function material(color,emissive=false,alpha=1){const key=color+emissive+alpha;if(materials.has(key))return materials.get(key);const m=new StandardMaterial(key,scene);m.diffuseColor=hex(color);m.specularColor=new Color3(.045,.045,.045);m.alpha=alpha;if(emissive)m.emissiveColor=hex(color).scale(.65);materials.set(key,m);return m;}
@@ -112,7 +114,7 @@ export async function createRenderer(canvas,labels){
   return n;
  }
  function sync(newWorld){
-  if(!newWorld)return;world=newWorld;clearWorld();rig.setBounds(world.bounds);
+  if(!newWorld)return;world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
   const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,material});floor.metadata={type:'ground'};
   for(const o of world.objects)addObject(o);
   if(build)for(const a of world.areas){const col={silent:'#67bdae',meeting:'#b09add',stage:'#e0bd77',audience:'#bc9bca',welcome:'#9eccab',teleport:'#c3a8fa'}[a.action]||'#aa9cc2';box(a.id,a.x,.083,a.z,a.width,.015,a.depth,col,root,{alpha:.15,pickable:false,metadata:{id:a.id,type:'area'}});worldLabels.push({el:label(a.id,a.name,'area-label'),position:new Vector3(a.x,.5,a.z)});}
@@ -136,7 +138,7 @@ export async function createRenderer(canvas,labels){
  function avatar(p){let a=avatars.get(p.id);const appearance=p.appearance??p.woka,key=JSON.stringify(appearance);
   if(!a){const character=createAvatarRig(scene,appearance,{id:p.id});const shadow=cylinder('avatar-contact',p.x,.084,p.z,.36,.009,'#211c2b',null,.36,{alpha:.25,pickable:false,tessellation:20});a={rig:character,shadow,el:label(p.id,p.name,'player-label'),appearanceKey:key,x:p.x,z:p.z};avatars.set(p.id,a);}
   if(a.appearanceKey!==key){a.rig.setAppearance(appearance);a.appearanceKey=key;}
-  a.p=p;const labelText=(p.emote?p.emote+' ':'')+p.name;if(a.el.textContent!==labelText)a.el.textContent=labelText;a.el.classList.toggle('self',!!p.self);a.el.classList.toggle('away',p.status==='away');return a;
+  a.p=p;for(const mesh of a.rig.meshes){mesh.isPickable=p.kind==='bot';if(p.kind==='bot')mesh.metadata={type:'bot',id:p.id};}const labelText=(p.emote?p.emote+' ':'')+p.name+(p.kind==='bot'?' · Bot':'');if(a.el.textContent!==labelText)a.el.textContent=labelText;a.el.classList.toggle('self',!!p.self);a.el.classList.toggle('away',p.status==='away');return a;
  }
  function syncPeople(people){const seen=new Set();for(const p of people){seen.add(p.id);avatar(p);}for(const [id,a]of avatars)if(!seen.has(id)){a.rig.dispose();a.shadow.dispose();a.el.remove();avatars.delete(id);}}
 
@@ -168,6 +170,7 @@ export async function createRenderer(canvas,labels){
   }
   for(const motion of motions){if(motion.kind==='portal'){const p=1+Math.sin(tick*1.8+motion.phase)*.025;motion.mesh.scaling.setAll(p);}}
   for(const marker of [destination,guide])if(marker){const p=1+Math.sin(tick*4)*.09;marker.scaling.setAll(p);marker.position.y=.105+Math.sin(tick*3)*.014;}
+  if(botPreview){botPreview.tick(dt,tick);positionLabel(botPreviewLabel,new Vector3(botPreview.position.x,2.8,botPreview.position.z));}
   for(const l of worldLabels)positionLabel(l.el,l.position);resolveLabelVisibility();engine._drawCalls?.fetchNewFrame();scene.render();
  }
  function pick(clientX,clientY){
@@ -194,12 +197,13 @@ export async function createRenderer(canvas,labels){
  function marker(name,target,color,size){if(!target)return null;const m=CreateTorus(name,{diameter:size,thickness:.07,tessellation:40},scene);m.position.set(target.x,.11,target.z);m.material=material(color,true);m.isPickable=false;return m;}
  const act=fn=>(...args)=>{fn(...args);updateCamera();};
  resize();window.addEventListener('resize',resize);
- return {sync,syncPeople,render,pick,select,screenPoint,setGhost,
+ function setBotPreview(bot){if(!bot){botPreview?.dispose();botPreview=null;botPreviewLabel?.remove();botPreviewLabel=null;return;}if(!botPreview){botPreview=createBotMapPreview(scene,bot,world);botPreviewLabel=label('resident-draft','Draft · '+bot.name,'player-label');}else{botPreview.set(bot);botPreviewLabel.textContent='Draft · '+bot.name;}}
+ return {sync,syncPeople,render,pick,select,screenPoint,setGhost,setBotPreview,
   setDestination(target){if(destination&&target&&Math.hypot(destination.position.x-target.x,destination.position.z-target.z)<.01)return;destination?.dispose();destination=marker('walk-destination',target,'#ffe6a4',.75);},
   setGuide(target){guide?.dispose();guide=marker('quest-marker',target,'#e9c74c',1.7);},
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},
-  setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
-  getCameraState:()=>({...rig.getState(),projection:'perspective'}),getCameraAngle:()=>rig.getState().yaw,
+  setAuthoringViewport:fraction=>{const width=Math.max(.25,Math.min(1,fraction));if(Math.abs(camera.viewport.width-width)>.001){camera.viewport.width=width;updateCamera();}},focusPoint:(x,z)=>rig.focusPoint(x,z),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
+  getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width}),getCameraAngle:()=>rig.getState().yaw,
   getStats:()=>({engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState()}),
-  dispose(){window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
+  dispose(){setBotPreview(null);window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
 }

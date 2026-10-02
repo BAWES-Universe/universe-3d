@@ -26,3 +26,6 @@ CHECKPOINT-MANIFEST.json
 
 # Legacy sprites require separate distribution clearance
 public/assets/woka-*.png
+
+# Private operator planning drafts
+OPERATOR-HANDOFF-PROMPT.md

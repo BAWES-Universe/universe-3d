@@ -15,7 +15,7 @@ window.addEventListener('keydown',e=>{if(window.palette.handleKey(e)||window.exp
 window.addEventListener('keydown',e=>window.gameKeys.push(e.key));document.querySelector('#open').onclick=()=>window.express.open();document.querySelector('#quick').onclick=()=>window.palette.open();
 window.frame=setInterval(()=>window.express.update(),30);window.ready=true;
 </script></body></html>`;
-const server=http.createServer(async(req,res)=>{try{if(/^\/(express|command-palette)\.(js|css)$/.test(req.url)){res.setHeader('Content-Type',req.url.endsWith('css')?'text/css':'text/javascript');res.end(await readFile(new URL('../src'+req.url,import.meta.url)));}else{res.setHeader('Content-Type','text/html');res.end(fixture)}}catch(e){res.statusCode=500;res.end(e.message)}});
+const server=http.createServer(async(req,res)=>{try{if(/^\/(express|command-palette|universe-icons)\.(js|css)$/.test(req.url)){res.setHeader('Content-Type',req.url.endsWith('css')?'text/css':'text/javascript');res.end(await readFile(new URL('../src'+req.url,import.meta.url)));}else{res.setHeader('Content-Type','text/html');res.end(fixture)}}catch(e){res.statusCode=500;res.end(e.message)}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const browser=await launch();const page=await browser.newPage({viewport:{width:900,height:820}});const errors=[],checks=[];page.on('pageerror',error=>errors.push(error.message));
 const check=async(name,fn)=>{await fn();checks.push({name,status:'passed'});console.log('PASS',name)};
 try{

@@ -1,3 +1,4 @@
+import {icon,ICON_NAMES} from './universe-icons.js';
 /** A command menu over live, authorized state. The parent supplies real actions. */
 const GROUPS = ['all', 'actions', 'people', 'places'];
 let sequence = 0;
@@ -13,12 +14,12 @@ export function filterCommands(commands, query = '', group = 'all') {
 export function collectCommands({ state = {}, actions = [], onPerson, onNavigate, onWalkToPerson, canWalkToPerson }) {
   if (!state.user) return [];
   const commands = actions.filter(action => action && typeof action.run === 'function' && action.hidden !== true &&
-    (typeof action.enabled === 'function' ? action.enabled(state) : action.enabled !== false)).map(action => ({ ...action, group: 'actions', icon: action.icon || '✦' }));
+    (typeof action.enabled === 'function' ? action.enabled(state) : action.enabled !== false)).map(action => ({ ...action, group: 'actions', icon: action.icon || 'Command' }));
   if (state.ready !== false && state.room) for (const person of state.people || []) {
     const id = personId(person);
     if (!id || id === state.user.id || person.roomId && person.roomId !== state.room.id) continue;
     if (onPerson) commands.push({ id: `person:${id}`, label: person.name || person.displayName || 'Room member', description: 'Open direct message', group: 'people', icon: 'person', person, keywords: 'message chat dm', run: () => onPerson(person) });
-    if (onWalkToPerson && canWalkToPerson?.(person, state)) commands.push({ id: `walk:${id}`, label: `Walk to ${person.name || person.displayName || 'room member'}`, description: 'Meet them in this room', group: 'people', icon: '↗', keywords: 'go nearby move', run: () => onWalkToPerson(person) });
+    if (onWalkToPerson && canWalkToPerson?.(person, state)) commands.push({ id: `walk:${id}`, label: `Walk to ${person.name || person.displayName || 'room member'}`, description: 'Meet them in this room', group: 'people', icon: 'ArrowRight', keywords: 'go nearby move', run: () => onWalkToPerson(person) });
   }
   if (onNavigate) {
     const seen = new Set();
@@ -26,7 +27,7 @@ export function collectCommands({ state = {}, actions = [], onPerson, onNavigate
     for (const world of worlds) for (const room of world.rooms || []) {
       if (!room.id || seen.has(room.id) || room.id === state.room?.id || room.canEnter === false || room.disabled) continue;
       seen.add(room.id);
-      commands.push({ id: `room:${room.id}`, label: room.name || 'Room', description: world.name || 'Accessible room', group: 'places', icon: '◎', keywords: ['travel room', world.name, room.description].join(' '), run: () => onNavigate(room.id) });
+      commands.push({ id: `room:${room.id}`, label: room.name || 'Room', description: world.name || 'Accessible room', group: 'places', icon: 'DoorOpen', keywords: ['travel room', world.name, room.description].join(' '), run: () => onNavigate(room.id) });
     }
   }
   const seen = new Set();
@@ -51,9 +52,9 @@ export function mountPalette({ root, getState, getActions = () => [], onPerson, 
   panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-labelledby', `${prefix}-title`);
   const title = node('h2', 'command-title', 'Where to next?'); title.id = `${prefix}-title`;
   const eyebrow = node('div', 'command-eyebrow', 'YOUR UNIVERSE, ONE SHORTCUT AWAY');
-  const closeButton = node('button', 'command-close', '×'); closeButton.type = 'button'; closeButton.setAttribute('aria-label', 'Close quick menu');
+  const closeButton = node('button', 'command-close');closeButton.innerHTML=icon('Close'); closeButton.type = 'button'; closeButton.setAttribute('aria-label', 'Close quick menu');
   const searchRow = node('div', 'command-search-row');
-  const searchIcon = node('span', 'command-search-icon', '⌕'); searchIcon.setAttribute('aria-hidden', 'true');
+  const searchIcon = node('span', 'command-search-icon');searchIcon.innerHTML=icon('Search'); searchIcon.setAttribute('aria-hidden', 'true');
   const search = node('input', 'command-search'); search.type = 'text'; search.placeholder = 'Find an action, person or place…'; search.autocomplete = 'off'; search.spellcheck = false;
   search.setAttribute('role', 'combobox'); search.setAttribute('aria-label', 'Search actions, people and places'); search.setAttribute('aria-autocomplete', 'list'); search.setAttribute('aria-expanded', 'true'); search.setAttribute('aria-controls', `${prefix}-results`);
   searchRow.append(searchIcon, search);
@@ -111,11 +112,11 @@ export function mountPalette({ root, getState, getActions = () => [], onPerson, 
     for (const [index, command] of results.entries()) {
       if (previousGroup !== command.group) { const label = node('div', 'command-group-label', command.group); label.setAttribute('role', 'presentation'); list.append(label); previousGroup = command.group; }
       const option = node('div', 'command-result'); option.id = `${prefix}-option-${index}`; option.dataset.commandId = command.id; option.setAttribute('role', 'option'); option.setAttribute('aria-selected', String(index === selected));
-      const icon = node('span', 'command-result-icon', command.icon === 'person' ? '' : command.icon); icon.setAttribute('aria-hidden', 'true');
-      if (command.icon === 'person') renderPortrait(icon, command);
+      const iconHolder = node('span', 'command-result-icon'); iconHolder.setAttribute('aria-hidden', 'true');
+      if (command.icon === 'person') renderPortrait(iconHolder, command);else iconHolder.innerHTML=icon(ICON_NAMES.includes(command.icon)?command.icon:'Command');
       const text = node('span', 'command-result-text'); text.append(node('strong', '', command.label), node('small', '', command.description || ''));
       const key = node('span', 'command-result-key', command.shortcut || '↵'); key.setAttribute('aria-hidden', 'true');
-      option.append(icon, text, key); option.onpointermove = () => activate(index, false); option.onpointerdown = event => event.preventDefault(); option.onclick = () => execute(command.id);
+      option.append(iconHolder, text, key); option.onpointermove = () => activate(index, false); option.onpointerdown = event => event.preventDefault(); option.onclick = () => execute(command.id);
       list.append(option);
     }
     status.textContent = results.length ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : search.value ? `No matches for “${search.value}”. Try another word.` : 'Nothing available in this category yet.';

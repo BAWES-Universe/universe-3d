@@ -218,7 +218,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     if (!count) tree.append(empty(loading ? 'Loading places…' : q ? 'No visible places match your search.' : 'No places are available. Create your first universe.'));
   }
   function breadcrumbs(item) {
-    return el('nav', { class: 'places-breadcrumb', 'aria-label': 'Place ancestry' }, item._universe && btn(item._universe.name, () => select('universe', item._universe.id), { class: 'places-btn places-btn-quiet' }), item._world && ['›', btn(item._world.name, () => select('world', item._world.id), { class: 'places-btn places-btn-quiet' })], item._universe && '›', kindLabel(item.kind));
+    return el('nav', { class: 'places-breadcrumb', 'aria-label': 'Place ancestry' }, item._universe && btn(item._universe.name, () => select('universe', item._universe.id), { class: 'places-btn places-btn-quiet','data-kind':'universe' }), item._world && ['›', btn(item._world.name, () => select('world', item._world.id), { class: 'places-btn places-btn-quiet','data-kind':'world' })], item._universe && '›', kindLabel(item.kind));
   }
   function renderDetail() {
     detail.replaceChildren(btn('← All places', () => { selected = null; createDraft = null; detailMode = ''; render(); }, { class: 'places-btn places-btn-quiet places-back-mobile' }));
@@ -227,7 +227,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     if (!item) {
       detail.append(el('div', { class: 'places-eyebrow', text: 'Room to belong' }), el('h3', { class: 'places-detail-title', text: 'Small worlds. Endless possibilities.' }), muted('Choose a universe, world or room to explore its details. Membership and editing rights are specific to each world.'), el('div', { class: 'places-section' }, el('h3', { text: 'Three levels, one community' }), muted('A universe contains worlds. Each world has its own members and rooms. Visiting a public room does not add you as a world member.'), muted('Universe owners manage their hierarchy. World admins manage members and create rooms. World editors can edit existing rooms.'))); return;
     }
-    detail.append(breadcrumbs(item), el('h3', { class: 'places-detail-title', tabindex: '-1', text: item.name }), el('div', { class: 'places-tags' }, badge(kindLabel(item.kind)), badge(item.public ? 'Public' : 'Private', item.public ? 'public' : ''), archived(item) && badge(item.archivedAt ? 'Archived' : 'Parent archived', 'archived'), item.role && badge(`${item.kind === 'room' ? 'Room' : 'World'} role: ${item.role}`)));
+    detail.append(breadcrumbs(item), el('h3', { class: 'places-detail-title', tabindex: '-1', text: item.name }), el('div', { class: 'places-tags' }, el('span',{class:'places-badge','data-kind':item.kind,text:kindLabel(item.kind)}), badge(item.public ? 'Public' : 'Private', item.public ? 'public' : ''), archived(item) && badge(item.archivedAt ? 'Archived' : 'Parent archived', 'archived'), item.role && badge(`${item.kind === 'room' ? 'Room' : 'World'} role: ${item.role}`)));
     if (detailMode === 'edit' && drafts.has(keyOf(item.kind, item.id))) { renderMetadataForm(item, drafts.get(keyOf(item.kind, item.id))); return; }
     if (item.thumbnail && (/^https:\/\//.test(item.thumbnail) || /^\/assets\//.test(item.thumbnail))) detail.append(el('img', { class: 'places-thumbnail', src: item.thumbnail, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }));
     if (item.description) detail.append(muted(item.description));
@@ -256,7 +256,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     const list = item.kind === 'universe' ? item.worlds || [] : item.rooms || [], childKind = item.kind === 'universe' ? 'world' : 'room';
     const section = el('section', { class: 'places-section' }, el('h3', { text: childKind === 'world' ? 'Worlds you can see' : 'Rooms you can see' }));
     for (const child of list) {
-      const card = el('article', { class: 'places-card' }, el('h4', { class: 'places-card-title', text: child.name }), child.description && muted(child.description), el('div', { class: 'places-tags' }, badge(child.public ? 'Public' : 'Private'), child.archivedAt && badge('Archived', 'archived')));
+      const card = el('article', { class: 'places-card', 'data-kind': child.kind|| (item.kind==='universe'?'world':'room') }, el('h4', { class: 'places-card-title', text: child.name }), child.description && muted(child.description), el('div', { class: 'places-tags' }, badge(child.public ? 'Public' : 'Private'), child.archivedAt && badge('Archived', 'archived')));
       const controls = actions(btn('View details', () => select(childKind, child.id), { 'aria-label': `View ${childKind} details ${child.name}` }));
       if (childKind === 'room' && !archived(item) && !child.archivedAt) { const enter = btn(`Enter ${child.name}`, () => perform(`enter:${child.id}`, enter, async () => { await onNavigate(child.id); close(); }), { class: 'places-btn places-btn-primary', 'aria-label': `Enter ${child.name}` }); controls.append(enter); }
       card.append(controls); section.append(card);
@@ -333,7 +333,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     const section = el('section', { class: 'places-section' }, el('h3', { text: `Members of ${item.name}` }), muted('Changes here affect only this world. Room moderation remains a separate control.'));
     if (!data) section.append(empty('Loading members and invitations…'));
     if (data?.legacyGrants?.length) {
-      const review = el('section', { class: 'places-card' }, el('h4', { class: 'places-card-title', text: 'Previous room grants need review' }), notice('These older room-only grants are inactive under the private parent. No one has been automatically added to this world. World membership would allow access to all private rooms in this world. Previous room-specific roles are retained.', 'warning'));
+      const review = el('section', { class: 'places-card', 'data-kind': child.kind|| (item.kind==='universe'?'world':'room') }, el('h4', { class: 'places-card-title', text: 'Previous room grants need review' }), notice('These older room-only grants are inactive under the private parent. No one has been automatically added to this world. World membership would allow access to all private rooms in this world. Previous room-specific roles are retained.', 'warning'));
       for (const grant of data.legacyGrants) {
         const row = el('div', { class: 'places-member' }, el('div', { class: 'places-grow' }, el('p', { class: 'places-member-name', text: grant.name || grant.username || 'Local profile' }), muted(`${grant.roomName} · Previous room role: ${grant.role}${grant.username ? ` · @${grant.username}` : ''}`)));
         if (grant.username) row.append(btn('Review access', () => { selectedAccount = { id: grant.userId, name: grant.name, username: grant.username }; inviteDraft = { role: 'member', tags: '' }; renderDetail(); detail.querySelector('[aria-label="Invite ' + grant.username + '"]')?.scrollIntoView({ block: 'nearest' }); }, { 'aria-label': `Review previous access for ${grant.name} in ${grant.roomName}` }));

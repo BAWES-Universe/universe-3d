@@ -1,36 +1,47 @@
-# Current quality checkpoint · 2026-10-02
+# Standalone implementation status · 2026-10-02
 
-This branch addresses firsthand play feedback on movement, building, camera, expression and character quality. Full source parity remains a larger unfinished goal; passing tests are not a substitute for a satisfying experience or a whole-contract certification.
+This active tranche adds functional authoring, personal spaces, locally configured residents, deployment configuration and a source-audited chrome port to the earlier play-quality checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
-## Integrated changes
+## Integrated now
 
-- Camera-relative accelerated movement, normalized diagonals and source-equivalent manual Shift2.5×; fixed-step collision avoids frame-rate-dependent slowdown
-- Freely orbitable/tiltable/zoomable/pannable follow camera with keyboard, pointer and separated multitouch gestures
-- Direct snapped placement ghost, valid/blocked footprint, pointer select/drag, visible rotate, erase/duplicate, undo/redo and keyboard manipulation
-- Original procedural textured environment, shadows, coherent stone/wood/fabric/foliage and HUD-aware world labels
-- Actual native3D body/clothing/accessory creator, articulated idle/walk/fast-walk, world-facing orientation, durable validated appearance and native portrait updates
-- Source Enter/Ctrl+Enter Say/Think behavior, ephemeral world bubbles/reactions, direct section shortcuts and searchable Cmd/CtrlK actions/people/places
-- Exact unmodified full BAWES Universe logo, preserved2:1 aspect and separate tagline
+- Original native3D character creator, durable appearance, correct world-facing animation and live portraits
+- Camera-relative movement, normalized diagonals, manual Shift2.5×, orbit/tilt/zoom/pan/follow, pointer and separated multitouch gestures
+- Direct snapped valid/blocked building ghost, select/drag/rotate/erase/duplicate, keyboard manipulation, undo/redo, conflict and draft recovery
+- Ordered item and area actions: messages, links/downloads, external panels, volume/loop audio, explicit room travel; canonical committed actions reauthorized at execution
+- Native audio pause/resume/mute/user volume/retry, and resource cleanup on deletion, area exit and room changes
+- Sandboxed HTTPS panels with explicit Return to world and persistent new-tab fallback; iframe load alone is never provider-success evidence
+- Atomic personal-space claims/transfers, static assignment/revoke, world-local tag eligibility, current-room desk route and server-enforced full old/new object footprints without granting room-wide editor rights
+- Real resident configuration, native3D preview/handles, ordered patrols, occupancy-owned lifecycle, collision-aware navigation and permission-checked local pause/resume/return controls; residents remain separate from human social/media/quest graphs
+- Local authenticated hierarchy, scoped membership/invitations, durable room chat/DMs, ephemeral Express, documents and authored quest slices retained
+- Source game598/Orbit236 ink tokens, rounded source SVGs, semantic place colors and role-specific fonts; exact full logo and independent keyboard focus ring preserved
+- Public-mode exact Host/Origin/TLS-cookie configuration, login-only admission, offline owner/reviewer provisioning and isolated Node24 container files
 
-## Current verification
+New resident drafts never create entities on dismissal; explicit Create commits them. Drafts stay in the current tab/actor/room until created, discarded, reloaded or signed out. Existing-record edits retain save-on-close behavior.
 
-On the frozen application source, syntax, build, package startup and127 unit/API/persistence tests pass. The serial core browser run passes its five full-shell suites (fallback, camera, direct building, native appearance and Express), followed by the final320px creator/onboarding regression. An independent source-hashed review passes ten focused actual-input scenarios. The45.52-second walkthrough records actual keyboard/pointer controls with no injected scene changes and no page exceptions. The final layout-only creator trim is separately covered by the320px touch Save test. These suites overlap; their counts are not feature totals or full-parity percentages.
+Resident social/private-instruction settings are stored but inactive without a real provider. No AI conversation, external MCP call or external tool result is fabricated.
 
-Browser coverage uses Chromium with software WebGL. No physical iPhone/Android GPU, real multi-network media or high-concurrency production capacity has been certified. Narrow fixture tests, native browser tests and actual authenticated full-shell tests are different evidence and are labeled accordingly.
+## Current verification boundary
 
-Core checks are reproducible with `npm run test:browser`; separate module/media lifecycle probes use `npm run test:browser:modules`. CI configuration runs the same local checks but its remote status is unknown until the exact commit executes. No current claim is made that old historical scripts automatically pass the redesigned UI.
+The current source passes205 unit/API tests, syntax checks, build and package startup. Focused module checks cover action authoring, personal authority/UI, resident authority/UI, source token/icon roles and lifecycle behavior. Separate actual full-world runs pass resident creation/save/reload, nine action scenarios, nine personal-space scenarios and five native resident-handle scenarios, with no page exceptions. The latter verifies actual home/waypoint drags, release-only commits, Escape cancellation and saved ordered-route reload on browser bundle SHA-256 `973a5845d612e611cdb127ab4ac6cd14738acd55612cd476bae86ba7d1214e26`. These counts overlap and are not feature-completion totals. Final bundle `bdcd43aa59fbc3ec84020e1019fdd6ebacd126c33a916a41067f993c8e5be9e0` now passes all four actual-authoring suites (29 focused checks). Core fallback/camera/build/avatar/layout pass; Express passes all five checks after replacing its fixed 100ms test delay with observed camera/bubble state. Raw failed timing attempts are retained. New-draft editor lifecycle additionally passes 21 DOM/protocol checks. Remote CI remains pending for this revision.
 
-## Prior checkpoint
+Native audio503 failure recovery was initially broken in the full-world test. The corrected Retry reloads the failed native source, reauthorizes the action and now passes the same actual-browser scenario. Scoped object-footprint checks were corrected to match rendered geometry rather than trusting an inert scale field.
 
-The immutable v0.3 checkpoint and `V03-STATUS.md` retain the earlier hierarchy/backend evidence. Its original visual-quality claims do not certify this redesigned client. The real service behavior, room/world ownership and restrictive migration policies remain part of the implementation and need regression coverage alongside UI changes.
+Reproduce core quality checks with `npm run test:browser`, current actual authoring flows with `npm run test:browser:authoring`, and isolated fixture/media checks with `npm run test:browser:modules`. `npm run verify:container-files` tests Dockerfile source-file boundaries and dependency-free runtime startup; it does not run Docker.
 
-## Open acceptance gates
+Browser tests use Chromium software WebGL and touch emulation. Physical iPhone/Android GPUs, cross-network real media, production load and a live reverse proxy remain unverified. The latest published quality-only commit60fcfc6705b0cc7760dc9f130f904a3ba76c81a3 has green remote CI; that result does not automatically cover this newer tranche until publication and its own CI finish.
 
-- Complete source parity remains unfinished: Matrix, SSO, external providers, bots/AI/MCP, owned-avatar entitlement catalogs, full quest programs and parts of source admin/workflows
-- Successful real AV packets, SFU/TURN/broadcast adapters and physical-device/network tests
-- Hosting threat review, TLS/origin/cookie configuration, operational quotas/backups/restore and operator-approved isolated deployment
-- Expandable persistent chunks, composite asset workshop/textures, terrain authoring and optional creator-made social game logic remain planned directions, not delivered controls
-- Character appearance is server-validated; player physics remains client-reported with bounds checking, not hardened server anti-cheat
-- The current free original wardrobe does not migrate upstream paid/custom asset ownership
+## Prior immutable quality checkpoint
 
-The next implementation decision should follow the user's play review of this quality checkpoint and the remaining source-backed parity priorities. No new breadth tranche is being represented as complete because a panel exists.
+The earlier quality checkpoint and v0.3 hierarchy evidence remain unchanged. Their walkthrough/independent review certify only their recorded source snapshots. This tranche preserves the later second-client readiness and stable command-palette DOM fixes from the published green quality branch.
+
+## Remaining acceptance gates
+
+- External AI provider, tool/MCP/OAuth permissions, memory and source bot conversational/lifecycle contracts beyond the local resident slice
+- Successful real AV packets, existing LiveKit/TURN/broadcast adapter, physical devices and network handover
+- Operator-run Docker/TLS/proxy, resource and disk quotas, consistent backup/restore and isolated deployment
+- Matrix/E2EE/federation, SSO, external integrations, upstream owned-avatar catalogs and full quest programs
+- Expandable persistent room chunks, reusable composite asset workshop/textures, terrain tools and creator-made social game logic
+- Positions remain bounded client reports, not authoritative physics or hardened anti-cheat
+- Local original wardrobe and room-scoped file access do not imply upstream entitlement or all area-tag file semantics
+
+See `ACTION-AUTHORING.md`, `server/PERSONAL-AREAS.md`, `server/BOTS.md`, `BRAND-PORT.md` and `DEV-PREVIEW-OPERATOR.md` for implemented contracts and limitations. No deployment has occurred.

@@ -1,3 +1,4 @@
+import {screenDirection} from './motion.js';
 import {CATALOG,collisionBox,contains,canStand} from './worlds.js';
 
 export function snapPoint(point,step=1){
@@ -36,3 +37,5 @@ export function validatePlacement(scene,item,{excludeId=item.id,position=null}={
  }
  return {valid:true,reason:'Ready to place'};
 }
+
+export function screenGridStep(key,angle,step=1){const dir=screenDirection({x:key==='arrowright'?1:key==='arrowleft'?-1:0,z:key==='arrowdown'?1:key==='arrowup'?-1:0},angle);return{x:Math.round(dir.x)*step,z:Math.round(dir.z)*step};}

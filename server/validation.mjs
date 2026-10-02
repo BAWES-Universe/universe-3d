@@ -1,4 +1,5 @@
 import {validateAppearance} from '../src/avatar-spec.js';
+import {safeActionUrl,validateActions} from '../src/action-schema.js';
 export class HttpError extends Error {
   constructor(status, code, message = code, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
 }
@@ -47,6 +48,8 @@ export function safeJson(value, { maxBytes = 512000, maxDepth = 14 } = {}) {
   if (Buffer.byteLength(encoded) > maxBytes) fail(413, 'TOO_LARGE', 'Data is too large');
   return encoded;
 }
+function actions(value,scope='area'){try{validateActions(value,{scope});}catch(error){fail(400,'INVALID_SCENE',error.message);}}
+function interactionUrl(value){if(value!==undefined&&value!==''&&!safeActionUrl(value))fail(400,'INVALID_URL','Use a safe HTTP(S), local asset, or protected room document URL without credentials');}
 export function scene(value) {
   record(value, 'scene');
   if (!Array.isArray(value.objects) || value.objects.length > 2000) fail(400, 'INVALID_SCENE', 'scene.objects must contain at most 2000 objects');
@@ -61,6 +64,8 @@ export function scene(value) {
     finite(object.x, 'object.x', -value.bounds.width/2, value.bounds.width/2); finite(object.z, 'object.z', -value.bounds.depth/2, value.bounds.depth/2);
     if(object.name !== undefined) text(object.name, 'object name', 120);
     if(object.color !== undefined && (typeof object.color !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(object.color))) fail(400, 'INVALID_SCENE', 'Use a hex object color');
+    interactionUrl(object.url);if(object.actions!==undefined)actions(object.actions,'item');
+    if(object.text!==undefined)text(object.text,'object description',2000,{empty:true});
     if(object.target !== undefined && object.target !== '') id(object.target, 'portal target');
     if (seen.has(object.id)) fail(400, 'INVALID_SCENE', 'Object IDs must be unique'); seen.add(object.id);
     for (const key of ['x','y','z','rotation','rotationY']) if (object[key] !== undefined) finite(object[key], key);
@@ -74,18 +79,8 @@ export function scene(value) {
     finite(area.x, 'area.x', -value.bounds.width/2, value.bounds.width/2); finite(area.z, 'area.z', -value.bounds.depth/2, value.bounds.depth/2);
     finite(area.width, 'area.width', 0.5, value.bounds.width); finite(area.depth, 'area.depth', 0.5, value.bounds.depth);
     if(area.target !== undefined && area.target !== '') id(area.target, 'area target');
-    if(area.actions !== undefined) {
-      if(!Array.isArray(area.actions) || area.actions.length>20) fail(400,'INVALID_SCENE','Area actions must contain at most 20 actions');
-      const ids=new Set();
-      for(const action of area.actions) {
-        record(action,'area action');id(action.id,'action id');if(ids.has(action.id))fail(400,'INVALID_SCENE','Area action IDs must be unique');ids.add(action.id);
-        oneOf(action.type,['message','link','audio','teleport'],'action type');
-        if(action.message!==undefined)text(action.message,'action message',2000,{empty:true});if(action.label!==undefined)text(action.label,'action label',120,{empty:true});
-        if(action.target!==undefined&&action.target!=='')id(action.target,'action target');
-        if(action.url!==undefined)text(action.url,'action URL',2048,{empty:true});
-        if(action.volume!==undefined)finite(action.volume,'volume',0,1);if(action.loop!==undefined)boolean(action.loop,'loop');
-      }
-    }
+    interactionUrl(area.url);if(area.actions!==undefined)actions(area.actions);
+    if(area.message!==undefined)text(area.message,'area message',2000,{empty:true});
   }
   return safeJson(value);
 }

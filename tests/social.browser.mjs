@@ -141,7 +141,7 @@ try {
     await page.getByRole('button', { name: 'Choose Woka 4', exact: true }).click();
     await page.getByRole('combobox', { name: 'Availability', exact: true }).selectOption('busy');
     await page.getByRole('button', { name: 'Save profile' }).click();
-    await page.getByText('Profile saved. Everyone in the room sees your updated Woka.').waitFor();
+    await page.getByText('Profile saved. Everyone in the room sees your updated character.').waitFor();
     assert.deepEqual(await page.evaluate(() => [window.state.user.name, window.state.user.woka, window.state.user.status, window.profileEvents]), ['New Mira', 3, 'busy', 1]);
   });
   await check('explore create world, create room, and enter persist through APIs', async () => {

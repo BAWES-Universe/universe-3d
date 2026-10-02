@@ -1,0 +1,596 @@
+[
+  {
+    "name": "MessageCircle",
+    "file": "MessageCircle.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 1.5,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/MessageCircleIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/MessageCircleIcon.svelte",
+      "blob": "381f53667d78e2418b71ca53dd523f202a1f15b5"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "Users",
+    "file": "Users.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 1.5,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/UsersIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/UsersIcon.svelte",
+      "blob": "50fd4ddad57f85b6f61b9924126a86f7814828b6"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "Emoji",
+    "file": "Emoji.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 1.5,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/EmojiIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/EmojiIcon.svelte",
+      "blob": "03d1a590a0e6dba03d11566d1b8345cf2cc735b6"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "Settings",
+    "file": "Settings.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 1.5,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/SettingsIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/SettingsIcon.svelte",
+      "blob": "ff9953b6d8e994b3f741845ccd2abb021441d675"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "Orbit",
+    "file": "Orbit.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 2.0,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/OrbitIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/OrbitIcon.svelte",
+      "blob": "c9ee1017bc6501682fe5ad2dd4801aed825a5072"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "MicOn",
+    "file": "MicOn.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 1.5,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/MicOnIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/MicOnIcon.svelte",
+      "blob": "bbf0548bb38af7d65b4869ed36b053156418a9c3"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "CamOn",
+    "file": "CamOn.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 1.5,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/CamOnIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/CamOnIcon.svelte",
+      "blob": "c0f5347c3aeb9995a7de2ede572c2cd5a4e33262"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "Share",
+    "file": "Share.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 2.0,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "game598",
+      "commit": "966d723d1a5d7ab31debd1fe08d68b5878017e80",
+      "path": "play/src/front/Components/Icons/ShareIcon.svelte",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/966d723d1a5d7ab31debd1fe08d68b5878017e80/play/src/front/Components/Icons/ShareIcon.svelte",
+      "blob": "ebbcc51d83656b7f33785e813b2db09483ac2182"
+    },
+    "adaptation": "Original geometry; Svelte bindings/classes removed; inherited currentColor, no source hover-fill animation"
+  },
+  {
+    "name": "Planet",
+    "file": "Planet.svg",
+    "viewBox": "0 0 24 24",
+    "stroke_width": 2,
+    "caps": "round",
+    "joins": "round",
+    "source": {
+      "layer": "admin236",
+      "commit": "d7577b79756afb277478dbd287f5f8d213584f81",
+      "path": "app/admin/components/ds/planet-icon.ts",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe-admin/blob/d7577b79756afb277478dbd287f5f8d213584f81/app/admin/components/ds/planet-icon.ts",
+      "blob": "c15b5ed21e41efd3cdda23fad20c2837c7829d31"
+    },
+    "adaptation": "Original paths; standalone SVG wrapper"
+  },
+  {
+    "name": "Tools",
+    "file": "Tools.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "tools"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Plus",
+    "file": "Plus.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "plus"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Minus",
+    "file": "Minus.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "minus"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "RotateLeft",
+    "file": "RotateLeft.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "rotate"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "RotateRight",
+    "file": "RotateRight.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "rotate-clockwise"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ChevronUp",
+    "file": "ChevronUp.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "chevron-up"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ChevronDown",
+    "file": "ChevronDown.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "chevron-down"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ChevronLeft",
+    "file": "ChevronLeft.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "chevron-left"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ChevronRight",
+    "file": "ChevronRight.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "chevron-right"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Move",
+    "file": "Move.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "arrows-move"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Focus",
+    "file": "Focus.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "focus-centered"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Home",
+    "file": "Home.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "home"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Close",
+    "file": "Close.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "x"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Search",
+    "file": "Search.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "search"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Send",
+    "file": "Send.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "send"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Star",
+    "file": "Star.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "star"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Check",
+    "file": "Check.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "check"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ArrowRight",
+    "file": "ArrowRight.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "arrow-right"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ArrowLeft",
+    "file": "ArrowLeft.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "arrow-left"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Undo",
+    "file": "Undo.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "arrow-back-up"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Redo",
+    "file": "Redo.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "arrow-forward-up"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Pencil",
+    "file": "Pencil.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "pencil"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Trash",
+    "file": "Trash.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "trash"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Copy",
+    "file": "Copy.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "copy"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Save",
+    "file": "Save.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "device-floppy"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Volume",
+    "file": "Volume.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "volume"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "VolumeOff",
+    "file": "VolumeOff.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "volume-3"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "MicOff",
+    "file": "MicOff.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "microphone-off"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "CamOff",
+    "file": "CamOff.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "video-off"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Help",
+    "file": "Help.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "help"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Command",
+    "file": "Command.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "command"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Hand",
+    "file": "Hand.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "hand-stop"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Play",
+    "file": "Play.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "player-play"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Pause",
+    "file": "Pause.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "player-pause"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "ExternalLink",
+    "file": "ExternalLink.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "external-link"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Pointer",
+    "file": "Pointer.svg",
+    "source": {
+      "package": "@iconify-json/tabler",
+      "version": "1.2.23",
+      "upstream": "Tabler 3.35.0",
+      "url": "https://registry.npmjs.org/@iconify-json/tabler/-/tabler-1.2.23.tgz",
+      "icon": "pointer"
+    },
+    "adaptation": "Unchanged Iconify body, decorative standalone wrapper, 2px stroke. Source-family additions, not audited native 1.5px component copies."
+  },
+  {
+    "name": "Earth",
+    "file": "Earth.svg",
+    "source": {
+      "url": "https://github.com/lucide-icons/lucide/blob/0.468.0/icons/earth.svg",
+      "version": "0.468.0"
+    },
+    "adaptation": "Unchanged tagged Lucide geometry, matching Orbit kind icon names; decorative wrapper; not asserted to be Orbit lockfile version."
+  },
+  {
+    "name": "DoorOpen",
+    "file": "DoorOpen.svg",
+    "source": {
+      "url": "https://github.com/lucide-icons/lucide/blob/0.468.0/icons/door-open.svg",
+      "version": "0.468.0"
+    },
+    "adaptation": "Unchanged tagged Lucide geometry, matching Orbit kind icon names; decorative wrapper; not asserted to be Orbit lockfile version."
+  }
+]

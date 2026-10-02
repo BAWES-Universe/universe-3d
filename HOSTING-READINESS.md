@@ -1,23 +1,41 @@
-# Isolated hosting assessment
+# Isolated dev hosting readiness · 2026-10-02
 
-The app currently runs as one Node.js 24 process with a SQLite file and room-scoped live SSE. No deployment has been performed. Do not put the database on ephemeral serverless function storage or launch multiple writers behind a load balancer.
+The application runs as one Node.js 24 process with a SQLite file and live room-scoped SSE. No deployment has been performed. Do not use ephemeral serverless function storage or run multiple SQLite writers behind a load balancer.
 
-## Assessment to request from the existing Universe dev operator
+## Code now supplied
 
-Please assess whether this standalone 3D app can run alongside the existing Universe development stack, without changing that stack. Start read-only and return a proposed plan before provisioning, changing routes, adding credentials, restarting services or altering firewall rules.
+- Explicit bind, exact Host/Origin allowlists and public-mode startup validation
+- Always-Secure/HttpOnly/SameSite=Strict cookies under explicitly configured external TLS, without trusting arbitrary forwarded headers
+- Public preview login-only admission, disabled guest creation/registration and a fail-closed offline owner bootstrap
+- Offline reviewer provisioning that grants no ownership or durable place membership
+- Multi-stage Node24 Dockerfile, non-root runtime, dedicated `/data`, one process and health check
+- Same-origin mutation and current-session authorization remain active
 
-1. Record OS/CPU architecture, available RAM/CPU/disk, existing container/service layout, peak resource use, available domain/TLS routing and backup arrangements. Compare the measured app baseline with spare resources; do not infer user capacity from idle memory.
-2. Propose a separately named Node24 service/container, dedicated persistent data volume, separate hostname and explicit quotas. Preserve the current development server, database, ports, credentials and process ownership.
-3. Inspect whether existing LiveKit/SFU, TURN and broadcast infrastructure can support an isolated namespace/room prefix and separately scoped credentials. Report versions, SDK/protocol compatibility, host/origin restrictions, egress capacity and the exact adapter work needed. Never reuse production room names or broad administrative credentials.
-4. The current app uses direct peer WebRTC and has not verified real audio/video packets. Reusing an SFU is not a URL-only change: token issuing, participant authorization, publish/subscribe roles, meeting/proximity/broadcast lifecycle and cleanup need a tested adapter. No new SFU is requested without assessing existing resources.
-5. Before public access, propose reverse-proxy Host/Origin validation, trusted-TLS secure-cookie configuration, registration/bootstrap owner policy, request/body/storage quotas, backups and restore drills. Do not disable current origin protections to make the preview load.
-6. Plan private review access, health checks and a small staged acceptance test: independent accounts, scene durability/restart, immediate access revocation, SSE reconnect, correct microphone/camera permission behavior and actual cross-network media. Physical phones and resource measurements remain gates.
-7. Provide an isolated rollback: stop/remove only the new service and route, preserve its data snapshot, and verify the existing Universe dev service remains healthy.
+Read `DEV-PREVIEW-OPERATOR.md` for the exact configuration, offline commands, proxy/SSE contract, acceptance gates and isolated rollback. Its examples use `preview.example.com`; the actual hostname and DNS/TLS/routing must be selected and confirmed by the authorized operator. The planned 1 CPU / 768 MiB envelope is a starting isolation limit, not tested capacity.
 
-Return feasibility, a concrete isolation diagram/list, required operator permissions, any likely costs and missing adapter work. This is an assessment request, not permission to mutate existing infrastructure, generate credentials or deploy.
+The file-layout verifier reconstructs the Dockerfile COPY stages, builds with installed lockfile dependencies, then starts the runtime files without `node_modules`. This detects missing build/runtime files. It is not a Docker image run or verification of container permissions, proxy routing or HTTPS.
 
-## Measured and unmeasured
+## Measured local baseline
 
-Run `npm run measure:server` after `npm run build` for `evidence/server-baseline.json`. It measures only idle process RSS/CPU and one local participant posting presence at10Hz, plus distribution byte sizes. It does not include a video SFU, TURN relay, many participants, external network traffic or physical-device rendering. See the report's exact environment and limits.
+`npm run measure:server` on 2026-10-02 at 11:17 UTC recorded Node24.19.0 on shared Linux/Xeon hardware:
 
-A Node24 runtime needs the server, src data/schema modules, built dist and a writable dedicated data directory. The browser renderer executes on the visitor's GPU/CPU; the server does not require a rendering GPU. Headless software-WebGL CI is intentionally a different environment and should not be used to predict client frame rates.
+| Scenario | RSS | CPU |
+|---|---:|---:|
+| Five seconds idle | 42.9 MiB at end | 0 sampled process CPU ms |
+| One participant, 100 presence updates at target10Hz | 55.7 MiB at end | 520 ms over 10 seconds, 5.2% of one core |
+
+Local presence request latency: median6.5 ms, p9514.1 ms. All151 distribution files, including deferred chunks, fonts and licenses:3,338,857 raw bytes, estimated1,206,411 gzip bytes or986,197 Brotli bytes. The default app server sends uncompressed files; edge compression is an operator choice. These totals are not a measured first-page download.
+
+These short measurements exclude an SFU, TURN relay, video, many clients, external traffic and browser rendering. They do not establish production or concurrent-user capacity. `evidence/server-baseline.json` records the exact environment and limits when generated. The visitor's device renders the 3D world; the backend does not need a rendering GPU. Software-WebGL CI cannot predict phone frame rates.
+
+## Unrun operational gates
+
+The operator must build/run a reviewed image, set the dedicated volume ownership, verify actual HTTPS/proxy/cookie/SSE behavior, test backup/restore, check reviewer workload and confirm the existing dev stack remains healthy. Docker is unavailable in the current build workspace, so those steps are unrun. No infrastructure, credentials, routes or running services were changed here.
+
+Use separate service/data/hostname identities and preserve the existing Universe development stack. Never reuse a local first-guest database for the public preview. Keep registration closed and provision the owner/reviewers offline. Apply disk/log/resource limits and retain a consistent SQLite/WAL backup before updates.
+
+## Media integration remains open
+
+This source currently has direct-peer WebRTC signaling and no configured LiveKit/TURN adapter. Assess any existing approved infrastructure before planning reuse. Reuse needs server-scoped token issuing, room and role admission, publish/subscribe updates, removal/cleanup and genuine cross-network packet tests. It is not a URL-only configuration change.
+
+A room prefix or second broadly privileged LiveKit API key does not provide cryptographic tenant isolation. The operator must identify actual project/instance/capability boundaries before credential use. Do not copy existing production room names or broad secrets. Recording egress needs a separate capability assessment. No new paid media service is part of this handoff.
