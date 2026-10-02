@@ -1,0 +1,2669 @@
+{
+  "schema_version": "1.0.0",
+  "inventory_revision": 1,
+  "updated_at": "2026-10-02T19:17:00Z",
+  "scope": "Incremental source-grounded parity audit; not exhaustive and no whole-contract certification",
+  "candidate": {
+    "repository": "BAWES-Universe/universe-3d",
+    "ref": "be6d136961010f986fde7c1ddaf13b66e164621a",
+    "url": "https://github.com/BAWES-Universe/universe-3d/tree/be6d136961010f986fde7c1ddaf13b66e164621a",
+    "ci": {
+      "url": "https://github.com/BAWES-Universe/universe-3d/actions/runs/37050686201",
+      "head_sha": "be6d136961010f986fde7c1ddaf13b66e164621a",
+      "status": "completed",
+      "conclusion": "success",
+      "verified_via": "GitHub read-only run API",
+      "meaning": "Regression evidence for assertions actually present; no feature-count or whole-contract certification"
+    }
+  },
+  "source_pins": [
+    {
+      "id": "game-default",
+      "repository": "BAWES-Universe/workadventure-universe",
+      "branch_context": "universe",
+      "ref": "bae18306bdfa63e58cd4124b1a3b5b290b61c286",
+      "kind": "pinned-default-source",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/tree/bae18306bdfa63e58cd4124b1a3b5b290b61c286"
+    },
+    {
+      "id": "admin-default",
+      "repository": "BAWES-Universe/workadventure-universe-admin",
+      "branch_context": "main",
+      "ref": "c2053a56fa0cd89001cdb1b83c469281a672a9ef",
+      "kind": "pinned-default-source",
+      "url": "https://github.com/BAWES-Universe/workadventure-universe-admin/tree/c2053a56fa0cd89001cdb1b83c469281a672a9ef",
+      "resolved_from": "ASSETS.md exact repository and pin; confirmed by GitHub git tree read"
+    },
+    {
+      "id": "media-independent",
+      "repository": "BAWES-Universe/workadventure-universe",
+      "ref": "0e1ff05014d4b871ffd94eea744e40c1d1c7df79",
+      "kind": "separate-runtime-variant",
+      "review_status": "not-yet-reread-in-this-inventory"
+    }
+  ],
+  "status_definitions": {
+    "partial": "Some local behavior/evidence exists; source acceptance has gaps",
+    "missing": "The cited source behavior is absent or explicitly unconnected in candidate",
+    "blocked": "End-to-end acceptance depends on an unavailable provider, deployed/runtime decision or authorized operator step",
+    "needs-review": "Pinned clauses or candidate proof have not yet been sufficiently inspected"
+  },
+  "certification": {
+    "whole_contracts_certified": 0,
+    "legacy_counts_reused": false,
+    "rules": [
+      "Document counts and tests are not feature counts or completion percentages",
+      "Default source, runtime variants, open proposals and advertising claims must remain separate",
+      "Local DM is not Matrix; camera/SDP is not working AV; fixture provider is not live AI; cap-four graph is not hybrid parity",
+      "Separate unpublished asset metadata/archive and HUD candidates are excluded"
+    ]
+  },
+  "coverage": {
+    "game_docs_captured": 81,
+    "game_docs_reviewed": 21,
+    "game_docs_bytes": 390471,
+    "unreviewed_source_surfaces": [
+      "Other game documentation outside docs/**/*.md",
+      "Game runtime except existing candidate contract references",
+      "Admin docs/runtime/UI after tree identification",
+      "Website and marketing claims",
+      "Game PRs 598/599 historical variants and open 606/608 proposals",
+      "Independent media runtime source",
+      "Accessibility and physical-device behavior"
+    ],
+    "files": [
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/apps-menu.md",
+        "sha": "e7cd176c6ec402ac49b7145d3990badcc16257fe",
+        "sha256": "e13e9d89a4ae425a5ea687886a949363ea1975a991fcb7c3413528206e3a4f7c",
+        "bytes": 3589,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/apps-menu.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/bots/mcp-servers.md",
+        "sha": "2648c330b7b12f1bedd2c8d08c995302a005698d",
+        "sha256": "9942d891adaa3dedde9deaa2c1cccbd9b2f3280e6bd86f54e645a88ddb1ae608",
+        "bytes": 6017,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/bots/mcp-servers.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/events.md",
+        "sha": "7962317ddd2117477db19c62c8e913a30e8d9568",
+        "sha256": "e482ce2667ae1deb25738e27a6fa8b54c2a4c32ae6bc3a404e4b5efba7cde489",
+        "bytes": 4065,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/events.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/index.md",
+        "sha": "2304eacaa118d2e55b1bed9d345792ddd8e8c8cf",
+        "sha256": "63160920c4be7e7872ab3652930c9ad6008d7c8fb251397d40b729b71a385ad4",
+        "bytes": 5606,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/index.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-camera.md",
+        "sha": "d9df28d0740201954553cd1c59f042b29e8b0547",
+        "sha256": "e5bc6e77f1546bed3c5ea1425669e2625052fc98e5200be327f1fecd555c77c2",
+        "bytes": 1481,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-camera.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-chat.md",
+        "sha": "951184ebde3ed2f26844c32c74708e498475fc62",
+        "sha256": "7f65deb89920fdc738c9837d78a4e56b016c02a8e9fea5b1e847b14f36fcc87c",
+        "bytes": 5191,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-chat.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-controls.md",
+        "sha": "c2e7328cc64e240783fc47f08a1c6066ab04c146",
+        "sha256": "ea2481048561a0420c357e0c3b8e31b02903778950eaa73ca6c90527bdc66b32",
+        "bytes": 5249,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-controls.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-deprecated.md",
+        "sha": "e99a092fcfd423d9454f21c78c73b6683508a7a1",
+        "sha256": "af60424809c2b21762eeb1534dd8c28a165bd13e491f3179c1338526bfa543a6",
+        "bytes": 2621,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-deprecated.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-event.md",
+        "sha": "2f74c109478febc314eb086a88855188063c7247",
+        "sha256": "43ec3516479584971d5e166ed183621cbe485b8e0e37f579fc9f2e644092b945",
+        "bytes": 2064,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-event.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-mapeditor.md",
+        "sha": "60e6f31b46d6c2313fd104e99e85b6502b2958a9",
+        "sha256": "ed8ef8fadf8f526665c9fba1828bd311dab27223fa19d33baef3fc8b259631ba",
+        "bytes": 1801,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-mapeditor.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-metadata.md",
+        "sha": "e13390bb72596adf929758a390d235ea3464fc0a",
+        "sha256": "5b6920472f6639a41762a2fdd859713b2c568c9fa6060884b7300b438d3dc9d1",
+        "bytes": 766,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-metadata.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-nav.md",
+        "sha": "455bbd101b36ead6e048ac0230e19b7dbc8585f0",
+        "sha256": "ea1d99a398eeee92083f4ad2e1e9dcdcb5526ebdfbbcef820d58adb57cc161ff",
+        "bytes": 2943,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-nav.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-player.md",
+        "sha": "eb5b4db0ce2d8ac67803b4b31fc4291c2c247395",
+        "sha256": "c7004f6b7c276997e1b1a4fc36e3dd39a10f3e705dfc016863df08fa0cd40bbe",
+        "bytes": 24592,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-player.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-players.md",
+        "sha": "a5c730570eb686fc1f331e16f7cb5344e1d61b5c",
+        "sha256": "f825e49efe884cea9dcca02a08bab2b99dc026bda533916ffd8eec710c1e632d",
+        "bytes": 8164,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-players.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-room.md",
+        "sha": "a84b2cf5e5afded84bb3307ecb682bcf02279b77",
+        "sha256": "95aca2ddabff01626ce2c1e3164de0ac5e8d05d313fa0b1ddc36b8e24b9e3c99",
+        "bytes": 10909,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-room.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-sound.md",
+        "sha": "6f6a515990f638315b8abca9df56c15aab757016",
+        "sha256": "3bd2a6994c093b3a328554e7e35333622321f781b353f1b02b7e18669febd96e",
+        "bytes": 822,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-sound.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-spaces.md",
+        "sha": "daf665e803248e18e9976df7aa1342aa0f8550a4",
+        "sha256": "0b7b86bed563016c908c69ab501b3e4e28b83ca9e62d04ced79f316a358cafdf",
+        "bytes": 6521,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-spaces.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-start.md",
+        "sha": "28d7473c4406ec2fdac007d642c81fc54766a61e",
+        "sha256": "eb1bffefd4232fe3beebad4487527c9cf6981fad1bcdf778508866e16921a293",
+        "bytes": 742,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-start.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-state.md",
+        "sha": "530984940cef4d53848dec734b38c968d10b75c3",
+        "sha256": "0ff398bc4837e4a6b41f11b2eb68f4bf7ca29581bb29b711064d990ce63f3781",
+        "bytes": 5540,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-state.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/references/api-ui.md",
+        "sha": "8713aad6b5b212b48955110baceb8025b84c157f",
+        "sha256": "f9eb960541aef5026c451b2c1a3566ba6d089584e567ba8f36b912fbc5ff42e4",
+        "bytes": 17999,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/references/api-ui.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/scripting-internals.md",
+        "sha": "5740b13f1fd8e4151c28656530060e6f4194d33a",
+        "sha256": "8636cd498c821befca974c4fdfda5cf09ec33b2bfa595e72a2d5272df9a28c11",
+        "bytes": 5258,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/scripting-internals.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/using-typescript.md",
+        "sha": "197cb7ce127dc39da2215837f4e482e8f5cc51dd",
+        "sha256": "fc78757e6ca89042f6f080079e828783d25f004e49f555b9669b462fa2f94b05",
+        "bytes": 5405,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/using-typescript.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/developer/map-scripting/variables.md",
+        "sha": "69a35978bc152003724c22df3c5dd4472b8a3972",
+        "sha256": "f5a3bb9bd856a51a9f9dc1ce103bb424929c2b3317c07ee41f2711148e7f8c73",
+        "bytes": 4551,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/map-scripting/variables.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/index.md",
+        "sha": "b768a7a162104ea681a626d44f594a4b5d438986",
+        "sha256": "010f0b1638ec9e0ab6740e59a15cf49f74ae36f3815180a9eb293a271d5a6bfd",
+        "bytes": 2945,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/index.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/broadcast.md",
+        "sha": "68ee61993613d75e4aac3c67e7292d95bd4f5663",
+        "sha256": "7e260fd8ffc5705cabdc86575eace1e62537be3e7c7e2375b1b18a962682f7ce",
+        "bytes": 2313,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/broadcast.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/entry-exit.md",
+        "sha": "30f33fc2fb8b9d26833ace880cfbc5aebcc053c8",
+        "sha256": "1216395a61c88bc015249ae0ce574a898a0800f7d302ca6eb58be31a99af10cb",
+        "bytes": 1743,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/entry-exit.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/focusable.md",
+        "sha": "ada3b5d8cc5964ec1cbb913f33f8054011238c68",
+        "sha256": "3f9a19f80d44e1979fefd9027a10a563c2d7593b2957be47d4ad7d909538d7d1",
+        "bytes": 781,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/focusable.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/highlight.md",
+        "sha": "d9679a77f5a15112446ff474fca2e53e0bbb4803",
+        "sha256": "78a0bf7f02ec4363bd3ef0735d52c991cb3fb92c94e14205473697c794230cdd",
+        "bytes": 1007,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/highlight.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/index.md",
+        "sha": "d9884e2a493597e6896cd9257805a4cb826bad64",
+        "sha256": "7cffd114b14a8fd0b1bf6810ff3982fdebff01ee4409a6dd48843d443316c915",
+        "bytes": 1319,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/index.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/jitsi.md",
+        "sha": "757eff4b04d66e261195e8a1a5e9c9fada83fa9d",
+        "sha256": "60a1f329b4bb3244607f8754bdff32cb230c307e4f042fbb2f5dbe0da032149d",
+        "bytes": 614,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/jitsi.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/matrix-chat-zone.md",
+        "sha": "7fd3bc4eb9a791b8ebb0ef19355bee636edf8698",
+        "sha256": "e2941047e6085e7ed02b77612cc59dd53a622c4d44e55493d0e606a9ee283ad3",
+        "bytes": 1890,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/matrix-chat-zone.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/meetingRoom.md",
+        "sha": "db8046b38c3249ce5e4d1c4547bf769e91de84d4",
+        "sha256": "18f581b703d214908fa9066d3295740770598084b5fd288464a0502c683fe9d6",
+        "bytes": 1123,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/meetingRoom.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/open-file.md",
+        "sha": "777b21276988f41acc639b6728d716d82a443b69",
+        "sha256": "2dfbddc5fb062c49d7650620b4616aa9397c92a9d0c7039f67c2da2f8d879843",
+        "bytes": 1600,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/open-file.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/open-link.md",
+        "sha": "3c596cc657bfef41fae742cb8829c69314b95eed",
+        "sha256": "c86e27b4221cb64aaae7882b89a0e3cd6d83c9bcd64fac2fbc3708d54cd29220",
+        "bytes": 779,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/open-link.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/personal-area.md",
+        "sha": "3a14dad40009b7b6eb99bff6a778e0734f236037",
+        "sha256": "015e1347a6c15f8e4fa5c420e12b934f9993f63c8b15e99a05a34aa50a9d979a",
+        "bytes": 2057,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/personal-area.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/play-sound.md",
+        "sha": "c0755b7526a1b4d1a6c30a57980ff4b4cf4b43bf",
+        "sha256": "6fcfb71b813abbab520ce9aae60aba5c16caee90f48cf4acc6923625cd3b0c5f",
+        "bytes": 681,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/play-sound.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/restricted-area.md",
+        "sha": "58b86c9b9292c9c2f4deb546ebdc4441a412c78c",
+        "sha256": "eaec8028f777305a1f5eec11182db3dd092b61557c24319750584a2878e8a6c3",
+        "bytes": 1201,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/restricted-area.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/area-editor/silent.md",
+        "sha": "d8fd8c9fa52bbc0d4dbb717865067be8aa5b02c8",
+        "sha256": "50cdf5a7501074b2011bb931fb0303ed144795f78668b711a1019e88a8d49b2e",
+        "bytes": 613,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/silent.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-collection-file-format.md",
+        "sha": "053297b215a20c8e7414028fb245114a0972bccf",
+        "sha256": "8a48946ae79a2237f27281c43c22f955736445f59866657e8e0cd32a40ccccdd",
+        "bytes": 5593,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-collection-file-format.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-editor/index.md",
+        "sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+        "sha256": "a25440b6044d0d00b8483dba7615f6cf043f008b6243cac52b43ad5bf6c5c3c4",
+        "bytes": 5398,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-editor/jitsi.md",
+        "sha": "ce06c0b444507583dc2ba8b0d433fe3e03d84c76",
+        "sha256": "483778cc45156838be0274ad3ce115182ea91527997491bd9d2c86edc8614978",
+        "bytes": 690,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/jitsi.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-editor/open-file.md",
+        "sha": "533d704c5d0da6c4d4343cb90661f76f39db561a",
+        "sha256": "f82faa541c19bdf8262d1015f5bcb93a918ce8309e8fad2a756427e70b446b06",
+        "bytes": 1515,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/open-file.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-editor/open-link.md",
+        "sha": "3c596cc657bfef41fae742cb8829c69314b95eed",
+        "sha256": "c86e27b4221cb64aaae7882b89a0e3cd6d83c9bcd64fac2fbc3708d54cd29220",
+        "bytes": 779,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/open-link.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-editor/play-sound.md",
+        "sha": "6167893c0e7f3ba6be26f9b56ac86795e24a6d27",
+        "sha256": "72debd087f227c3669ef9aaf802302887b3737d44deb19f8b8bc51700fa72a65",
+        "bytes": 711,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/play-sound.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/entity-editor/upload-file.md",
+        "sha": "61fab21b282f4fd416e67e6b08ddadec347af957",
+        "sha256": "b8c9f6895efdc1fe7f0dcd5214e5409c1690a796ff6db32439d8a02cdfc6e017",
+        "bytes": 1022,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/upload-file.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/index.md",
+        "sha": "fe542b0997933fe99eb07df3836820dc89c3ef56",
+        "sha256": "3421c7eef462b4f94ee1ada5d4280d5957ac039dc557a7a23183735538953759",
+        "bytes": 2182,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/index.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/inline-editor/megaphone.md",
+        "sha": "c2ed816f675ea14cb604de8bf5a829e6ab773ca4",
+        "sha256": "3f5321a6921309a20d0cf935827b383a9217a265a78009d07a8b02202ba2ea3e",
+        "bytes": 2570,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/megaphone.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/invite.md",
+        "sha": "7e9af68302ff8c27be77f052d42467f8d17af318",
+        "sha256": "2700312e06866b4cc9ca01f9ee6d9344efb0a4c04202b65bdbb0d7dc156510d5",
+        "bytes": 672,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/invite.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/animations.md",
+        "sha": "0f7dba3d63d8fe92d83aedad9d943924b4a16252",
+        "sha256": "5927d28e1fc4f1367a9eb27985cdbdb34cfe249e36aeb17bdb61df146ca4bf07",
+        "bytes": 1097,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/animations.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/camera.md",
+        "sha": "9065ade42a7eaffc8c866ec2287df5ead3bb0305",
+        "sha256": "8832512fcc4984d44ce5e9c7c0970bbea586f380ade3419da4184232f269e5c3",
+        "bytes": 2270,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/camera.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/entry-exit.md",
+        "sha": "45c2c9c7ac5425f51e2aa218bee4b6fa3ce688db",
+        "sha256": "42fd6dbbd999aab8786bd20d37a14b771a3a7c3d10aee31ad0a3ef588dd2ee44",
+        "bytes": 5763,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/entry-exit.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/index.md",
+        "sha": "88d27ee0b6f9d9adeaff1640ad2a5fb837481fb8",
+        "sha256": "d252c323d0be45c796d115da722300672f19754b6f37e7fe2e421be4109fb178",
+        "bytes": 5247,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/index.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/meeting-rooms.md",
+        "sha": "e257892c1dfbc3ff078318955ad40111a2ff22fc",
+        "sha256": "9c7a93715425b2014607e3f2522076b5b06fee6efcc79833c8f1fa40e0fa4bfb",
+        "bytes": 11174,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/meeting-rooms.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/opening-a-website.md",
+        "sha": "b9c16f0a2c151d636bd231f5e5a951ef0a8bed34",
+        "sha256": "0e32add4ac2e7470eb1fa36e4cd9a68702b6da9103e6b0a71033d694eb3a7367",
+        "bytes": 5606,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/opening-a-website.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/publish/github-pages.md",
+        "sha": "2c4818c3c01c154012abc183e12166dd0f5e7bed",
+        "sha256": "c57afa9a130fb8b56c98029ff552d0c48ca09498849298461bb47a6a14f84dd0",
+        "bytes": 4058,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/publish/github-pages.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/publish/hosting.md",
+        "sha": "d7b874af4a37e646e7af7727ff8df61c365a95a3",
+        "sha256": "d73fbe68d8aa326c545f6fdc567040af6ca7d464841f349e484f363526066e98",
+        "bytes": 2796,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/publish/hosting.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/publish/index.md",
+        "sha": "54e152c60baa52b957987332658eeb655b901f34",
+        "sha256": "4a0774300347c4f99677ba629296ac4d9f2ec8f3c82eedfcac2306dff0b0addf",
+        "bytes": 1424,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/publish/index.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/publish/wa-hosted.md",
+        "sha": "144f43641141dc1af9f6ecd1de301776e8e4f866",
+        "sha256": "d80d46512a259c6dbf798e758fdd6b2fd2dadf84070398cf0c18e8f4ae305bba",
+        "bytes": 15822,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/publish/wa-hosted.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/special-zones.md",
+        "sha": "77e5a89b224dbba55415cb215708945969c0ca30",
+        "sha256": "47d24ee130ad2a4f598af2f9a8605021b05469f60adb065a39e11d622c464995",
+        "bytes": 2849,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/special-zones.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/text.md",
+        "sha": "cfdb8b30f978d5a86d5dfd381ec5881e79bb99b9",
+        "sha256": "0240adb091e1166f27d9ba18bded1fc975b602aaf943e2e6700820dd75593375",
+        "bytes": 1385,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/text.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/troubleshooting.md",
+        "sha": "6e3d1422f231645bc707722921d8aca96b4c3e20",
+        "sha256": "0ffb6a95cb88482c56cacb4e3ad39e7235f52ed6b126b0d212674ebc6998aae6",
+        "bytes": 5099,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/troubleshooting.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/wa-maps.md",
+        "sha": "7cfbde9f84c7f89473e730cda53b9f37aa49c042",
+        "sha256": "811b6a977b7fe25d2b3c65247ee29e22374f04df19e3dd55de8693d84a636f91",
+        "bytes": 5417,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/wa-maps.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/map-building/tiled-editor/website-in-map.md",
+        "sha": "1f1377e3ba1ded383944d6e997ea3361a26c7df0",
+        "sha256": "ba8b761ca0cc39e4245335537e85485bf758d793aeaa4100107d86b550502f31",
+        "bytes": 1955,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/tiled-editor/website-in-map.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/contributing/communication-between-services.md",
+        "sha": "8254688d509f432fc772fe478977f43d46809784",
+        "sha256": "5a26e4eb7ad43562dad971f7bbad52cc85456eeb7de72e1f92c023d2970946df",
+        "bytes": 1238,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/contributing/communication-between-services.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/contributing/contributing-to-scripting-api.md",
+        "sha": "52ff6eaca1bf5acd528331bea54990bddfad97fe",
+        "sha256": "971a73a2938f3cedea8570cf8867b3191e996b6913a43586cdaa950e7ede8aa5",
+        "bytes": 11720,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/contributing/contributing-to-scripting-api.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/contributing/diagrams.md",
+        "sha": "bf25bab6ead7cefb0438e21ba60b769cd2e18b7c",
+        "sha256": "16e86c469ff64d570eaff4f70390bfc42c7a6afea29e1e08d700a84fcba889e8",
+        "bytes": 959,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/contributing/diagrams.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/contributing/how-to-translate.md",
+        "sha": "0ddd7ada773c9bddd61f20b4eaedc671a8a7cd01",
+        "sha256": "c2d0b72ca691094c159431e59483942b383f07f6e5a48f52e1e589fe04ea5164",
+        "bytes": 2494,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/contributing/how-to-translate.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/contributing/matrix-dev.md",
+        "sha": "b218d8e78f1893a5cba60ecbc08f1de52e5b5ca9",
+        "sha256": "2ed72ea16b27489abc98c9820236a2071d98c0128ed8c9867e5336f340b9b7e4",
+        "bytes": 12840,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/contributing/matrix-dev.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/adminAPI.md",
+        "sha": "626025b04186786bb8e031d658a619b3933976b4",
+        "sha256": "32db8fcf718881aef3e6899c2e3ce08a6618e026cadb271dddd6175ba40196c6",
+        "bytes": 3630,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/adminAPI.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/env-variables.md",
+        "sha": "6e731fdd5fd84eb5c9248356c376cde069036b74",
+        "sha256": "5764a28faff5f8b067a7f4a9375337b443c671d0522bc55c9444c003480977ee",
+        "bytes": 20963,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/env-variables.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/install.md",
+        "sha": "bbb26ae2817ae9c0d2fdd8d4c1c876f042fbaf85",
+        "sha256": "35ed215d551d8fb067c91b9eaac2887daaee77ca16ab1279eefa0211b30bafa4",
+        "bytes": 8179,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/install.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/matrix.md",
+        "sha": "a71c94f1b0319c827b92cd575fdb197aee2edc35",
+        "sha256": "3732bd0fa2ec2efd30ab265a75a9b835a8a8134e855a7962abe2d72d7b4572fb",
+        "bytes": 5840,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/matrix.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/openid.md",
+        "sha": "734db943eb6dc462f624c8b4440446c2ce591386",
+        "sha256": "6e2b8fed3cecc1dcbb0bb22586c73dc539b95dc5cf6a22e2a8996f23557502e5",
+        "bytes": 3109,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/openid.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/self-hosted-access.md",
+        "sha": "74acf37508ce3a45f0c7b267c27c24bfc5a59b14",
+        "sha256": "177f2973e73ff348b3d9e1bcf7bfc185c97fbc9dc651fc0fb8e1e94dd52f8cf6",
+        "bytes": 1138,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/self-hosted-access.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/self-hosting/wokas.md",
+        "sha": "d6a7853f25f48d7921642b8b429399212803b220",
+        "sha256": "8afee43956c722e6ed6409ac6f3c525dfc851d08c2093c24ce804f0ef9985a60",
+        "bytes": 1215,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/self-hosting/wokas.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/others/troubleshooting.md",
+        "sha": "0361c3b8c12e4fe5558ad1aab76c74f6bb670099",
+        "sha256": "2a1d069215c3f115eb0d1dfb7f3377017e514b896d4a59f5acd3beb657b85445",
+        "bytes": 2850,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/others/troubleshooting.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/requirements/admin-api-implementation-guide.md",
+        "sha": "0cafc5a2f20fbfa1f664ab98de6bfb12c1252d92",
+        "sha256": "f1f5629a8562e7fed2274c5ab09e62e8778fd39eb28594b695acf91a4e5256b3",
+        "bytes": 18765,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/requirements/admin-api-implementation-guide.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/requirements/admin-api-map-quick-reference.md",
+        "sha": "06119faf140e593a72876e8dff51eafc3b90daf1",
+        "sha256": "a63f501cfe95cde916c76206870a2117c3f5a916017e4388b260a66642d00bd6",
+        "bytes": 5954,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/requirements/admin-api-map-quick-reference.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/requirements/admin-api-map-requirements.md",
+        "sha": "85fc39e9f1eac136d9da0eff5a7e129241c515b0",
+        "sha256": "650a21b36b016bee5bd5ec1fd271c5ab15d39d961006a21346681321e0c1429c",
+        "bytes": 34059,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/requirements/admin-api-map-requirements.md",
+        "review_status": "captured-not-reviewed"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/user/chat.md",
+        "sha": "27838b638a46ac362d989650ed87ac2f91a544ae",
+        "sha256": "c81cd85cf94b7443b27acee415dcf70db1f0f5de7c6278ddc9ad11da627bd2ac",
+        "bytes": 6068,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/user/chat.md",
+        "review_status": "reviewed-for-cited-clauses"
+      },
+      {
+        "source_pin": "game-default",
+        "path": "docs/user/phone-chat.md",
+        "sha": "feb1bdbb0deca5e23b5e8c4987ca00aa9a37f7a5",
+        "sha256": "65dcccdad37eb640efd330dfa1ed65dcb1c6ebf08ecdbea477b771056a7307fa",
+        "bytes": 3794,
+        "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/user/phone-chat.md",
+        "review_status": "captured-not-reviewed"
+      }
+    ]
+  },
+  "unresolved_contradictions": [
+    {
+      "id": "C-ASSET-DELETE",
+      "summary": "Source removal deletes placed instances; proposed archive preserves pinned placements. Separate features, not parity."
+    },
+    {
+      "id": "C-PERSONAL-REVOKE",
+      "summary": "Local remove-owned is narrower than source geometric remove-entities behavior."
+    },
+    {
+      "id": "C-MEDIA-GRAPH",
+      "summary": "Current cap-four opt-in graph differs from intended hybrid/all-member model; independent runtime needs exact variant reconciliation."
+    },
+    {
+      "id": "C-MCP-VERSION",
+      "summary": "Pinned docs link a newer transport spec but initialize with older protocolVersion; runtime must resolve."
+    },
+    {
+      "id": "C-SAAS",
+      "summary": "Personal away-card documentation excludes self-hosted edition; decide intended product edition before declaring a requirement absent."
+    },
+    {
+      "id": "C-STATUS-CI",
+      "summary": "Development status says exact-head CI pending, but run 37050686201 now confirms success for candidate. This does not update deployment or test scope."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "U3D-PAR-EDITOR-ACCESS",
+      "domain": "editor",
+      "title": "Scoped inline-editor access",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/index.md",
+          "git_blob_sha": "fe542b0997933fe99eb07df3836820dc89c3ef56",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Expose inline editing only to source-authorized admin/editor tags or separately authorized area editors",
+        "Place entities, remove placed entities, author areas and configure room-level features"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/editor.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor.js"
+          },
+          {
+            "path": "src/permissions.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/permissions.js"
+          },
+          {
+            "path": "server/hierarchy.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/hierarchy.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/hierarchy.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/hierarchy.test.mjs",
+            "scope": "WORLD-04/05 scoped admins/editors and cross-world isolation"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Standalone roles are not proof of external admin tag integration"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-OBJECT-PLACE",
+      "domain": "objects",
+      "title": "Place, orient, color, snap and remove entities",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/index.md",
+          "git_blob_sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Drag objects into the world; offer supported orientations and color variants",
+        "Support source free placement and Shift grid snapping; colliding objects remain grid-aligned",
+        "Select and delete entities; distinguish inline entities from immutable base-map objects"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/editor.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor.js"
+          },
+          {
+            "path": "src/editor-geometry.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor-geometry.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/editor-geometry.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/editor-geometry.test.mjs",
+            "scope": "Placement geometry and bounds"
+          },
+          {
+            "path": "tests/editor-direct.browser.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/editor-direct.browser.mjs",
+            "scope": "Native direct placement interactions"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "3D snapping differs from source pixel-perfect placement; imported Tiled layers absent"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-OBJECT-ACTIONS",
+      "domain": "actions",
+      "title": "Named objects expose ordered action choices",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/index.md",
+          "git_blob_sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Store object name and show it in the interaction menu",
+        "Attach multiple applicable actions and execute the chosen action"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [
+        {
+          "id": "EDIT-04",
+          "basis": {
+            "path": "ACTION-AUTHORING.md",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/ACTION-AUTHORING.md"
+          },
+          "meaning": "Documented historical label; not a recovered full legacy contract"
+        }
+      ],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/action-schema.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/action-schema.js"
+          },
+          {
+            "path": "src/actions.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/actions.js"
+          },
+          {
+            "path": "server/action-authority.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/action-authority.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/action-authority.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/action-authority.test.mjs",
+            "scope": "Committed action identity and current authority"
+          },
+          {
+            "path": "tests/action-schema.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/action-schema.test.mjs",
+            "scope": "Action validation"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Provider-backed actions need provider-specific acceptance"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ASSET-UPLOAD",
+      "domain": "assets",
+      "title": "Upload custom images and discover reusable definitions",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/index.md",
+          "git_blob_sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Configure name, tags, depth and floating/collision mode before upload",
+        "Find uploaded definitions by search or Custom category",
+        "Keep floating choice immutable after upload and prohibit floating collision grid"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/image-library-panel.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/image-library-panel.js"
+          },
+          {
+            "path": "src/image-library.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/image-library.js"
+          },
+          {
+            "path": "server/image-assets.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/image-assets.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/image-assets-service.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/image-assets-service.test.mjs",
+            "scope": "PNG validation; immutable records; name/tag discovery; protected bytes"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Original 3D floor/upright model is not identical to source sprite depth"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ASSET-DEPTH",
+      "domain": "assets",
+      "title": "Standing, floor and custom occlusion depth",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/index.md",
+          "git_blob_sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Provide standing and on-floor depth presets",
+        "Allow a custom occlusion boundary for the uploaded object"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/babylon-image-object-view.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/babylon-image-object-view.js"
+          },
+          {
+            "path": "src/image-asset-schema.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/image-asset-schema.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/image-asset-schema.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/image-asset-schema.test.mjs",
+            "scope": "Supported native image schema"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Native 3D floor/upright rendering does not establish source custom sprite depth selector parity"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ASSET-EDIT",
+      "domain": "assets",
+      "title": "Edit custom definition metadata",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/index.md",
+          "git_blob_sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Edit custom asset name, tags and depth",
+        "Keep included defaults non-editable",
+        "Explicit save persists changes"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/image-assets.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/image-assets.mjs"
+          },
+          {
+            "path": "src/image-library-panel.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/image-library-panel.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Baseline has immutable uploaded definitions; separate metadata/tag editing candidate is unverified and excluded"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ASSET-REMOVE",
+      "domain": "assets",
+      "title": "Remove custom definition and placed instances",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/index.md",
+          "git_blob_sha": "5061ec49791643269aab99be1c1fc5a295758a1a",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Removing a custom definition also removes its already placed map instances"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/image-assets.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/image-assets.mjs"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Reversible archive retaining pinned placements is a separate policy; it cannot satisfy source remove-placed behavior",
+          "No deletion certification follows from a service tombstone test"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-AREA-GEOMETRY",
+      "domain": "editor",
+      "title": "Create, resize, move and delete action areas",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/index.md",
+          "git_blob_sha": "d9884e2a493597e6896cd9257805a4cb826bad64",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Create an area directly in the map",
+        "Resize by handles and move by drag",
+        "Delete by icon or Delete key"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/editor.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor.js"
+          },
+          {
+            "path": "src/editor-geometry.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor-geometry.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/editor-direct.browser.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/editor-direct.browser.mjs",
+            "scope": "Existing direct editing scenarios"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "All source area-specific affordances still need a clause-by-clause interaction review"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-AREA-MULTIACTION",
+      "domain": "actions",
+      "title": "Multiple actions reconcile on entry and exit",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/index.md",
+          "git_blob_sha": "d9884e2a493597e6896cd9257805a4cb826bad64",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/index.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Allow multiple link and sound actions on one area",
+        "Run actions on entry and release active effects on exit or authorized edit"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [
+        {
+          "id": "EDIT-13",
+          "basis": {
+            "path": "ACTION-AUTHORING.md",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/ACTION-AUTHORING.md"
+          },
+          "meaning": "Documented historical label; not a recovered full legacy contract"
+        }
+      ],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/actions.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/actions.js"
+          },
+          {
+            "path": "src/action-schema.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/action-schema.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/actions.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/actions.test.mjs",
+            "scope": "Multiple simultaneous effects; stationary edit/boundary reconciliation; suppressed edit and room exit cleanup"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Every advertised area property is tracked separately"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ACTION-LINK",
+      "domain": "actions",
+      "title": "New-tab and embedded-panel links",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/open-link.md",
+          "git_blob_sha": "3c596cc657bfef41fae742cb8829c69314b95eed",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/open-link.md"
+        },
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/open-link.md",
+          "git_blob_sha": "3c596cc657bfef41fae742cb8829c69314b95eed",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/open-link.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Author URL and trigger mode",
+        "Choose new tab or embedded panel; configure size and closability"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [
+        {
+          "id": "EDIT-18",
+          "basis": {
+            "path": "ACTION-AUTHORING.md",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/ACTION-AUTHORING.md"
+          },
+          "meaning": "Documented historical label; not a recovered full legacy contract"
+        }
+      ],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/embedded-panels.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/embedded-panels.js"
+          },
+          {
+            "path": "src/action-schema.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/action-schema.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/action-schema.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/action-schema.test.mjs",
+            "scope": "Link schema"
+          },
+          {
+            "path": "tests/editor-actions.browser.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/editor-actions.browser.mjs",
+            "scope": "Authored link interaction"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Provider authentication, iframe restrictions and actual third-party integration remain unverified"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ACTION-AUDIO",
+      "domain": "actions",
+      "title": "Audio URL, volume and interaction label",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/play-sound.md",
+          "git_blob_sha": "c0755b7526a1b4d1a6c30a57980ff4b4cf4b43bf",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/play-sound.md"
+        },
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/play-sound.md",
+          "git_blob_sha": "6167893c0e7f3ba6be26f9b56ac86795e24a6d27",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/play-sound.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Author sound URL, volume from 0 to 1 and optional label",
+        "Play after object interaction or area entry with explicit lifecycle handling"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [
+        {
+          "id": "EDIT-17",
+          "basis": {
+            "path": "ACTION-AUTHORING.md",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/ACTION-AUTHORING.md"
+          },
+          "meaning": "Documented historical label; not a recovered full legacy contract"
+        }
+      ],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/audio-actions.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/audio-actions.js"
+          },
+          {
+            "path": "src/action-schema.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/action-schema.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/audio-actions.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/audio-actions.test.mjs",
+            "scope": "Audio resource lifecycle"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Physical-device playback/autoplay differences remain unverified"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ACTION-DOCUMENT",
+      "domain": "actions",
+      "title": "Protected documents and area-tag download rights",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/open-file.md",
+          "git_blob_sha": "777b21276988f41acc639b6728d716d82a443b69",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/open-file.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Upload PDF/image and choose trigger, panel/new tab, size and closability",
+        "Only map-authorized users download; restricted-area tags further restrict the file"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/files.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/files.mjs"
+          },
+          {
+            "path": "src/files.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/files.js"
+          },
+          {
+            "path": "server/action-authority.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/action-authority.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/files.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/files.test.mjs",
+            "scope": "Local document service authorization"
+          },
+          {
+            "path": "tests/files-client.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/files-client.test.mjs",
+            "scope": "Client file behavior"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Room-scoped access is not proof of all area-tag file download semantics"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ACTION-FILEDROP",
+      "domain": "actions",
+      "title": "Drop file to author a document entity",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/entity-editor/upload-file.md",
+          "git_blob_sha": "61fab21b282f4fd416e67e6b08ddadec347af957",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/upload-file.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Drop a PDF/image on the map",
+        "Choose/filter its entity appearance, set name, save and place the new document action"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/files.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/files.js"
+          },
+          {
+            "path": "src/editor.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "File upload alone does not prove this native drag/drop shortcut"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-AREA-RESTRICTED",
+      "domain": "access",
+      "title": "Separate area admission and object-edit rights",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/restricted-area.md",
+          "git_blob_sha": "58b86c9b9292c9c2f4deb546ebdc4441a412c78c",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/restricted-area.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Configure separate entry/read and edit tags",
+        "Stop unauthorized player near boundary and show red denial highlight",
+        "Read-only users interact; edit-tag users place objects only within authorized area"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/personal-area-policy.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/personal-area-policy.js"
+          },
+          {
+            "path": "src/personal-editor-policy.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/personal-editor-policy.js"
+          },
+          {
+            "path": "server/personal-areas.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/personal-areas.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/personal-areas.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/personal-areas.test.mjs",
+            "scope": "Full old/new object footprints and foreign-owner overlap protection"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Personal ownership tests do not establish the separate general restricted-area read/edit-tag contract"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-PERSONAL-CLAIM",
+      "domain": "personal-areas",
+      "title": "Dynamic claims and static assignment",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/personal-area.md",
+          "git_blob_sha": "3a14dad40009b7b6eb99bff6a778e0734f236037",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/personal-area.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Eligible tagged registered users can claim or decline on entry",
+        "Static assignment resolves a specified user by supported lookup",
+        "Owner receives object-edit rights only in the personal area"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [
+        {
+          "id": "EDIT-21",
+          "basis": {
+            "path": "server/PERSONAL-AREAS.md",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/PERSONAL-AREAS.md"
+          },
+          "meaning": "Documented historical label; not a recovered full legacy contract"
+        }
+      ],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/personal-areas.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/personal-areas.mjs"
+          },
+          {
+            "path": "src/personal-areas.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/personal-areas.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/personal-areas.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/personal-areas.test.mjs",
+            "scope": "Dynamic account/tag eligibility; A/B claim race; static scoped lookup; no room-wide authority"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Local lookup is account-scoped rather than external admin email search"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-PERSONAL-REVOKE",
+      "domain": "personal-areas",
+      "title": "Revoke with explicit object handling",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/personal-area.md",
+          "git_blob_sha": "3a14dad40009b7b6eb99bff6a778e0734f236037",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/personal-area.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Authorized manager can revoke ownership",
+        "If objects exist, warn and choose how objects are handled before revoke"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/personal-areas.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/personal-areas.mjs"
+          },
+          {
+            "path": "src/personal-areas.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/personal-areas.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/personal-areas.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/personal-areas.test.mjs",
+            "scope": "Keep/remove-owned choice; stale-warning revision; streaming revocation"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Local remove-owned deliberately retains manager and previous-owner objects; do not claim geometric remove-all helper equivalence"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-PERSONAL-AWAYCARD",
+      "domain": "personal-areas",
+      "title": "Away-owner visit card and messaging",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/personal-area.md",
+          "git_blob_sha": "3a14dad40009b7b6eb99bff6a778e0734f236037",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/personal-area.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "When owner is away, entrants see owner visit card and can leave a chat message"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/personal-areas.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/personal-areas.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Source documents this as unavailable in self-hosted edition; applicability needs a product decision",
+          "Local DM availability is not implementation of away-card flow"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-AREA-TRAVEL",
+      "domain": "navigation",
+      "title": "Named entry and exit destinations",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/entry-exit.md",
+          "git_blob_sha": "30f33fc2fb8b9d26833ace880cfbc5aebcc053c8",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/entry-exit.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Create named start areas; inline starts take precedence over Tiled start positions",
+        "Exit selects destination map and destination start area",
+        "Large start regions can distribute simultaneous arrivals"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/actions.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/actions.js"
+          },
+          {
+            "path": "src/worlds.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/worlds.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/actions.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/actions.test.mjs",
+            "scope": "Area effect lifecycle only"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Explicit room travel exists; named target start areas, source precedence and arrival distribution are not established"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-AREA-FOCUS",
+      "domain": "navigation",
+      "title": "Entry-driven camera focus with margin",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/focusable.md",
+          "git_blob_sha": "ada3b5d8cc5964ec1cbb913f33f8054011238c68",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/focusable.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "On area entry frame the area automatically",
+        "Support zoom margin to avoid excessive close-up"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/camera-rig.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/camera-rig.js"
+          },
+          {
+            "path": "src/actions.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/actions.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "General orbit/zoom controls are not evidence for this area-triggered contract"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-AREA-HIGHLIGHT",
+      "domain": "editor",
+      "title": "Configurable entry highlight",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/highlight.md",
+          "git_blob_sha": "d9679a77f5a15112446ff474fca2e53e0bbb4803",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/highlight.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Author opacity, gradient width, transition duration and color",
+        "Apply/remove effect on entering/leaving the zone"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/editor.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/editor.js"
+          },
+          {
+            "path": "src/renderer.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/renderer.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Selection or denial highlights alone do not prove configurable area highlight"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-CHAT-PROXIMITY",
+      "domain": "proximity",
+      "title": "Ephemeral bubble-only text",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/user/chat.md",
+          "git_blob_sha": "27838b638a46ac362d989650ed87ac2f91a544ae",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/user/chat.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Deliver only to current conversation-bubble members",
+        "New entrant cannot see messages sent before joining",
+        "Store no proximity history; refresh clears it"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/media.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media.mjs"
+          },
+          {
+            "path": "src/social.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/social.js"
+          },
+          {
+            "path": "server/expressions.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/expressions.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/express.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/express.test.mjs",
+            "scope": "Ephemeral Say/Think timing and presence/room isolation only"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Express speech is not automatically equivalent to source bubble text",
+          "Durable room chat and DMs do not satisfy ephemeral bubble-only routing",
+          "Existing cap-four opted-in graph remains a separate limitation"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MATRIX-ROOMS",
+      "domain": "Matrix",
+      "title": "Persistent federated rooms and invitations",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/user/chat.md",
+          "git_blob_sha": "27838b638a46ac362d989650ed87ac2f91a544ae",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/user/chat.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Logged-in users create public/private rooms",
+        "Public rooms accept external Matrix accounts; private rooms require invitation",
+        "Invite by name or Matrix ID; recipient accepts or declines",
+        "Organize rooms in Matrix spaces/folders"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/social.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/social.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Local durable room chat/DMs are not Matrix, federation, Matrix invitations or spaces"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MATRIX-E2EE",
+      "domain": "Matrix",
+      "title": "Private-room encryption and key recovery",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/user/chat.md",
+          "git_blob_sha": "27838b638a46ac362d989650ed87ac2f91a544ae",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/user/chat.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Private-room E2EE is optional; once enabled it cannot be disabled",
+        "Recovery key/passphrase restores another browser; server cannot decrypt content",
+        "Key-storage reset warns of possible history and trust loss"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "No Matrix client, E2EE key lifecycle or federation acceptance evidence"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MATRIX-HISTORY",
+      "domain": "Matrix",
+      "title": "Explicit room history visibility",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/user/chat.md",
+          "git_blob_sha": "27838b638a46ac362d989650ed87ac2f91a544ae",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/user/chat.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Choose all history, since joining, or private-room history since invitation",
+        "Show world-connected and disconnected members with Matrix presence distinction"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "A local message history query does not prove Matrix membership/history policy"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MATRIX-AREA",
+      "domain": "Matrix",
+      "title": "Presence-bound Matrix area chat",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/matrix-chat-zone.md",
+          "git_blob_sha": "7fd3bc4eb9a791b8ebb0ef19355bee636edf8698",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/matrix-chat-zone.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Bind display-named Matrix room to an area; choose automatic/manual opening",
+        "Only area occupants participate",
+        "Expose messages sent while present; no past-outside-area history or post-exit new messages"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Requires Matrix server and membership/history enforcement; source differs from ordinary persistent room history"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MEDIA-SILENT",
+      "domain": "media",
+      "title": "Silent zone denies two-way bubble conversation",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/silent.md",
+          "git_blob_sha": "d8fd8c9fa52bbc0d4dbb717865067be8aa5b02c8",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/silent.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "While inside, block outgoing and incoming bubble conversation",
+        "Show red availability indication",
+        "Re-enable eligibility only after leaving and current policy permits"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/media.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media.mjs"
+          },
+          {
+            "path": "src/media.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/media.js"
+          },
+          {
+            "path": "src/media-policy-copy.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/media-policy-copy.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/media.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/media.test.mjs",
+            "scope": "Permission denial; teardown; pending capture invalidation"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "See SILENT-LIFECYCLE.md for scoped freshness evidence; real network AV remains unverified",
+          "Room text and ambient item audio are separate contracts"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MEDIA-MEETING",
+      "domain": "media",
+      "title": "Named joined meeting areas and defaults",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/meetingRoom.md",
+          "git_blob_sha": "db8046b38c3249ce5e4d1c4547bf769e91de84d4",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/meetingRoom.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Areas with same meeting name act as one meeting",
+        "Configure entry camera-off and microphone-off defaults"
+      ],
+      "status": "partial",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/media.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media.mjs"
+          },
+          {
+            "path": "src/media.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/media.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Source maximums, group membership, joined AV and cross-area routing need exact runtime review; same-name schema is insufficient"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-STREAM-PODIUM",
+      "domain": "streaming",
+      "title": "Named podium/audience AV and screen broadcast",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/area-editor/broadcast.md",
+          "git_blob_sha": "68ee61993613d75e4aac3c67e7292d95bd4f5663",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/area-editor/broadcast.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Podium occupants publish video/audio/screen to associated audience",
+        "Same-name podiums link speakers across areas",
+        "Optional dedicated podium and audience chats merge when both enabled"
+      ],
+      "status": "blocked",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/media.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media.mjs"
+          },
+          {
+            "path": "src/media.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/media.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "No verified LiveKit/SFU adapter, actual AV packets or screen broadcast acceptance",
+          "Local policy direction is not a successful stream"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-STREAM-MEGAPHONE",
+      "domain": "streaming",
+      "title": "Room/world scoped tagged megaphone",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/map-building/inline-editor/megaphone.md",
+          "git_blob_sha": "c2ed816f675ea14cb604de8bf5a829e6ab773ca4",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/megaphone.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Configure enabled state, unique space name, room/world scope and authorized tags",
+        "Broadcast across rooms sharing world space name",
+        "Toggle from action bar with explicit active status indicators"
+      ],
+      "status": "blocked",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/media.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media.mjs"
+          },
+          {
+            "path": "src/media.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/media.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Cross-room provider-backed broadcast and source status presentation unverified"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MEDIA-HYBRID",
+      "domain": "media",
+      "title": "Ordinary proximity hybrid membership and handoff",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover exact runtime membership limits and P2P/SFU threshold/handoff contract before implementation",
+        "Prove all-member counting and actual media across transitions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/media.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media.mjs"
+          },
+          {
+            "path": "server/media-ice.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/media-ice.mjs"
+          },
+          {
+            "path": "src/media-ice.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/media-ice.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/media.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/media.test.mjs",
+            "scope": "Policy and device lifecycle; not successful AV"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Independent media source pin exists but not yet reread by this inventory",
+          "Baseline remains cap-four and opt-in based; ICE configuration/SDP changes do not establish connected AV"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-BOT-LOCAL",
+      "domain": "bots",
+      "title": "Local resident authoring and occupancy lifecycle",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Reconstruct exact source bot configuration, greeting, patrol, social and occupancy contracts",
+        "Compare local lifecycle clauses separately from provider conversation"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/bots.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/bots.mjs"
+          },
+          {
+            "path": "server/bot-navigation.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/bot-navigation.mjs"
+          },
+          {
+            "path": "src/bot-editor.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/bot-editor.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/bots.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/bots.test.mjs",
+            "scope": "Local management, occupancy, navigation and permissions"
+          },
+          {
+            "path": "tests/bots-integration.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/bots-integration.test.mjs",
+            "scope": "Router authorization and separation from human graphs"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Source bot runtime/admin contracts not yet reviewed; saved social settings are inactive without provider"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-BOT-PROVIDER",
+      "domain": "bots",
+      "title": "Real AI conversation, private tests and memory",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover exact provider conversation, memory, retention, interruption and authorization contracts",
+        "Exercise a real explicitly configured provider before claiming live AI"
+      ],
+      "status": "blocked",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/resident-turn-runner.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/resident-turn-runner.mjs"
+          },
+          {
+            "path": "server/resident-turns.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/resident-turns.mjs"
+          },
+          {
+            "path": "src/resident-test.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/resident-test.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Literal-loopback synthetic private tests are not live AI",
+          "Public conversation, historical turns and operational retention/reconciliation unfinished"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MCP-CONFIG",
+      "domain": "MCP",
+      "title": "Configure and test external MCP servers",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/developer/bots/mcp-servers.md",
+          "git_blob_sha": "2648c330b7b12f1bedd2c8d08c995302a005698d",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/bots/mcp-servers.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Add/edit/test/remove per-bot servers with name and URL",
+        "Support none, bearer or API-key auth and custom headers",
+        "Store auth encrypted; Test Connection confirms tools/list and discovered tools"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/bots.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/bots.mjs"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "No external MCP server or credential storage is connected"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MCP-SESSION",
+      "domain": "MCP",
+      "title": "Per-player initialized HTTP sessions and discovery cache",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/developer/bots/mcp-servers.md",
+          "git_blob_sha": "2648c330b7b12f1bedd2c8d08c995302a005698d",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/bots/mcp-servers.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Initialize Streamable HTTP with stable player identity; discovery uses null player",
+        "Reuse returned session ID; key session by server/auth/player",
+        "Expire idle sessions after one hour; refresh tool list hourly"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Document declares 2025-03-26 transport while example protocolVersion is 2024-11-05; resolve against pinned runtime before implementation"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MCP-TOOLS",
+      "domain": "tools",
+      "title": "Dispatch tool calls and bounded errors",
+      "requirement_basis": "pinned-source-documentation",
+      "source_refs": [
+        {
+          "source_pin": "game-default",
+          "path": "docs/developer/bots/mcp-servers.md",
+          "git_blob_sha": "2648c330b7b12f1bedd2c8d08c995302a005698d",
+          "url": "https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/developer/bots/mcp-servers.md"
+        }
+      ],
+      "acceptance_clauses": [
+        "Route model-selected tools/call to correct server and feed content blocks back to model",
+        "Enforce documented ten-second timeout and explicit error result"
+      ],
+      "status": "missing",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/resident-turn-runner.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/resident-turn-runner.mjs"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Local manager pause/resume/return controls and synthetic tool fixtures are not external tool execution"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-WORLD-HIERARCHY",
+      "domain": "worlds",
+      "title": "Universe/world/room discovery and management",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/hierarchy.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/hierarchy.mjs"
+          },
+          {
+            "path": "src/places.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/places.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/hierarchy.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/hierarchy.test.mjs",
+            "scope": "Existing local assertions only; source mapping incomplete"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Admin root tree resolved; source membership, universe, discovery and stars contracts not yet read"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ACCESS-IDENTITY",
+      "domain": "access",
+      "title": "Identity, invitations, SSO and current authorization",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/access-gate.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/access-gate.mjs"
+          },
+          {
+            "path": "server/hierarchy.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/hierarchy.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/access-gate.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/access-gate.test.mjs",
+            "scope": "Existing local assertions only; source mapping incomplete"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Local account provisioning is distinct from upstream identity/OIDC/SSO; recover source contracts"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-QUEST-PROGRAMS",
+      "domain": "quests",
+      "title": "Authored and built-in quest programs",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/quests.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/quests.mjs"
+          },
+          {
+            "path": "src/quests.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/quests.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Full source quest definitions, event semantics and rewards not yet reviewed"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-NAV-DISCOVERY",
+      "domain": "navigation",
+      "title": "Places, stars, search and desk navigation",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/places.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/places.js"
+          },
+          {
+            "path": "src/command-palette.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/command-palette.js"
+          },
+          {
+            "path": "server/personal-areas.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/personal-areas.mjs"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/command-palette.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/command-palette.test.mjs",
+            "scope": "Existing local assertions only; source mapping incomplete"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Current-room desk and command palette do not establish all source search/travel workflows"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-PROFILE-AVATAR",
+      "domain": "profile",
+      "title": "Profile, owned avatars and entitlements",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/avatar-creator.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/avatar-creator.js"
+          },
+          {
+            "path": "src/avatar-spec.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/avatar-spec.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/avatar-persistence.test.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/avatar-persistence.test.mjs",
+            "scope": "Existing local assertions only; source mapping incomplete"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Original wardrobe and saved appearance are distinct from source owned-avatar catalogs and entitlements"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ADMIN-MANAGEMENT",
+      "domain": "admin",
+      "title": "Administrative configuration and management",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "server/HIERARCHY.md",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/server/HIERARCHY.md"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Exact admin repository/pin resolved; API, UI, integration and default/proposal splits still to audit"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-LOCALE-LANGUAGES",
+      "domain": "localization",
+      "title": "Translation catalogs and locale behavior",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Translation docs captured but not read; locale completeness and fallback unreviewed"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MOBILE-PLAY",
+      "domain": "mobile",
+      "title": "Mobile play, touch and responsive interactions",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/world-input.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/world-input.js"
+          }
+        ],
+        "tests": [
+          {
+            "path": "tests/avatar-layout-final.browser.mjs",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/tests/avatar-layout-final.browser.mjs",
+            "scope": "Existing local assertions only; source mapping incomplete"
+          }
+        ],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Emulated 320px Chromium checks are not physical Android/iOS or source mobile parity"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-ACCESSIBILITY-INPUT",
+      "domain": "accessibility",
+      "title": "Keyboard, focus and assistive access",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [
+          {
+            "path": "src/world-input.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/world-input.js"
+          },
+          {
+            "path": "src/command-palette.js",
+            "url": "https://github.com/BAWES-Universe/universe-3d/blob/be6d136961010f986fde7c1ddaf13b66e164621a/src/command-palette.js"
+          }
+        ],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Source accessibility requirements not yet enumerated; keyboard focus is not a whole accessibility certification"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MAP-SCRIPTING",
+      "domain": "tools",
+      "title": "Map scripting API and event contracts",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Captured developer API documentation is not yet reviewed; no compatibility claim"
+        ]
+      }
+    },
+    {
+      "id": "U3D-PAR-MAP-IMPORT",
+      "domain": "assets",
+      "title": "Tiled maps, collections and publishing",
+      "requirement_basis": "coverage-placeholder",
+      "source_refs": [],
+      "acceptance_clauses": [
+        "Recover pinned source clauses and map only directly supporting candidate assertions"
+      ],
+      "status": "needs-review",
+      "certified_whole_contract": false,
+      "legacy_aliases": [],
+      "candidate": {
+        "code": [],
+        "tests": [],
+        "evidence_level": "candidate contracts and selected test-assertion inspection; not a complete code/test audit; no runtime rerun",
+        "remaining": [
+          "Captured Tiled and entity-collection contracts unreviewed; no compatibility claim"
+        ]
+      }
+    }
+  ]
+}
