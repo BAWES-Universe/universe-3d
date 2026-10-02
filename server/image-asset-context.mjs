@@ -24,7 +24,11 @@ export function createRoomImageAssets({store,session,now,emitRoom}){
     },
     authorizeRead({roomId,userId}){store.authorize(roomId,userId);return true;},
     authorizeManage({roomId,userId}){return FULL_EDIT.includes(store.authorize(roomId,userId).role);},
-    afterCommit(event){emitRoom(event.roomId,'image-assets',{roomId:event.roomId,assetId:event.assetId,versionId:event.versionId});},
+    isPinned({roomId,assetId,versionId}){
+      const row=store.get('SELECT scene FROM rooms WHERE id=?',roomId);
+      return !!row&&JSON.parse(row.scene).objects.some(object=>object?.type==='image'&&object.assetRef?.assetId===assetId&&object.assetRef?.versionId===versionId);
+    },
+    afterCommit(event){emitRoom(event.roomId,'image-assets',{...event});},
   });
   // This read projection is used only behind existing room authority. It is not
   // persisted, not accepted from scene JSON, and never grants placement rights.
@@ -35,7 +39,7 @@ export function createRoomImageAssets({store,session,now,emitRoom}){
       const instance=validateImageInstance(raw),key=imageReferenceKey(instance.assetRef);
       if(Object.hasOwn(result,key))continue;
       const entry=repo.getVersion(roomId,instance.assetRef.assetId,instance.assetRef.versionId);
-      if(!entry||entry.status!=='active')v.fail(404,'IMAGE_NOT_FOUND','The image reference is unavailable in this room');
+      if(!entry||!['active','archived'].includes(entry.status))v.fail(404,'IMAGE_NOT_FOUND','The image reference is unavailable in this room');
       result[key]=validateResolvedImageAsset(entry);
     }
     return Object.freeze(result);
@@ -60,7 +64,7 @@ export function createRoomImageAssets({store,session,now,emitRoom}){
       if(!hasImages(before)&&!hasImages(next))return {before:Object.freeze(Object.create(null)),next:Object.freeze(Object.create(null))};
       if(expectedEpoch!==(epochs.get(token)??0))v.fail(409,'IMAGE_SESSION_CHANGED','The room session changed while the scene save was pending');
       const context={roomId,userId,sessionIdentity:token};
-      try{return {before:validatedDefinitions(service.resolveSceneReferences({...context,scene:before})),next:validatedDefinitions(service.resolveSceneReferences({...context,scene:next}))};}
+      try{return {before:validatedDefinitions(service.resolveSceneReferences({...context,scene:before,allowArchived:true})),next:validatedDefinitions(service.resolveSceneReferences({...context,scene:next,previousScene:before}))};}
       catch(error){if(error.name==='ImageAssetValidationError')v.fail(400,error.code??'INVALID_SCENE',error.message);throw error;}
     },
   });

@@ -1,5 +1,5 @@
 // Accessible image-library boundary C. See ui/README.md for the frozen injection and async contract.
-import { IMAGE_ASSET_LIMITS, normalizeImageAssetDraft, validateResolvedImageAsset } from "./image-asset-schema.js";
+import { IMAGE_ASSET_LIMITS, normalizeImageAssetDraft, validateResolvedImageAsset, normalizeImageLibraryMetadata, imageLibraryMetadata } from "./image-asset-schema.js";
 import { searchImageLibrary } from "./image-library.js";
 import { decodeLocalPng } from "./image-library-client.js";
 let sequence = 0;
@@ -25,7 +25,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   let entries = [], listEpoch = 0, decodeEpoch = 0, preview = null, file = null, grid = null, draftVisible = false, submitting = false, composing = false;
   let listController = null, decodeController = null, uploadController = null, listReady = false;
   const pendingByOwner = /* @__PURE__ */ new Map(), thumbURLs = /* @__PURE__ */ new Set(), thumbControllers = /* @__PURE__ */ new Set();
-  let pending = null;
+  let pending = null, editing = null, managementBusy = false, managementConflict = false, managementEpoch = 0, managementController = null;
   root.classList.add("u-image-library");
   root.hidden = true;
   root.setAttribute("role", "region");
@@ -54,19 +54,23 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   const libraryView = el("section", "uil-library");
   const controls = el("div", "uil-tools");
   const searchLabel = el("label", "uil-search");
-  searchLabel.append(el("span", null, "Search names or tags"));
+  searchLabel.append(el("span", null, "Search names, descriptions or tags"));
   const search = el("input");
   search.type = "search";
   search.placeholder = "Search Custom";
   search.autocomplete = "off";
   searchLabel.append(search);
   const add = button("Add PNG", "Plus", "uil-primary"), reload = button("Refresh", null);
-  controls.append(searchLabel, add, reload);
+  const statusLabel = el("label", "uil-field"), libraryStatus = el("select");
+  statusLabel.append(el("span", null, "Library status"), libraryStatus);
+  libraryStatus.setAttribute("aria-label", "Library status");
+  for (const [value, label] of [["active", "Active images"], ["archived", "Archived images"]]) { const option = el("option", null, label); option.value = value; libraryStatus.append(option); }
+  controls.append(searchLabel, statusLabel, add, reload);
   const listStatus = el("p", "uil-empty");
   listStatus.setAttribute("role", "status");
   const cards = el("ul", "uil-cards");
   cards.setAttribute("aria-label", "Custom image objects");
-  const lifecycle = el("p", "uil-note", "You can upload and place images. Editing or deleting library files is not available yet.");
+  const lifecycle = el("p", "uil-note", "Edit library names, descriptions and tags, or archive images reversibly. Existing placed versions keep their original image and collision cells.");
   libraryView.append(controls, listStatus, cards, lifecycle);
   const form = el("form", "uil-draft");
   form.hidden = true;
@@ -157,7 +161,72 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   upload.type = "submit";
   actions.append(cancel, upload);
   form.append(formTitle, intro, drop, previewBox, fields, errorBox, recovery, actions);
-  root.replaceChildren(header, permission, status, libraryView, form);
+  const management = el("form", "uil-draft"); management.hidden = true; management.noValidate = true;
+  const managementTitle = el("h3", null, "Edit image details"); managementTitle.tabIndex = -1;
+  const managementNote = el("p", "uil-note"), managementFields = el("fieldset", "uil-fields");
+  const detailName = el("input"), detailTags = el("input"), description = el("textarea"); detailName.maxLength = 240; description.maxLength = 4000; description.rows = 4;
+  for (const [labelText, input, key] of [["Asset name", detailName, "detail-name"], ["Description", description, "description"], ["Asset tags", detailTags, "detail-tags"]]) {
+    const label = el("label", "uil-field"); input.id = `${uid}-${key}`; label.htmlFor = input.id; label.append(el("span", null, labelText), input); managementFields.append(label);
+  }
+  const managementError = el("p", "uil-error"); managementError.setAttribute("role", "alert"); managementError.hidden = true;
+  const latest = button("Load latest details", null); latest.hidden = true;
+  const managementActions = el("div", "uil-actions"), cancelManagement = button("Cancel details", null), commitManagement = button("Save details", null, "uil-primary"); commitManagement.type = "submit";
+  managementActions.append(cancelManagement, commitManagement); management.append(managementTitle, managementNote, managementFields, managementError, latest, managementActions);
+  root.replaceChildren(header, permission, status, libraryView, form, management);
+  function hideManagement({focus = true} = {}) {
+    editing = null; management.hidden = true; managementBusy = false; managementConflict = false;
+    libraryView.hidden = false; managementError.hidden = true; latest.hidden = true;
+    if (focus && open) search.focus(); gate();
+  }
+  function showManagement(entry, action = "metadata") {
+    if (!sync() || !ctx.capabilities.canManage || managementBusy) return;
+    editing = {entry, action}; managementConflict = false; managementError.hidden = true; latest.hidden = true;
+    const metadata = imageLibraryMetadata(entry); detailName.value = metadata.name; description.value = metadata.description; detailTags.value = metadata.tags.join(", ");
+    managementFields.hidden = action !== "metadata";
+    managementTitle.textContent = action === "metadata" ? "Edit image details" : `Archive ${metadata.name}?`;
+    managementNote.textContent = action === "metadata" ? "Changes update discovery text only. Placed names, image bytes, size, depth and collision cells stay unchanged." : "This removes the image from new placement and duplication. Existing placements stay visible and editable. You can restore it from Archived images. After a placement is removed and saved, Undo cannot bring it back until the asset is restored.";
+    commitManagement.textContent = action === "metadata" ? "Save details" : "Confirm archive";
+    cancelManagement.textContent = action === "metadata" ? "Cancel details" : "Cancel archive";
+    management.hidden = false; libraryView.hidden = true; form.hidden = true; managementTitle.focus(); gate();
+  }
+  async function mutateAsset(entry, change, action) {
+    if (!sync() || !ctx.capabilities.canManage || managementBusy) return;
+    const captured = scope, epoch = ++managementEpoch; managementBusy = true; managementController = new AbortController(); gate();
+    try {
+      const result = validEntry(await service.update({roomId: ctx.roomId, assetId: entry.definition.assetId, expectedRevision: entry.revision || 1, ...change, signal: managementController.signal}), true);
+      if (!isCurrent(captured, "canManage") || epoch !== managementEpoch) return;
+      const name = imageLibraryMetadata(result).name; hideManagement();
+      announce(action === "metadata" ? `Saved details for ${name}. Placed versions are unchanged.` : action === "archive" ? `Archived ${name}. Existing placements are unchanged.` : `Restored ${name}. It is available for new placement.`);
+      await refresh();
+    } catch (error) {
+      if (!isCurrent(captured, "canManage") || epoch !== managementEpoch) return;
+      if (!editing) { editing = {entry, action: "restore"}; management.hidden = false; libraryView.hidden = true; managementTitle.textContent = "Restore image"; managementFields.hidden = true; managementNote.textContent = "Reload the latest image details before trying again."; cancelManagement.textContent = "Back to library"; }
+      managementConflict = true;
+      managementError.textContent = error.status === 409 ? "This image changed while you were editing. Your draft is preserved. Load latest details before making another change." : `The change could not be confirmed. ${error.message || "Refresh to check its current state."} Load latest details before trying again.`;
+      managementError.hidden = false; latest.hidden = false; managementError.tabIndex = -1; managementError.focus();
+    } finally { if (isCurrent(captured) && epoch === managementEpoch) { managementBusy = false; gate(); } }
+  }
+  management.onsubmit = event => {
+    event.preventDefault(); if (composing || !editing || managementConflict || managementBusy) return;
+    const {entry, action} = editing;
+    try { const change = action === "metadata" ? {metadata: normalizeImageLibraryMetadata({name: detailName.value, description: description.value, tags: detailTags.value})} : {status: "archived"}; mutateAsset(entry, change, action); }
+    catch (error) { managementError.textContent = error.message; managementError.hidden = false; }
+  };
+  cancelManagement.onclick = () => { if (!managementBusy) hideManagement(); };
+  latest.onclick = async () => {
+    if (!sync() || !editing || managementBusy || !ctx.capabilities.canManage) return;
+    const captured = scope, selected = editing, epoch = ++managementEpoch; managementBusy = true; gate();
+    try {
+      const results = await Promise.all(["active", "archived"].map(status => service.list({roomId: ctx.roomId, query: "", status})));
+      if (!isCurrent(captured, "canManage") || editing !== selected || epoch !== managementEpoch) return;
+      const current = results.flatMap(result => result.entries).find(entry => entry.definition.assetId === selected.entry.definition.assetId);
+      if (!current) throw new Error("This image is no longer available in this room");
+      managementBusy = false;
+      if (selected.action === "metadata") showManagement(current, "metadata");
+      else { hideManagement(); libraryStatus.value = current.status; await refresh(); announce("Latest image status loaded. Choose the action again to confirm it."); }
+    } catch (error) { if (isCurrent(captured) && epoch === managementEpoch) { managementError.textContent = error.message; managementError.hidden = false; } }
+    finally { if (isCurrent(captured) && epoch === managementEpoch) { managementBusy = false; gate(); } }
+  };
   function announce(message) {
     status.textContent = message;
     onStatus(message);
@@ -217,10 +286,16 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     fields.disabled = !caps.canManage || locked;
     upload.disabled = !caps.canManage || !file || !preview || locked;
     cancel.textContent = pending ? "Back to library" : "Cancel draft";
-    permission.textContent = !caps.canRead ? "You cannot read this room\u2019s image library." : !caps.canPlace ? "You can view these image objects. Placement is not available for your current role." : !caps.canManage ? "You can place approved room images. Only full room editors can upload." : "Room image objects can be reused by people with placement permission.";
+    permission.textContent = !caps.canRead ? "You cannot read this room\u2019s image library." : !caps.canPlace ? "You can view these image objects. Placement is not available for your current role." : !caps.canManage ? "You can place approved room images. Only full room editors can upload and manage the library." : "Room image objects can be reused by people with placement permission.";
     checkUpload.disabled = submitting || !caps.canManage;
     retry.disabled = submitting || !caps.canManage;
-    for (const b of cards.querySelectorAll("button")) b.disabled = !caps.canPlace || !caps.canRead;
+    statusLabel.hidden = !caps.canManage;
+    libraryStatus.disabled = !caps.canRead || managementBusy;
+    managementFields.disabled = !caps.canManage || managementBusy;
+    commitManagement.disabled = !caps.canManage || managementBusy || managementConflict;
+    cancelManagement.disabled = managementBusy; latest.disabled = managementBusy || !caps.canManage;
+    close.disabled = managementBusy;
+    for (const b of cards.querySelectorAll("button")) b.disabled = !caps.canRead || managementBusy || (b.dataset.management ? !caps.canManage : !caps.canPlace);
     collisions.disabled = fields.disabled || floating.checked || !preview || preview.width % 32 !== 0 || preview.height % 32 !== 0;
   }
   function draftValues() {
@@ -364,9 +439,9 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       gate();
     }
   }
-  function validEntry(value) {
+  function validEntry(value, allowArchived = false) {
     const result = validateResolvedImageAsset(value);
-    if (result.status !== "active" || result.definition.roomId !== ctx.roomId) throw new Error("Image is not available in this room");
+    if (!(result.status === "active" || allowArchived && result.status === "archived") || result.definition.roomId !== ctx.roomId) throw new Error("Image is not available in this room");
     return result;
   }
   async function thumbnail(entry, img, caption, token) {
@@ -406,8 +481,8 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       return;
     }
     if (!listReady) return;
-    const matches = searchImageLibrary(entries, { query: search.value, category: "custom" });
-    listStatus.textContent = matches.length ? `${matches.length} image object${matches.length === 1 ? "" : "s"}` : search.value ? "No matching image objects. Try another name or tag." : "No Custom image objects in this room yet.";
+    const matches = searchImageLibrary(entries, { query: search.value, category: "custom", status: libraryStatus.value });
+    listStatus.textContent = matches.length ? `${matches.length} image object${matches.length === 1 ? "" : "s"}` : search.value ? "No matching image objects. Try another name, description or tag." : "No image objects in this view.";
     for (const entry of matches) {
       const li = el("li", "uil-card");
       li.dataset.assetId = entry.definition.assetId;
@@ -416,15 +491,23 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       img.hidden = true;
       figure.append(img, caption);
       const text = el("div", "uil-card-copy");
-      text.append(el("strong", null, entry.version.name), el("span", "uil-note", entry.version.tags.join(", ") || "No tags"), el("span", "uil-note", entry.version.representation === "floor" ? "Floor decal" : "Upright panel"));
-      const use = button(`Place ${entry.version.name}`, "Plus");
-      use.setAttribute("aria-label", `Place ${entry.version.name} (${entry.definition.assetId})`);
+      const metadata = imageLibraryMetadata(entry);
+      text.append(el("strong", null, metadata.name), el("span", "uil-note", metadata.description), el("span", "uil-note", metadata.tags.join(", ") || "No tags"), el("span", "uil-note", entry.version.representation === "floor" ? "Floor decal" : "Upright panel"));
+      const use = button(`Place ${metadata.name}`, "Plus");
+      use.setAttribute("aria-label", `Place ${metadata.name} (${entry.definition.assetId})`);
       use.onclick = () => {
-        if (!sync() || !isCurrent(scope, "canRead") || !ctx.capabilities.canPlace || !entries.some((item) => item.definition.assetId === entry.definition.assetId && item.version.versionId === entry.version.versionId)) return;
+        if (!sync() || !isCurrent(scope, "canRead") || entry.status !== "active" || !ctx.capabilities.canPlace || !entries.some((item) => item.definition.assetId === entry.definition.assetId && item.version.versionId === entry.version.versionId)) return;
         onChoose({ assetId: entry.definition.assetId, versionId: entry.version.versionId });
-        announce(`Selected ${entry.version.name} for placement. Click in the world to place it.`);
+        announce(`Selected ${metadata.name} for placement. Click in the world to place it.`);
       };
-      li.append(figure, text, use);
+      li.append(figure, text);
+      if (entry.status === "active") li.append(use);
+      if (ctx.capabilities.canManage) {
+        const edit = button(`Edit ${metadata.name}`, null); edit.dataset.management = "true"; edit.onclick = () => showManagement(entry);
+        const change = button(`${entry.status === "active" ? "Archive" : "Restore"} ${metadata.name}`, null); change.dataset.management = "true";
+        change.onclick = () => entry.status === "active" ? showManagement(entry, "archive") : mutateAsset(entry, {status: "active"}, "restore");
+        li.append(edit, change);
+      }
       cards.append(li);
       thumbnail(entry, img, caption, listEpoch);
     }
@@ -446,10 +529,10 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     listStatus.textContent = "Loading Custom image objects\u2026";
     cards.setAttribute("aria-busy", "true");
     try {
-      const result = await service.list({ roomId: ctx.roomId, query: "", signal: listController.signal });
+      const result = await service.list({ roomId: ctx.roomId, query: "", status: libraryStatus.value, signal: listController.signal });
       if (!isCurrent(captured, "canRead") || token !== listEpoch) return;
       if (!Array.isArray(result?.entries)) throw new Error("Invalid library response");
-      entries = result.entries.filter((item) => item.status === "active").map(validEntry);
+      entries = result.entries.map(item => validEntry(item, libraryStatus.value === "archived"));
       listReady = true;
       renderCards();
     } catch (error) {
@@ -460,13 +543,14 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     }
   }
   function complete(entry, operation) {
-    const result = validEntry(entry);
+    const result = validEntry(entry, true);
     pendingByOwner.delete(operation.owner);
     if (pending !== operation) return;
     pending = null;
     resetDraft();
     hideDraft();
-    announce(`Uploaded ${result.version.name}. It is ready in Custom; no world object has been placed.`);
+    if (result.status === "archived") libraryStatus.value = "archived";
+    announce(result.status === "archived" ? `Upload confirmed: ${imageLibraryMetadata(result).name} is archived. Restore it before placing.` : `Uploaded ${imageLibraryMetadata(result).name}. It is ready in Custom; no world object has been placed.`);
     refresh();
   }
   async function reconcile() {
@@ -566,6 +650,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     }
   }
   function switchContext(next) {
+    managementEpoch++; managementController?.abort(); hideManagement({focus: false}); libraryStatus.value = "active";
     cards.removeAttribute("aria-busy");
     if (pending) {
       pending.state = "uncertain";
@@ -616,7 +701,8 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       root.hidden = false;
       sync();
       refresh();
-      if (draftVisible) formTitle.focus();
+      if (editing) managementTitle.focus();
+      else if (draftVisible) formTitle.focus();
       else search.focus();
       if (pending && ctx.capabilities.canManage) reconcile();
     } else {
@@ -649,6 +735,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   };
   add.onclick = showDraft;
   reload.onclick = refresh;
+  libraryStatus.onchange = () => { if (sync()) refresh(); };
   close.onclick = () => setOpen(false);
   cancel.onclick = cancelDraft;
   checkUpload.onclick = reconcile;
@@ -683,7 +770,9 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     if (e.isComposing || composing) return;
     if (e.key === "Escape") {
       e.preventDefault();
-      if (draftVisible) cancelDraft();
+      if (managementBusy) return;
+      if (editing) hideManagement();
+      else if (draftVisible) cancelDraft();
       else setOpen(false);
     }
   };
@@ -693,6 +782,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   function dispose() {
     if (disposed) return;
     disposed = true;
+    managementEpoch++; managementController?.abort();
     root.removeEventListener("compositionstart", onCompositionStart);
     root.removeEventListener("compositionend", onCompositionEnd);
     root.removeEventListener("keydown", onKeyDown);

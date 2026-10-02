@@ -1,6 +1,6 @@
 import {validateAppearance} from '../src/avatar-spec.js';
 import {safeActionUrl,validateActions} from '../src/action-schema.js';
-import {validateImageInstance,canUseImageReference} from '../src/image-asset-schema.js';
+import {validateImageInstance,canRenderImageReference} from '../src/image-asset-schema.js';
 import {imagePlacementInside} from '../src/image-asset-geometry.js';
 export class HttpError extends Error {
   constructor(status, code, message = code, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
@@ -68,7 +68,7 @@ export function scene(value,imageDefinitions={}) {
       try{
         const image=validateImageInstance(object),key=`${image.assetRef.assetId}:${image.assetRef.versionId}`;
         const definition=Object.hasOwn(imageDefinitions,key)?imageDefinitions[key]:null;
-        if(!canUseImageReference(image.assetRef,definition))fail(400,'IMAGE_REFERENCE_UNAVAILABLE','Use an existing image version from this room');
+        if(!canRenderImageReference(image.assetRef,definition))fail(400,'IMAGE_REFERENCE_UNAVAILABLE','Use an existing image version from this room');
         if(!imagePlacementInside({x:0,z:0,...value.bounds},definition,image))fail(400,'IMAGE_OUTSIDE_ROOM','Keep the entire image footprint inside the room');
       }catch(error){if(error.status)throw error;fail(400,error.code??'INVALID_SCENE',error.message);}
     }

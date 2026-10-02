@@ -14,7 +14,8 @@ This service is mounted in the local game server through `image-asset-context.mj
 
 All methods take server-side `{roomId,userId,sessionIdentity}` context.
 
-- `list({...context,query?})` -> `{entries}` using canonical `{schemaVersion:1,status:'active',definition,version}` records
+- `list({...context,query?,status?})` -> `{entries}` using canonical `{schemaVersion:1,status,revision,metadata,definition,version}` records. Status defaults to active; archived requires full management authority
+- `update({...context,assetId,change,expectedSessionStamp?})` atomically applies metadata or archive/restore with expectedRevision CAS. See `../IMAGE-ASSET-LIFECYCLE.md`
 - `create({...context,draft,bytes:Uint8Array,mediaType:'image/png',operationId})` -> entry. Bytes and draft are detached before awaiting validation. Stable definition, immutable version, image bytes and idempotency record commit together
 - `reconcileCreate({...context,operationId})` -> `{status:'committed',entry}` or `{status:'not-found'}`. The operation is actor+room scoped. Not-found only means no commit existed when read; a pending decode can still finish
 - `readImage({...context,assetId,versionId,head?})` -> `{bytes,mediaType,byteLength,headers}`. HEAD uses null bytes. Returned bytes are a detached buffer; they are not a public URL
@@ -23,11 +24,12 @@ All methods take server-side `{roomId,userId,sessionIdentity}` context.
 
 The host still performs full scene/action validation, scene CAS/history, live role checks for placement, personal-area ownership/footprints, actor overlap and arrival safety before writing its scene. Reference resolution only authorizes reading current room assets. The host must persist the exact validated scene without replacing it after resolution. Existing built-in scene objects are left untouched and remain subject to host validation.
 
-The optional synchronous `transaction(fn)` adapter must open a transaction on this repository connection. Never await image create under a SQLite transaction. `afterCommit(event)` receives a single `imageAsset.created` event after durable commit, not on idempotent replay. Notification failure cannot turn durable success into a failed upload; the host should log/reconcile notification errors itself. Existing broadcasters are never called by this module.
+The optional synchronous `transaction(fn)` adapter must open a transaction on this repository connection. Never await image create under a SQLite transaction. `afterCommit(event)` receives a single `imageAsset.created` or `imageAsset.lifecycle` event after durable commit, not on idempotent replay. Notification failure cannot turn durable success into a failed upload; the host should log/reconcile notification errors itself. Existing broadcasters are never called by this module.
 
 ## HTTP wire
 
-- GET `/api/rooms/:roomId/assets?query=...`
+- GET `/api/rooms/:roomId/assets?query=...&status=active|archived`
+- PATCH `/api/rooms/:roomId/assets/:assetId`, JSON `{expectedRevision,metadata:{name,description,tags}}` or `{expectedRevision,status:"active"|"archived"}`; dedicated 32 KiB request cap
 - POST `/api/rooms/:roomId/assets`, JSON `{draft,mediaType,operationId,pngBase64}` with canonical base64, dedicated 7 MiB request cap and 5 MiB image cap. No global body limit changes, remote URLs, multipart parser, compressed request bodies or client authority fields
 - GET `/api/rooms/:roomId/assets/operations/:operationId` for read-only reconciliation
 - GET/HEAD `/api/rooms/:roomId/assets/:assetId/versions/:versionId/image`
@@ -42,7 +44,7 @@ Bounds: 5 MiB bytes, 2048 per dimension, 4,194,304 pixels, 4096 chunks, and at m
 
 ## Verification
 
-Run `node --test tests/image-assets-service.test.mjs tests/image-assets-persistence.test.mjs` from the staging root. These are local generated fixtures and ephemeral HTTP/SQLite contracts, not external security probes or a deployment security audit. Persistence tests reopen a fresh file database, verify pinned historical versions, metadata/bytes/hash, authorization, idempotency, quotas, atomic rollback and same-connection scene-save coupling. Later lifecycle rows used in tests are fixture-only SQL, not an implemented publication/deletion feature.
+Run `node --test tests/image-assets-service.test.mjs tests/image-assets-persistence.test.mjs` from the staging root. These are local generated fixtures and ephemeral HTTP/SQLite contracts, not external security probes or a deployment security audit. Persistence tests reopen a fresh file database, verify pinned historical versions, metadata/bytes/hash, authorization, idempotency, quotas, atomic rollback and same-connection scene-save coupling. Additional lifecycle tests exercise the actual metadata/archive/restore API. Historical version changes remain fixture-only SQL; there is no version-publication or permanent-deletion feature.
 
 ## Game host integration
 
@@ -53,6 +55,6 @@ Run `node --test tests/image-assets-service.test.mjs tests/image-assets-persiste
 - Image placement uses the full exact PNG edit extent, including transparent portions, at 32 pixels per metre. Changed image collision cells cannot overlap arrival padding 0.75 or fresh authorized human positions padding 0.4, or close an arrival route that was open before. Name/action-only changes do not retrigger new-geometry checks
 - Personal-area object counts, attribution and explicit revoke/remove-owned handling resolve exact canonical image metadata. Both old and new footprints must fit the owner’s area, without intersecting another owner’s area
 - Item action range and resident spawn/navigation bind canonical scene metadata server-side. Bots use exact image collision cells, retaining existing built-in footprint behavior
-- No lifecycle delete/version-edit endpoint exists. Image bytes remain protected same-origin PNG responses, with private/no-store and nosniff headers
+- Metadata editing and reversible archive/restore exist with live CAS/authority checks; no permanent-delete/version-edit endpoint exists. Image bytes remain protected same-origin PNG responses, with private/no-store and nosniff headers
 
 Run `node --test tests/image-assets-app.test.mjs tests/image-assets-service.test.mjs tests/image-assets-persistence.test.mjs` for local real-cookie/SQLite integration and service contracts. The app tests use generated PNG fixtures, temporary databases and localhost HTTP only.

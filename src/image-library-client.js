@@ -4,23 +4,27 @@ function createImageLibraryClient({ transport }) {
   for (const method of ["list", "create", "readImage", "reconcileCreate"]) {
     if (typeof transport?.[method] !== "function") throw new TypeError(`transport.${method} is required`);
   }
-  const entry = (value, roomId) => {
+  const entry = (value, roomId, status = "active") => {
     const result = validateResolvedImageAsset(value);
-    if (result.definition.roomId !== roomId || result.status !== "active") throw new Error("Image is unavailable in this room");
+    if (result.definition.roomId !== roomId || (status ? result.status !== status : !["active", "archived"].includes(result.status))) throw new Error("Image is unavailable in this room");
     return result;
   };
   return Object.freeze({
     async list(args) {
       const result = await transport.list(args);
       if (!Array.isArray(result?.entries)) throw new Error("Invalid library response");
-      return { entries: result.entries.filter((value) => value.status === "active").map((value) => entry(value, args.roomId)) };
+      return { entries: result.entries.map((value) => entry(value, args.roomId, args.status || "active")) };
+    },
+    async update(args) {
+      if (typeof transport.update !== 'function') throw new Error('Image management is unavailable');
+      return entry(await transport.update(args), args.roomId, null);
     },
     async create(args) {
-      return entry(await transport.create(args), args.roomId);
+      return entry(await transport.create(args), args.roomId, null);
     },
     async reconcileCreate(args) {
       const result = await transport.reconcileCreate(args);
-      if (result?.status === "committed") return { status: "committed", entry: entry(result.entry, args.roomId) };
+      if (result?.status === "committed") return { status: "committed", entry: entry(result.entry, args.roomId, null) };
       if (result?.status === "not-found") return { status: "not-found" };
       throw new Error("Upload status is still unknown");
     },

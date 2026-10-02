@@ -1,20 +1,22 @@
 import {createImageLibraryClient} from './image-library-client.js';
 import {mountImageLibrary} from './image-library-panel.js';
-import {bindImageDefinitions,imageDefinitions,imageReferenceKey} from './image-asset-context.js';
+import {bindImageDefinitions,imageDefinitions,imageReferenceKey,mergeImageDefinitions} from './image-asset-context.js';
 import {canBuildInRoom} from './personal-editor-policy.js';
 import {roomAllows} from './permissions.js';
+import {validateResolvedImageAsset} from './image-asset-schema.js';
 
 // This port carries no actor or role claims. The HTTP handler resolves the live
 // session from the existing same-origin cookie and checks it again at commit.
 export function createImageAssetTransport({request=globalThis.fetch?.bind(globalThis)}={}){
  const base=roomId=>'/api/rooms/'+encodeURIComponent(roomId)+'/assets';
- async function fetchAsset(url,{signal,body,image=false}={}){
-  const response=await request(url,{method:body?'POST':'GET',credentials:'same-origin',mode:'same-origin',cache:'no-store',signal,headers:body?{'Content-Type':'application/json','Accept':'application/json'}:{Accept:image?'image/png':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+ async function fetchAsset(url,{signal,body,image=false,method=body?'POST':'GET'}={}){
+  const response=await request(url,{method,credentials:'same-origin',mode:'same-origin',cache:'no-store',signal,headers:body?{'Content-Type':'application/json','Accept':'application/json'}:{Accept:image?'image/png':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
   if(!response.ok){let value;try{value=await response.json();}catch{}const error=new Error(value?.error?.message||value?.message||'The image request could not be completed');error.status=response.status;error.code=value?.error?.code;throw error;}
   return image?response.blob():response.json();
  }
  return Object.freeze({
-  list:({roomId,query='',signal})=>fetchAsset(base(roomId)+'?query='+encodeURIComponent(query),{signal}),
+  list:({roomId,query='',status='active',signal})=>fetchAsset(base(roomId)+'?query='+encodeURIComponent(query)+(status==='active'?'':'&status='+encodeURIComponent(status)),{signal}),
+  update:({roomId,assetId,expectedRevision,metadata,status,signal})=>fetchAsset(base(roomId)+'/'+encodeURIComponent(assetId),{method:'PATCH',signal,body:{expectedRevision,...(metadata?{metadata}:{status})}}),
   create:({roomId,draft,bytes,mediaType,operationId,signal})=>{
    if(!(bytes instanceof Uint8Array))throw new TypeError('PNG bytes are required');
    let binary='';for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
@@ -37,12 +39,16 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
  function cache(entries,scope,roomId){
   if(disposed||scope!==stamp()||!context().capabilities.canRead||roomId!==getState().room?.id)return;
   const state=getState(),definitions={...(state.room.imageDefinitions||{})};
-  for(const entry of entries)definitions[imageReferenceKey({assetId:entry.definition.assetId,versionId:entry.version.versionId})]=entry;
+  for(const entry of entries){
+   for(const [key,known]of Object.entries(definitions))if(known.definition.assetId===entry.definition.assetId&&((entry.revision??1)>=(known.revision??1)))definitions[key]=validateResolvedImageAsset({...known,status:entry.status,...(entry.metadata?{metadata:entry.metadata}:{}),...(entry.revision?{revision:entry.revision}:{})});
+   const key=imageReferenceKey({assetId:entry.definition.assetId,versionId:entry.version.versionId});
+   if(!definitions[key]||(entry.revision??1)>=(definitions[key].revision??1))definitions[key]=entry;
+  }
   // Binding validates every envelope and room before mutating the shared map.
   bindImageDefinitions(state.scene,definitions,roomId);state.room.imageDefinitions=definitions;onDefinitions();
  }
- async function invoke(method,args){const scope=stamp();try{const result=await client[method](args);const entries=method==='list'?result.entries:method==='create'?[result]:method==='reconcileCreate'&&result.status==='committed'?[result.entry]:[];if(entries.length)cache(entries,scope,args.roomId);return result;}catch(error){if(scope===stamp()&&(error.status===401||method==='list'&&error.status===404)){suspend();onAuthorityLost(error);}throw error;}}
- const service=Object.freeze(Object.fromEntries(['list','create','reconcileCreate','readImage'].map(method=>[method,args=>invoke(method,args)])));
+ async function invoke(method,args){const scope=stamp();try{const result=await client[method](args);const entries=method==='list'?result.entries:['create','update'].includes(method)?[result]:method==='reconcileCreate'&&result.status==='committed'?[result.entry]:[];if(entries.length)cache(entries,scope,args.roomId);return result;}catch(error){if(scope===stamp()&&(error.status===401||method==='list'&&error.status===404)){suspend();onAuthorityLost(error);}throw error;}}
+ const service=Object.freeze(Object.fromEntries(['list','create','update','reconcileCreate','readImage'].map(method=>[method,args=>invoke(method,args)])));
  const panel=mountPanel({root,getContext:context,service,icon,onChoose:ref=>{if(!context().capabilities.canPlace)return;if(onChoose(ref)!==false)setOpen(false,{focusWorld:true});}});
  function reportOpen(){const next=!root.hidden;if(reportedOpen===next)return;reportedOpen=next;onOpenChange(next);}
  const visibility=new MutationObserver(reportOpen);visibility.observe(root,{attributes:true,attributeFilter:['hidden']});
@@ -69,8 +75,8 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
  function prepareRoom(room,{preserve=true}={}){
   if(!room?.id||!room.scene)return room;
   const state=getState(),same=preserve&&owner===ownerStamp()&&state.room?.id===room.id;
-  const retained=same?{...(state.room.imageDefinitions||{}),...imageDefinitions(state.scene)}:{};
-  const definitions={...retained,...(room.imageDefinitions||{})};
+  const retained=same?mergeImageDefinitions(state.room.imageDefinitions,imageDefinitions(state.scene)):{};
+  const definitions=mergeImageDefinitions(retained,room.imageDefinitions);
   bindImageDefinitions(room.scene,definitions,room.id);room.imageDefinitions=definitions;
   return room;
  }
@@ -78,7 +84,12 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
  function receiveRoom(room){prepareRoom(room);if(room?.id===getState().room?.id){getState().room.imageDefinitions=room.imageDefinitions||{};bindCurrent();}return room;}
  function isOpen(){return !root.hidden;}
  function hasFocus(target=document.activeElement){return !!target&&root.contains(target);}
- function refresh(){if(!context().capabilities.canRead)return;if(isOpen())return panel.refresh();return service.list({roomId:context().roomId,query:''}).catch(()=>{});}
+ function refresh(event){if(!context().capabilities.canRead)return;
+  if(event?.assetId&&['active','archived'].includes(event.status)){
+   const entries=Object.values(getState().room.imageDefinitions||{}).filter(entry=>entry.definition.assetId===event.assetId).map(entry=>validateResolvedImageAsset({...entry,status:event.status,metadata:event.metadata||entry.metadata,revision:event.revision||entry.revision}));
+   if(entries.length)cache(entries,stamp(),context().roomId);
+  }
+  if(isOpen())return panel.refresh();return service.list({roomId:context().roomId,query:''}).catch(()=>{});}
  function dispose(){disposed=true;visibility.disconnect();renderer?.setImageStateListener?.(null);panel.dispose();statusRoot?.replaceChildren();}
  return Object.freeze({isOpen,hasFocus,setOpen,refresh,suspend,resume,prepareRoom,receiveRoom,acceptRoom,syncAuthority,syncRenderer,getContext:context,dispose});
 }

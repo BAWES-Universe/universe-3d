@@ -66,3 +66,42 @@ test('invalid server envelope cannot poison current map',async()=>{
 });
 
 test('capability fallback can read/manage image assets but cannot place invisible 3D objects',()=>{const f=fixture({}, {rendererReady:false});assert.equal(f.context().capabilities.canRead,true);assert.equal(f.context().capabilities.canManage,true);assert.equal(f.context().capabilities.canPlace,false);f.shell.dispose();});
+
+test('lifecycle transport carries explicit CAS and archived-list mode without identity claims',async()=>{
+ const calls=[],transport=createImageAssetTransport({request:async(url,options)=>{calls.push({url,options});return{ok:true,json:async()=>({entries:[]})};}});
+ await transport.list({roomId:'room_a',status:'archived',query:'green'});
+ await transport.update({roomId:'room_a',assetId:'asset_a',expectedRevision:3,metadata:{name:'Fern',description:'Green',tags:['plant']}});
+ await transport.update({roomId:'room_a',assetId:'asset_a',expectedRevision:4,status:'archived'});
+ assert.equal(calls[0].url,'/api/rooms/room_a/assets?query=green&status=archived');
+ assert.equal(calls[1].options.method,'PATCH');assert.equal(calls[1].url,'/api/rooms/room_a/assets/asset_a');
+ assert.deepEqual(JSON.parse(calls[1].options.body),{expectedRevision:3,metadata:{name:'Fern',description:'Green',tags:['plant']}});
+ assert.deepEqual(JSON.parse(calls[2].options.body),{expectedRevision:4,status:'archived'});
+});
+
+test('lifecycle events update pinned envelopes and late list/room responses cannot reactivate archives',async()=>{
+ const f=fixture();await f.service.list({roomId:'room_a'});
+ await f.shell.refresh({assetId:'asset_a',status:'archived',revision:3,metadata:{name:'New label',description:'Saved',tags:['new']}});
+ assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].status,'archived');
+ assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].version.name,'Panel');
+ const room={id:'room_a',scene:scene(),imageDefinitions:{'asset_a:version_a':{...entry(),revision:2}}};f.shell.prepareRoom(room);
+ assert.equal(room.imageDefinitions['asset_a:version_a'].status,'archived');
+ await f.shell.refresh({assetId:'asset_a',status:'active',revision:4,metadata:{name:'Restored',description:'',tags:[]}});
+ assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].status,'active');assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].metadata.name,'Restored');f.shell.dispose();
+});
+
+test('metadata-free archive invalidation preserves known labels until authorized projection refresh',async()=>{
+ const f=fixture();await f.service.list({roomId:'room_a'});
+ await f.shell.refresh({assetId:'asset_a',status:'archived',revision:2});
+ assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].status,'archived');
+ assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].version.name,'Panel');
+ const room={id:'room_a',scene:scene(),imageDefinitions:{'asset_a:version_a':{...entry(),status:'archived',revision:2,metadata:{name:'Authorized pinned label',description:'',tags:[]}}}};
+ f.shell.receiveRoom(room);assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].metadata.name,'Authorized pinned label');f.shell.dispose();
+});
+
+test('uncertain upload receipt remains reconcilable if another editor archived its durable asset',async()=>{
+ const archived={...entry(),status:'archived',revision:2,metadata:{name:'Archived after upload',description:'',tags:[]}};
+ const f=fixture({create:async()=>archived,reconcileCreate:async()=>({status:'committed',entry:archived})});
+ assert.equal((await f.service.create({roomId:'room_a'})).status,'archived');
+ const receipt=await f.service.reconcileCreate({roomId:'room_a'});assert.equal(receipt.status,'committed');assert.equal(receipt.entry.status,'archived');
+ assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].status,'archived');f.shell.dispose();
+});

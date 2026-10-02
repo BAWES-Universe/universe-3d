@@ -1,4 +1,4 @@
-import {IMAGE_PIXELS_PER_METRE, ImageAssetValidationError, canUseImageReference, freezeImageRecord, validateImageInstance, validateResolvedImageAsset} from './image-asset-schema.js';
+import {IMAGE_PIXELS_PER_METRE, ImageAssetValidationError, canRenderImageReference, freezeImageRecord, validateImageInstance, validateResolvedImageAsset} from './image-asset-schema.js';
 
 // Flat decals sit above walkable surface sheets (0–0.04m), below raised props/rugs.
 // This is a shared geometry policy, not a renderer depth-test override.
@@ -29,7 +29,7 @@ function worldBounds(corners) {
 /** Authoritative geometry only after room-scoped server resolution. Never pass scene-supplied definitions here. */
 export function resolveImagePlacement(resolved, rawInstance) {
   const asset = validateResolvedImageAsset(resolved), instance = validateImageInstance(rawInstance);
-  if (!canUseImageReference(instance.assetRef, asset)) throw new ImageAssetValidationError('instance.assetRef', 'The exact active asset version is required', 'UNAVAILABLE_IMAGE_REFERENCE');
+  if (!canRenderImageReference(instance.assetRef, asset)) throw new ImageAssetValidationError('instance.assetRef', 'The exact readable asset version is required', 'UNAVAILABLE_IMAGE_REFERENCE');
   const version = asset.version, width = version.widthPixels / IMAGE_PIXELS_PER_METRE, depth = version.heightPixels / IMAGE_PIXELS_PER_METRE;
   const editBounds = groundBounds(localRectangle(-width / 2, -depth / 2, width / 2, depth / 2, instance));
   const collisionCells = [];

@@ -74,7 +74,7 @@ test('current-version fixture changes discovery but never upgrades an older pinn
   assert.equal(resolved[imageReferenceKey(reference(entry))].version.name, 'Oak panel');
   assert.equal(resolved[imageReferenceKey(reference(entry))].version.depthPivot, 0.75);
   assert.equal(f.repo.usage('room-a').bytes, 2 * makePng().length);
-  assert.deepEqual(await f.service.create(input()), entry);
+  assert.deepEqual(await f.service.create(input()), {...entry, revision: 2});
 });
 
 test('storage enforces consecutive immutable versions, fixed floating and room-bound current pointer', async t => {

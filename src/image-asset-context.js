@@ -1,9 +1,15 @@
-import {validateResolvedImageAsset,validateImageInstance,canUseImageReference} from './image-asset-schema.js';
+import {validateResolvedImageAsset,validateImageInstance,canRenderImageReference} from './image-asset-schema.js';
 import {resolveImagePlacement} from './image-asset-geometry.js';
 
 // Read projection only. Definitions never become part of serialized scene data.
 const contexts=new WeakMap(),geometryCache=new WeakMap(),EMPTY=Object.freeze(Object.create(null));
 export const imageReferenceKey=ref=>`${ref?.assetId}:${ref?.versionId}`;
+/** A late room/list response must not undo a newer lifecycle notification. */
+export function mergeImageDefinitions(...maps){
+ const result=Object.create(null);
+ for(const map of maps)for(const [key,entry]of Object.entries(map||{}))if(!result[key]||(entry.revision??1)>=(result[key].revision??1))result[key]=entry;
+ return result;
+}
 export function bindImageDefinitions(scene,definitions={},roomId){
  if(!scene||typeof scene!=='object')throw new TypeError('A scene is required');
  const normalized=Object.create(null);
@@ -26,7 +32,7 @@ export function cloneWithImageContext(value){
 }
 export function resolvedImage(scene,instance){
  const entry=imageDefinitions(scene)[imageReferenceKey(instance?.assetRef)];
- return entry&&canUseImageReference(instance.assetRef,entry)?entry:null;
+ return entry&&canRenderImageReference(instance.assetRef,entry)?entry:null;
 }
 export function imageGeometry(scene,instance){
  const normalized=validateImageInstance(instance),entry=resolvedImage(scene,normalized);

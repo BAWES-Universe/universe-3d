@@ -12,6 +12,8 @@ export function initializeImageAssetSchema(db) {
       current_version_id TEXT NOT NULL,
       revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
       deleted_at TEXT,
+      metadata_json TEXT CHECK(metadata_json IS NULL OR json_valid(metadata_json)),
+      archived_at TEXT,
       PRIMARY KEY(room_id,asset_id),
       CHECK(json_extract(definition_json,'$.roomId') IS room_id),
       CHECK(json_extract(definition_json,'$.assetId') IS asset_id),
@@ -65,12 +67,26 @@ export function initializeImageAssetSchema(db) {
       WHEN EXISTS(SELECT 1 FROM room_image_asset_versions WHERE room_id=NEW.room_id AND asset_id=NEW.asset_id AND json_extract(version_json,'$.floating') IS NOT json_extract(NEW.version_json,'$.floating'))
       BEGIN SELECT RAISE(ABORT,'Floating mode requires a new image definition'); END;
   `);
+  // Existing immutable definitions/versions stay untouched. Nullable additions
+  // preserve legacy rows and give reads a well-defined display fallback.
+  const nested = db.isTransaction;
+  db.exec(nested ? 'SAVEPOINT image_asset_schema_migration' : 'BEGIN IMMEDIATE');
+  try {
+    const columns = new Set(db.prepare('PRAGMA table_info(room_image_assets)').all().map(column => column.name));
+    if (!columns.has('metadata_json')) db.exec('ALTER TABLE room_image_assets ADD COLUMN metadata_json TEXT CHECK(metadata_json IS NULL OR json_valid(metadata_json))');
+    if (!columns.has('archived_at')) db.exec('ALTER TABLE room_image_assets ADD COLUMN archived_at TEXT');
+    db.exec(nested ? 'RELEASE image_asset_schema_migration' : 'COMMIT');
+  } catch (error) {
+    db.exec(nested ? 'ROLLBACK TO image_asset_schema_migration; RELEASE image_asset_schema_migration' : 'ROLLBACK');
+    throw error;
+  }
 }
 
-const COLUMNS = 'a.definition_json,a.deleted_at,v.version_json';
+const COLUMNS = 'a.definition_json,a.deleted_at,a.archived_at,a.metadata_json,a.revision,v.version_json';
 function unpack(row) {
   if (!row) return null;
-  return { schemaVersion: 1, status: row.deleted_at === null ? 'active' : 'deleted', definition: JSON.parse(row.definition_json), version: JSON.parse(row.version_json) };
+  const version = JSON.parse(row.version_json);
+  return { schemaVersion: 1, status: row.deleted_at !== null ? 'deleted' : row.archived_at !== null ? 'archived' : 'active', revision: row.revision, metadata: row.metadata_json === null ? { name: version.name, description: '', tags: version.tags } : JSON.parse(row.metadata_json), definition: JSON.parse(row.definition_json), version };
 }
 export function createImageAssetRepository(db) {
   if (!db || typeof db.prepare !== 'function') throw new TypeError('A host-owned SQLite DatabaseSync is required');
@@ -91,8 +107,19 @@ export function createImageAssetRepository(db) {
         throw error;
       }
     },
-    list(roomId) {
-      return db.prepare(`SELECT ${COLUMNS} FROM room_image_assets a JOIN room_image_asset_versions v ON v.room_id=a.room_id AND v.asset_id=a.asset_id AND v.version_id=a.current_version_id WHERE a.room_id=? AND a.deleted_at IS NULL ORDER BY json_extract(a.definition_json,'$.createdAt'),a.asset_id`).all(roomId).map(unpack);
+    list(roomId, { status = 'active' } = {}) {
+      if (!['active', 'archived'].includes(status)) throw new TypeError('Invalid image library status');
+      return db.prepare(`SELECT ${COLUMNS} FROM room_image_assets a JOIN room_image_asset_versions v ON v.room_id=a.room_id AND v.asset_id=a.asset_id AND v.version_id=a.current_version_id WHERE a.room_id=? AND a.deleted_at IS NULL AND a.archived_at IS ${status === 'active' ? '' : 'NOT '}NULL ORDER BY json_extract(a.definition_json,'$.createdAt'),a.asset_id`).all(roomId).map(unpack);
+    },
+    getCurrent(roomId, assetId) {
+      return unpack(db.prepare(`SELECT ${COLUMNS} FROM room_image_assets a JOIN room_image_asset_versions v ON v.room_id=a.room_id AND v.asset_id=a.asset_id AND v.version_id=a.current_version_id WHERE a.room_id=? AND a.asset_id=?`).get(roomId, assetId));
+    },
+    updateLifecycle({ roomId, assetId, expectedRevision, metadata, status, archivedAt }) {
+      if (!db.isTransaction) throw new Error('Asset lifecycle changes require a transaction');
+      const result = metadata !== undefined
+        ? db.prepare('UPDATE room_image_assets SET metadata_json=?,revision=revision+1 WHERE room_id=? AND asset_id=? AND revision=? AND deleted_at IS NULL').run(JSON.stringify(metadata), roomId, assetId, expectedRevision)
+        : db.prepare('UPDATE room_image_assets SET archived_at=?,revision=revision+1 WHERE room_id=? AND asset_id=? AND revision=? AND deleted_at IS NULL').run(status === 'archived' ? archivedAt : null, roomId, assetId, expectedRevision);
+      return result.changes === 1;
     },
     getVersion(roomId, assetId, versionId) {
       return unpack(db.prepare(`SELECT ${COLUMNS} FROM room_image_assets a JOIN room_image_asset_versions v ON v.room_id=a.room_id AND v.asset_id=a.asset_id WHERE a.room_id=? AND a.asset_id=? AND v.version_id=?`).get(roomId, assetId, versionId));
@@ -112,7 +139,7 @@ export function createImageAssetRepository(db) {
     insertCreated({ entry, bytes, userId, operationId, digest }) {
       if (!db.isTransaction) throw new Error('Asset insertion requires a transaction');
       const { definition: definition, version } = entry;
-      db.prepare('INSERT INTO room_image_assets(room_id,asset_id,definition_json,current_version_id) VALUES(?,?,?,?)').run(definition.roomId, definition.assetId, JSON.stringify(definition), version.versionId);
+      db.prepare('INSERT INTO room_image_assets(room_id,asset_id,definition_json,current_version_id,metadata_json) VALUES(?,?,?,?,?)').run(definition.roomId, definition.assetId, JSON.stringify(definition), version.versionId, JSON.stringify(entry.metadata));
       db.prepare('INSERT INTO room_image_asset_versions(room_id,asset_id,version_id,sequence,version_json,sha256,byte_length,bytes) VALUES(?,?,?,?,?,?,?,?)').run(definition.roomId, definition.assetId, version.versionId, version.sequence, JSON.stringify(version), version.sha256, version.byteLength, bytes);
       db.prepare('INSERT INTO room_image_asset_operations(room_id,user_id,operation_id,request_digest,asset_id,version_id) VALUES(?,?,?,?,?,?)').run(definition.roomId, userId, operationId, digest, definition.assetId, version.versionId);
     },

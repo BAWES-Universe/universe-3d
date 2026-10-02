@@ -17,7 +17,7 @@
 
 # Standalone implementation status · 2026-10-02
 
-The current v0.6.4 increment adds a server-authorized ICE configuration and renewal path for ordinary P2P. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+The current v0.6.5 increment adds room image metadata editing and reversible archive/restore, preserving the optional P2P ICE configuration path. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Latest verification
 
@@ -63,10 +63,14 @@ The earlier quality checkpoint and v0.3 hierarchy evidence remain unchanged. The
 - Successful real AV packets, existing LiveKit/TURN/broadcast adapter, physical devices and network handover
 - Operator-run Docker/TLS/proxy, resource and disk quotas, consistent backup/restore and isolated deployment
 - Matrix/E2EE/federation, SSO, external integrations, upstream owned-avatar catalogs and full quest programs
-- Image definition editing/replacement/archive/delete, collection import, expandable persistent room chunks, reusable composite asset workshop, terrain tools and creator-made social game logic
+- Image version/depth editing/replacement, irreversible deletion, collection import, expandable persistent room chunks, reusable composite asset workshop, terrain tools and creator-made social game logic
 - Positions remain bounded client reports, not authoritative physics or hardened anti-cheat
 - Local original wardrobe and room-scoped file access do not imply upstream entitlement or all area-tag file semantics
 
 See `CUSTOM-IMAGES.md`, `IMAGE-LIBRARY-CONTRACT.md`, `ACTION-AUTHORING.md`, `server/PERSONAL-AREAS.md`, `server/BOTS.md`, `BRAND-PORT.md` and `DEV-PREVIEW-OPERATOR.md` for implemented contracts and limitations. No deployment has occurred.
 
 The focused Silent freshness correction adds 39 controlled regressions (396 aggregate tests), immediate deny-only committed geometry, bounded 8-second policy GETs and current-ownership checks around delayed transport work. Five media browser suites and build/startup/container checks pass locally. Full exact-revision remote CI remains pending; external packets and physical devices remain unverified.
+
+## Room-image lifecycle increment
+
+Mutable library name/description/tags and reversible archive/restore are implemented separately from immutable versions. Existing pinned placements retain their bytes, rendering and collision; new archived placements/duplicates are rejected. Full room editor management and personal-space placement rights remain distinct. See `IMAGE-ASSET-LIFECYCLE.md` for the policy and exact verification boundary; full EDIT-08 parity is not claimed.

@@ -17,7 +17,7 @@ export function imageAssetPath(resolved) {
 /** This resolver constructs a dedicated endpoint; it never reads a URL from instance JSON. */
 export function resolveAuthorizedImageURL({resolved, context, origin}) {
   const asset = validateResolvedImageAsset(resolved);
-  if (!context?.canRead || context.roomId !== asset.definition.roomId || asset.status !== 'active') throw new ImageAssetLoadError('IMAGE_ACCESS_UNAVAILABLE', 'This image is unavailable in the current room');
+  if (!context?.canRead || context.roomId !== asset.definition.roomId || !['active','archived'].includes(asset.status)) throw new ImageAssetLoadError('IMAGE_ACCESS_UNAVAILABLE', 'This image is unavailable in the current room');
   return new URL(imageAssetPath(asset), baseOrigin(origin)).href;
 }
 /** Resolver injection cannot expand the destination beyond the exact dedicated same-origin route. */
@@ -100,7 +100,7 @@ export function createImageTexturePool({loadTexture, maxResidentPixels = 16 * 10
     let key, asset;
     try {
       asset = validateResolvedImageAsset(args.resolved);
-      if (!args.context?.canRead || args.context.roomId !== asset.definition.roomId || asset.status !== 'active') throw new ImageAssetLoadError('IMAGE_ACCESS_UNAVAILABLE', 'This image is unavailable in the current room');
+      if (!args.context?.canRead || args.context.roomId !== asset.definition.roomId || !['active','archived'].includes(asset.status)) throw new ImageAssetLoadError('IMAGE_ACCESS_UNAVAILABLE', 'This image is unavailable in the current room');
       key = imageTextureKey({...args, resolved: asset});
     } catch (error) { return Promise.reject(error); }
     let entry = entries.get(key);

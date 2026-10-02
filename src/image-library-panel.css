@@ -12,10 +12,10 @@
 .u-image-library h2, .u-image-library h3, .u-image-library p { margin: 0; }
 .u-image-library h2 { font: 700 24px/1.2 Space, Inter, Arial, sans-serif; }
 .u-image-library h3 { font-size: 18px; }
-.u-image-library button, .u-image-library input, .u-image-library select { font: inherit; }
+.u-image-library button, .u-image-library input, .u-image-library select, .u-image-library textarea { font: inherit; }
 .u-image-library button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 44px; border: 1px solid var(--u-secondary-border); border-radius: var(--u-pill); background: var(--u-secondary); color: inherit; padding: 9px 13px; cursor: pointer; touch-action: manipulation; white-space: normal; }
 @media (hover: hover) { .u-image-library button:hover:enabled { background: var(--u-control-hover); } }
-.u-image-library button:disabled, .u-image-library input:disabled, .u-image-library select:disabled { opacity: .55; cursor: default; }
+.u-image-library button:disabled, .u-image-library input:disabled, .u-image-library select:disabled, .u-image-library textarea:disabled { opacity: .55; cursor: default; }
 .u-image-library :focus-visible { outline: 2px solid var(--u-text); outline-offset: -3px; }
 .u-image-library .uil-primary { color: var(--u-text); background: var(--u-primary); border-color: transparent; }
 @media (hover: hover) { .u-image-library .uil-primary:hover:enabled { background: var(--u-primary-hover); } }
@@ -26,7 +26,7 @@
 .u-image-library .uil-status { min-height: 24px; margin: 10px 0; color: var(--u-chat-live); font-size: 12px; }
 .uil-tools { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; }
 .uil-search { display: grid; gap: 5px; flex: 1 1 100%; }
-.u-image-library input:not([type=checkbox]):not([type=file]), .u-image-library select { width: 100%; min-width: 0; min-height: 44px; color: inherit; background: var(--u-input); border: 1px solid var(--u-secondary-hover-border); border-radius: 10px; padding: 9px 11px; }
+.u-image-library input:not([type=checkbox]):not([type=file]), .u-image-library select, .u-image-library textarea { width: 100%; min-width: 0; min-height: 44px; color: inherit; background: var(--u-input); border: 1px solid var(--u-secondary-hover-border); border-radius: 10px; padding: 9px 11px; }
 .u-image-library input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--kind-universe-solid); }
 .u-image-library option { background: var(--u-ink); }
 .uil-cards { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 12px; }
@@ -61,3 +61,6 @@
 .u-image-library button:active:enabled { background: var(--u-control-pressed); }
 .u-image-library .uil-primary:active:enabled { background: var(--u-primary-pressed); }
 @media (pointer: coarse) { .u-image-library {--image-cell-size:48px} .u-image-library button,.u-image-library input:not([type=checkbox]):not([type=file]),.u-image-library select { min-height:48px; } .u-image-library .uil-cell { width:48px;height:48px;min-height:48px; } }
+
+.u-image-library textarea { resize: vertical; min-height: 100px; }
+.uil-tools > .uil-field { flex: 1 1 140px; }

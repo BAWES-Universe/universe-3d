@@ -60,6 +60,15 @@ function tags(raw = []) {
   return result;
 }
 const DRAFT_FIELDS = ['name', 'tags', 'representation', 'depthPreset', 'depthPivot', 'floating', 'collisionGrid'];
+/** Mutable discovery text; never substitutes version geometry, bytes, or identity. */
+export function normalizeImageLibraryMetadata(raw) {
+  keys(raw, ['name', 'description', 'tags'], 'metadata');
+  required(raw, ['name', 'description'], 'metadata');
+  return freezeImageRecord({name: text(raw.name, 'metadata.name', 120), description: text(raw.description, 'metadata.description', 2000, true), tags: tags(raw.tags)});
+}
+export function imageLibraryMetadata(entry) {
+  return entry.metadata ?? {name: entry.version.name, description: '', tags: entry.version.tags};
+}
 export function normalizeImageAssetDraft(raw, decodedImageInfo) {
   keys(raw, DRAFT_FIELDS, 'draft'); record(decodedImageInfo, 'decodedImageInfo');
   const {maxDimension, maxPixels, maxBytes, maxCells} = IMAGE_ASSET_LIMITS;
@@ -123,14 +132,21 @@ export function validateImageDefinition(definition, version) {
 const validatedResolved = new WeakSet();
 export function validateResolvedImageAsset(raw) {
   if (raw && validatedResolved.has(raw)) return raw;
-  keys(raw, ['schemaVersion', 'status', 'definition', 'version'], 'resolved');
+  keys(raw, ['schemaVersion', 'status', 'definition', 'version', 'metadata', 'revision'], 'resolved');
   if (raw.schemaVersion !== 1) fail('resolved.schemaVersion', 'Unsupported resolved schema', 'UNSUPPORTED_IMAGE_SCHEMA');
-  if (!['active', 'deleted'].includes(raw.status)) fail('resolved.status', 'An explicit active or deleted status is required');
-  const result = freezeImageRecord({...validateImageDefinition(raw.definition, raw.version), status: raw.status});
+  if (!['active', 'archived', 'deleted'].includes(raw.status)) fail('resolved.status', 'An explicit active, archived or deleted status is required');
+  const result = freezeImageRecord({...validateImageDefinition(raw.definition, raw.version), status: raw.status,
+    ...(raw.metadata === undefined ? {} : {metadata: normalizeImageLibraryMetadata(raw.metadata)}),
+    ...(raw.revision === undefined ? {} : {revision: integer(raw.revision, 'resolved.revision', 1, Number.MAX_SAFE_INTEGER)})});
   validatedResolved.add(result); return result;
 }
 export function canUseImageReference(reference, resolved) {
   try { const ref = validateAssetReference(reference), value = validateResolvedImageAsset(resolved); return value.status === 'active' && ref.assetId === value.definition.assetId && ref.versionId === value.version.versionId; }
+  catch (error) { if (error instanceof ImageAssetValidationError) return false; throw error; }
+}
+/** Geometry/readability only. Archived references never authorize a new instance. */
+export function canRenderImageReference(reference, resolved) {
+  try { const ref = validateAssetReference(reference), value = validateResolvedImageAsset(resolved); return ['active', 'archived'].includes(value.status) && ref.assetId === value.definition.assetId && ref.versionId === value.version.versionId; }
   catch (error) { if (error instanceof ImageAssetValidationError) return false; throw error; }
 }
 export function normalizeImageRotation(value = 0) {

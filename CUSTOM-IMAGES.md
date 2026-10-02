@@ -1,6 +1,6 @@
 # Custom room images · v0.6 slice
 
-Build → Custom images supports a real local file chooser, draft preview, name/tags, floor/standing/custom-pivot planes and optional painted collision cells. Upload is explicit. Search matches names/tags; Place selects a repeat placement tool. Each placed instance pins an immutable version and supports native ghost/select/drag/quarter-turn/duplicate/keyboard/undo/redo/save/reload. Transparent pixels can be picked through; keyboard selection still reaches wholly transparent objects.
+Build → Custom images supports a real local file chooser, draft preview, name/tags, floor/standing/custom-pivot planes and optional painted collision cells. Upload is explicit. Search matches mutable library names/descriptions/tags; Place selects a repeat placement tool. Each placed instance pins an immutable version and supports native ghost/select/drag/quarter-turn/duplicate/keyboard/undo/redo/save/reload. Transparent pixels can be picked through; keyboard selection still reaches wholly transparent objects.
 
 ## Storage and authority
 
@@ -14,7 +14,8 @@ The image endpoint is same-origin and cookie-authenticated: `/api/rooms/:room/as
 - 32 pixels = 1 world metre. Collision grids require 32px-multiple dimensions, nonfloating placement and at most 4096 binary cells. Floating means collision-free/free-position placement, not levitation
 - 100 definitions and 50MiB retained image bytes per room. Shared renderer budget: 16,777,216 source pixels and 50MiB source bytes, about64MiB raw RGBA plus16MiB alpha masks at capacity before overhead. Loading is eager within budget; no frustum streaming/LRU claim
 - Upright panels/floor sheets are flat image geometry, not modeled assets. Quarter-turns only. Floor height0.05m clears existing paving; raised props retain depth. Nearest sampling/alpha cutoff preserves pixel selection but is not smooth semi-transparency or exact 2D painter-order parity
-- Editing metadata, replacing versions, archiving/deleting/restoring library assets and collection import are not exposed yet. The UI states this limitation. Current version storage invariants are groundwork, not a claim that these workflows exist
+- Library name/description/tag editing and reversible archive/restore are implemented with revision conflicts and full-editor authority. Existing saved instances retain exact versions and remain editable; archived images cannot be newly placed/duplicated. See `IMAGE-ASSET-LIFECYCLE.md`
+- Replacing versions, changing version geometry/depth, irreversible deletion and collection import are not exposed
 - Composite primitive workshop, GLB import, marketplaces, terrain/chunks and creator game logic remain separate future work
 
 ## Tests and evidence
