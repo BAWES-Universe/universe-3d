@@ -61,7 +61,7 @@ async function defaultRequest(url, options = {}) {
  * operation and body. No credential or external-provider controls are exposed.
  * onPreview receives {roomId, botId, bot: config|null}; it never means a durable save.
  */
-export function createBotEditor({ getRoom = () => null, getActorId = () => null, request = defaultRequest, onPreview = () => {}, onClose = () => {}, onSaved = () => {}, host = document.body } = {}) {
+export function createBotEditor({ getRoom = () => null, getActorId = () => null, request = defaultRequest, onPreview = () => {}, onClose = () => {}, onSaved = () => {}, onFocus = () => {}, host = document.body } = {}) {
   const uid = `resident-editor-${++editorSequence}`;
   // Deliberately memory-only: never store private instructions across reloads or
   // accounts. Navigation preserves a new draft; only explicit Save/Create commits it.
@@ -232,6 +232,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     wardrobe.append(appearanceGrid);
     const appearance = section('Original 3D appearance', hint('These looks use the same native 3D wardrobe as players.'), presets, wardrobe);
     const placement = section('Home & movement area', el('div', { class: 'resident-room-lock' }, el('span', { 'aria-hidden': 'true', text: '⌖' }), el('span', { text: s.room.name || s.room.id }), badge('Room locked')), hint('Select another room in the world to manage its residents.'), row(field(s, draft, 'spawn.x', 'Home X', 'number', { step: .1 }), field(s, draft, 'spawn.z', 'Home Z', 'number', { step: .1 })), row(field(s, draft, 'radius', 'Movement radius', 'number', { min: 0, max: 100, step: .5, hint: 'Zero keeps this resident at home.' }), field(s, draft, 'responseRadius', 'Response radius', 'number', { min: 0, max: 20, step: .5, hint: 'No replies until AI is connected.' })));
+    placement.append(button('Focus resident on map', () => focus(s), { class: 'resident-secondary', 'data-testid': 'bot-focus' }));
     placement.append(el('div', { class: 'resident-plan-wrap' }, el('div', { class: 'resident-plan-heading' }, el('strong', { text: 'Room plan' }), el('span', { text: 'Drag home, route points or radius' })), el('div', { 'data-plan-host': '', class: 'resident-plan-host' }), hint('Preview only until saved. The room server checks positions and obstructions.')));
     const areas = s.room.scene?.areas || [];
     if (areas.length) {
@@ -404,6 +405,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     });
     renderStatus(); syncFields(); return s.saving;
   }
+  function focus(s) { if (active(s) && s.draft) { try { onFocus(copy(s.draft.spawn)); } catch { /* Camera focus cannot discard the draft. */ } } }
   async function select(id) {
     syncActor();
     const s = session, token = ++navigation;
@@ -419,7 +421,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!record) s.draft.appearance = normalizeAppearance(s.catalog.appearances[0].appearance);
     s.error = ''; s.conflict = false; s.pendingOperation = null; s.deleteOperation = null; s.pendingCommand = null; s.deleteConfirm = false;
     if (!record) restoreNewDraft(s);
-    renderList(); renderDetail(); detail.scrollTop = 0; renderStatus(); preview(s);
+    renderList(); renderDetail(); detail.scrollTop = 0; renderStatus(); preview(s); focus(s);
     detail.querySelector('[data-bot-field="name"]')?.focus({ preventScroll: true }); return true;
   }
   async function back() {

@@ -2,6 +2,10 @@
 
 This active v0.6.1 tranche adds the integrated custom-image library to the recorded functional-authoring, personal-space, local-resident and deployment-configuration checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
+## Current framing increment
+
+Perspective side-panel framing preserves full-canvas picking and sticky manual camera ownership. Measured side-panel/HUD rectangles select usable view space; only explicit resident focus takes camera control. This increment passes 410 CPU/API tests and 29 scoped browser checks locally. `FRAMING.md` records fixture and UI-overlap limits. Remote CI is pending for this exact revision.
+
 ## Integrated now
 
 - Room-authorized PNG upload/search/reuse, immutable pinned versions, native floor/upright panels, alpha-aware picking, shared painted collision/full edit footprints and explicit resource/error lifecycle

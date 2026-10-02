@@ -26,6 +26,8 @@ import {createBotMapPreview} from './bot-preview.js';
 import {createAvatarRig} from './avatar-rig.js';
 import {resolveAvatarMotion} from './avatar-motion.js';
 import {createCameraRig} from './camera-rig.js';
+import {frameInFreeArea,createFramingTransition,projectionShift} from './viewport-framing.js';
+import {measurePanelOcclusion} from './panel-occlusion.js';
 import {createEnvironmentMaterials} from './environment-materials.js';
 import {buildEnvironment} from './scene-layout.js';
 import {labelFits,WORLD_LABEL_OCCLUDERS} from './label-layout.js';
@@ -37,6 +39,7 @@ export async function createRenderer(canvas,labels){
  const scene=new Scene(engine);scene.clearColor=new Color4(.065,.058,.096,1);scene.skipPointerMovePicking=true;
  const camera=new FreeCamera('camera',new Vector3(23,27,23),scene);camera.minZ=.15;camera.maxZ=160;camera.fov=.78;camera.inputs.clear();
  const rig=createCameraRig({aspect:canvas.clientWidth/canvas.clientHeight});
+ const framingTransition=createFramingTransition();let framing={status:'unobstructed',offset:{x:0,y:0},rect:null,panelCount:0},framingKey='',framingGoal=null;
  const hemi=new HemisphericLight('soft-sky',new Vector3(0,1,0),scene);hemi.intensity=.73;hemi.diffuse=hex('#ecedff');hemi.groundColor=hex('#655c72');
  const sun=new DirectionalLight('late-afternoon',new Vector3(-.65,-1,.4),scene);sun.position.set(20,32,-18);sun.intensity=.85;sun.diffuse=hex('#fff0ca');
  const shadows=new ShadowGenerator(1024,sun);shadows.usePercentageCloserFiltering=true;shadows.filteringQuality=ShadowGenerator.QUALITY_LOW;shadows.bias=.0008;shadows.normalBias=.012;shadows.setDarkness(.28);
@@ -151,7 +154,18 @@ export async function createRenderer(canvas,labels){
  }
  function syncPeople(people){const seen=new Set();for(const p of people){seen.add(p.id);avatar(p);}for(const [id,a]of avatars)if(!seen.has(id)){a.rig.dispose();a.shadow.dispose();a.el.remove();avatars.delete(id);}}
 
- function updateCamera(){const p=rig.getPosition(),s=rig.getState();camera.position.set(p.x,p.y,p.z);camera.setTarget(new Vector3(s.target.x,.6,s.target.z));camera.getViewMatrix(true);camera.getProjectionMatrix(true);scene.updateTransformMatrix(true);}
+ function updateCamera(){const p=rig.getPosition(),s=rig.getState();camera.position.set(p.x,p.y,p.z);camera.setTarget(new Vector3(s.target.x,.6,s.target.z));camera.getViewMatrix(true);camera.unfreezeProjectionMatrix();const projection=camera.getProjectionMatrix(true);const shift=projectionShift(framing.offset,canvas.clientWidth,canvas.clientHeight);projection.setRowFromFloats(2,projection.m[8]+shift.x,projection.m[9]+shift.y,projection.m[10],projection.m[11]);camera.freezeProjectionMatrix(projection);scene.updateTransformMatrix(true);}
+ function updateFraming(dt){
+  const s=rig.getState();if(s.framingMode==='manual'){framing={...framing,status:'manual',offset:framingTransition.step(null,dt,{manual:true})};return;}
+  const {panels,hud}=measurePanelOcclusion(canvas),points=[],anchor=s.follow?s.player:s.target;
+  // Conservative envelope includes the widest avatar/accessory and label anchor.
+  // Remove the existing shift before fitting; otherwise projection feeds itself.
+  for(const x of [-.72,.72])for(const z of [-.72,.72])for(const y of [.02,2.85]){const p=screenPoint(anchor.x+x,anchor.z+z,y);points.push({x:p.x-framing.offset.x,y:p.y-framing.offset.y});}
+  const footprint={left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x)),top:Math.min(...points.map(p=>p.y)),bottom:Math.max(...points.map(p=>p.y))};
+  const input={width:canvas.clientWidth,height:canvas.clientHeight,panels,hud,footprint};const key=JSON.stringify(input,(_,v)=>typeof v==='number'?Math.round(v*4)/4:v);
+  if(key!==framingKey){framingGoal=frameInFreeArea(input);framingKey=key;}
+  framing={...framingGoal,offset:framingTransition.step(framingGoal?.offset,dt)};
+ }
  function project(v){return Vector3.Project(v,Matrix.Identity(),scene.getTransformMatrix(),camera.viewport.toGlobal(engine.getRenderWidth(),engine.getRenderHeight()));}
  function screenPoint(x,z,y=0){const p=project(new Vector3(x,y,z));const sx=p.x*canvas.clientWidth/engine.getRenderWidth(),sy=p.y*canvas.clientHeight/engine.getRenderHeight();return {x:sx,y:sy,visible:p.z>=0&&p.z<=1&&sx>=0&&sx<=canvas.clientWidth&&sy>=0&&sy<=canvas.clientHeight};}
  function positionLabel(el,v){const p=screenPoint(v.x,v.z,v.y);el.style.display='';el.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-100%)`;pendingLabels.push({el,visible:p.visible});}
@@ -170,7 +184,7 @@ export async function createRenderer(canvas,labels){
 
  function resize(){engine.resize();updateCamera();}
  function render(dt,actualDt=dt){
-  tick+=dt;frameTimes.push(actualDt*1000);if(frameTimes.length>300)frameTimes.shift();const s=rig.step(dt);updateCamera();
+  tick+=dt;frameTimes.push(actualDt*1000);if(frameTimes.length>300)frameTimes.shift();const s=rig.step(dt);updateCamera();updateFraming(actualDt);updateCamera();
   for(const a of avatars.values()){
    const p=a.p,rate=p.self?1:1-Math.exp(-dt*20);a.x+=(p.x-a.x)*rate;a.z+=(p.z-a.z)*rate;
    const motion=resolveAvatarMotion(p);
@@ -216,8 +230,8 @@ export async function createRenderer(canvas,labels){
   setDestination(target){if(destination&&target&&Math.hypot(destination.position.x-target.x,destination.position.z-target.z)<.01)return;destination?.dispose();destination=marker('walk-destination',target,'#ffe6a4',.75);},
   setGuide(target){guide?.dispose();guide=marker('quest-marker',target,'#e9c74c',1.7);},
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},
-  setAuthoringViewport:fraction=>{const width=Math.max(.25,Math.min(1,fraction));if(Math.abs(camera.viewport.width-width)>.001){camera.viewport.width=width;updateCamera();}},focusPoint:(x,z)=>rig.focusPoint(x,z),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
-  getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width}),getCameraAngle:()=>rig.getState().yaw,
+  focusPoint:act((x,z)=>rig.focusPoint(x,z)),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
+  getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width,framing:structuredClone({...framing,targetOffset:framingGoal?.offset||null})}),getCameraAngle:()=>rig.getState().yaw,
   getStats:()=>({engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState()}),
   dispose(){setBotPreview(null);ghostImage?.dispose();for(const view of imageViews.values())view.dispose();imageViews.clear();imagePool.dispose();window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
 }
