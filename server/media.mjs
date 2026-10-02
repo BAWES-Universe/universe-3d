@@ -56,7 +56,7 @@ export function createMediaPolicy({store,presence,emitUser,now}) {
       for(const section of sections){const dir=section.match(/^a=(sendrecv|sendonly|recvonly|inactive)\r?$/m)?.[1]||'sendrecv';if(!peer.canSend&&['sendrecv','sendonly'].includes(dir))v.fail(403,'MEDIA_DIRECTION_FORBIDDEN','Your role is receive-only');if(!peer.canReceive&&['sendrecv','recvonly'].includes(dir))v.fail(403,'MEDIA_DIRECTION_FORBIDDEN','This link is send-only');}
       payload.description={type:d.type,sdp};
     }else if(b.candidate!==undefined){if(b.candidate!==null)v.record(b.candidate,'candidate');v.safeJson(b.candidate,{maxBytes:12000,maxDepth:4});payload.candidate=b.candidate;
-    }else if(b.request!==undefined){payload.request=v.oneOf(b.request,['offer'],'request');}
+    }else if(b.request!==undefined){payload.request=v.oneOf(b.request,['offer','restart'],'request');}
     else v.fail(400,'INVALID_SIGNAL','Supply description, candidate or request');
     emitUser(to,'media-signal',payload);return {ok:true};
   }

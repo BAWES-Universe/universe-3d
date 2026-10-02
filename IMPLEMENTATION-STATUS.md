@@ -17,11 +17,11 @@
 
 # Standalone implementation status · 2026-10-02
 
-This active v0.6.1 tranche adds the integrated custom-image library to the recorded functional-authoring, personal-space, local-resident and deployment-configuration checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+The current v0.6.4 increment adds a server-authorized ICE configuration and renewal path for ordinary P2P. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
-## Current framing increment
+## Latest verification
 
-Perspective side-panel framing preserves full-canvas picking and sticky manual camera ownership. Measured side-panel/HUD rectangles select usable view space; only explicit resident focus takes camera control. This increment passes 410 CPU/API tests and 29 scoped browser checks locally. `FRAMING.md` records fixture and UI-overlap limits. Remote CI is pending for this exact revision.
+`DEVELOPMENT-STATUS.md` records the latest exact source and local checks. Earlier numbers below are historical evidence tied to their stated revision, not certification of the current tree. Native ICE configuration and changed SDP restart credentials prove transport setup only; relay allocation, working connections and successful AV packets still require operator-run acceptance. The existing cap-four/opted-in conversation graph has not yet been replaced by the intended hybrid membership model.
 
 ## Integrated now
 

@@ -9,7 +9,7 @@ const {chromium}=require('playwright-core');const embedded=(await import(require
 const root=new URL('../',import.meta.url), results=[];
 const server=createServer(async(req,res)=>{
  try{const path=new URL(req.url,'http://localhost').pathname;
- if(['/src/media.js','/src/media.css','/src/media-policy-copy.js'].includes(path)){res.setHeader('Content-Type',path.endsWith('.css')?'text/css':'text/javascript');res.end(await readFile(new URL('.'+path,root)));return;}
+ if(['/src/media.js','/src/media-ice.js','/src/media.css','/src/media-policy-copy.js'].includes(path)){res.setHeader('Content-Type',path.endsWith('.css')?'text/css':'text/javascript');res.end(await readFile(new URL('.'+path,root)));return;}
  res.setHeader('Permissions-Policy','microphone=(), camera=(), display-capture=()');res.setHeader('Content-Type','text/html');res.end(`<!doctype html><html><head><link rel="stylesheet" href="/src/media.css"><style>body{font-family:Arial;color:#eee;background:#18131f}#media{position:absolute;bottom:20px;left:12px;max-width:calc(100vw - 24px)}</style></head><body><div id="media"></div><script type="module">import {mountMedia} from '/src/media.js';window.captureAttempts=0;window.peerAttempts=0;window.stateCalls=[];
  for(const name of ['getUserMedia','getDisplayMedia'])Object.defineProperty(navigator.mediaDevices,name,{configurable:true,value:()=>{captureAttempts++;throw Error('Capture prohibited by controlled fixture');}});
  window.RTCPeerConnection=class{constructor(){peerAttempts++;throw Error('No peer transport expected in this DOM fixture');}};

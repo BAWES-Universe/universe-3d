@@ -1,6 +1,7 @@
+import {createIceCache} from './media-ice.js';
 import {SILENT_MEDIA_MESSAGE,SILENT_MEDIA_EXIT_MESSAGE} from './media-policy-copy.js';
 // Real, opt-in WebRTC. Room membership and recipients come only from the server.
-// No external STUN/TURN service is configured or contacted by this module.
+// Server-authorized ICE only; an unconfigured server provides honest host-only transport.
 const KINDS = ['microphone', 'camera', 'screen'];
 const MEDIA_KINDS = ['audio', 'video', 'video'];
 const POLICY_TIMEOUT_MS = 8000;
@@ -49,23 +50,45 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   const devices = Object.fromEntries(KINDS.map(k => [k, { status: 'off', error: '' }]));
   const peers = new Map();
   const earlyCandidates = new Map();
-  let policy = null, joined = false, joining = false, disposed = false, generation = 0;
+  let iceEpoch = 0, iceError = '', policy = null, joined = false, joining = false, disposed = false, generation = 0;
   let roomId = currentRoomId(getState()), actorId = currentActorId(getState()), policyError = '', notice = '', refreshRequest = null;
   // Orders overlapping HTTP fetches against accepted pushes within this client lifecycle.
   // The server has no monotonic revision; this is not an ordering claim across SSE reconnects.
   let policyEpoch = 0, localSilent = false, awaitingPolicy = false, roomUnavailable = false, committedAreas = null;
-  const transportAllowed = () => !disposed && joined && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy && !policyError && policy?.enabled !== false && policy?.roomId === roomId && policy?.context?.kind !== 'silent' && !(policy?.context?.kind === 'proximity' && policy.context.canPublish === false);
-  // Compare the authority fields this historical host-only policy actually provides.
+  const transportAllowed = () => !disposed && joined && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy && !policyError && !iceError && (policy?.iceRequired!==true||!!policy?.iceScope) && policy?.enabled !== false && policy?.roomId === roomId && policy?.context?.kind !== 'silent' && !(policy?.context?.kind === 'proximity' && policy.context.canPublish === false);
+  // Denial geometry and personalized server scope stay independent of transport cache.
   const authorityKey = value => JSON.stringify([value?.selfId,value?.roomId,value?.context?.kind,value?.context?.group,value?.context?.canPublish]);
   function peerCurrent(p) { return transportAllowed() && !p.closed && peers.get(p.id) === p && policyPeers(policy).some(info => info.id === p.id && peerDirection(info) === peerDirection(p.info)); }
   const sameContext = () => currentRoomId(getState()) === roomId && currentActorId(getState()) === actorId;
   const elapsedNow = () => env.performance?.now?.() ?? now();
   let lastRefresh = null, lastStats = 0, captureSequence = { microphone: 0, camera: 0, screen: 0 };
   let idSequence = 0;
-  const nextId = () => env.crypto?.randomUUID?.() || `${now().toString(36)}-${++idSequence}`;
+  const nextId = () => env.crypto?.randomUUID?.() || `ice-${now().toString(36)}-${String(++idSequence).padStart(16,'0')}`;
+  const iceContext = () => ({roomId,selfId:policy?.selfId,scope:policy?.iceScope,generation,epoch:iceEpoch,authority:authorityKey(policy)});
+  const iceCurrent = context => transportAllowed()&&context.epoch===iceEpoch&&context.generation===generation&&context.roomId===roomId&&context.selfId===policy?.selfId&&context.scope===policy?.iceScope&&context.authority===authorityKey(policy);
+  const ice = createIceCache({api,env,now,nextId,isCurrent:iceCurrent,onFailure:iceFailed,onRenew:renewIce});
+  // Retiring a retry also retires its continuations, even within the same scope.
+  function retireIce() { iceEpoch++; ice.retire(); }
+  function iceFailed(message) { iceError=message; pauseMedia(); emit(); }
+  function renewIce(config) {
+    if(!transportAllowed())return;
+    const context=iceContext();
+    for(const p of peers.values()) {
+      if(!peerCurrent(p))continue;
+      try { p.pc.setConfiguration(config);
+        if(policy.selfId<p.id)restart(p);
+        else void signal(p,{request:'restart'}).catch(()=>{if(iceCurrent(context)&&peerCurrent(p))iceFailed('ICE restart signaling failed. Devices and connections were stopped; retry explicitly.');});
+      } catch { iceFailed('ICE configuration could not be renewed. Devices and connections were stopped; retry explicitly.');break; }
+    }
+  }
+  function restart(p) {
+    if(!peerCurrent(p))return;
+    if(p.pc.signalingState&&p.pc.signalingState!=='stable'){p.restartPending=true;return;}
+    p.restartPending=false;p.queue=p.queue.then(()=>offer(p,true));
+  }
   const emit = () => { if (!disposed) onChange(snapshot()); };
   function snapshot() {
-    return { capabilities, roomId, joined, joining, policy, policyError, notice, localSilent, awaitingPolicy,
+    return { capabilities, roomId, joined, joining, policy, policyError, iceError, iceTransport:ice.transport(iceContext())||(policy&&!policy.iceRequired&&!policy.iceScope?'host-only':null), notice, localSilent, awaitingPolicy,
       devices: Object.fromEntries(KINDS.map(k => [k, { ...devices[k], stream: streams[k] }])),
       peers: [...peers.values()].map(p => ({ id: p.id, name: p.info.displayName || p.info.name || 'Participant', canSend: p.info.canSend, canReceive: p.info.canReceive,
         status: p.status, error: p.error, candidateCount: p.candidateCount, gathering: p.pc.iceGatheringState,
@@ -92,7 +115,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     const request = refreshRequest; refreshRequest = null; request?.cancel?.();
   }
   function pauseMedia(reason = '') {
-    closePeers();
+    retireIce(); closePeers();
     for (const kind of KINDS) stopDevice(kind, reason);
   }
   function rememberCommittedAreas(room) {
@@ -116,7 +139,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     if (nextRoom !== roomId || nextActor !== actorId) {
       generation++; policyEpoch++; retirePolicyRequest(); pauseMedia();
       roomId = nextRoom; actorId = nextActor; joined = false; joining = false;
-      policy = null; policyError = ''; lastRefresh = null; localSilent = false; awaitingPolicy = false; committedAreas = null;
+      policy = null; policyError = ''; iceError = ''; lastRefresh = null; localSilent = false; awaitingPolicy = false; committedAreas = null;
       notice = nextRoom ? 'Your room or account changed. Join audio again when you are ready.' : ''; emit();
     }
     if (state?.ready === false) {
@@ -158,7 +181,9 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   function makePeer(info, connectionId = null) {
     if (!transportAllowed()) return null;
-    const pc = new env.RTCPeerConnection({ iceServers: [] });
+    const config=policy?.iceScope?ice.configuration(iceContext()):{iceServers:[]};
+    if(!config)return null;
+    const pc = new env.RTCPeerConnection(config);
     const p = { id: info.id, info, pc, connectionId: connectionId || nextId(), closed: false, status: 'connecting', error: '', remote: {}, candidateCount: 0, receivedBytes: 0, sentBytes: 0, queue: Promise.resolve(), timeout: null };
     peers.set(p.id, p);
     pc.onicecandidate = event => {
@@ -176,7 +201,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       if (p.closed) return;
       const state = pc.connectionState || pc.iceConnectionState;
       if (state === 'connected' || state === 'completed') { p.status = 'connected'; p.error = ''; if (p.timeout) env.clearTimeout(p.timeout); }
-      else if (state === 'failed') { p.status = 'failed'; p.error = 'WebRTC transport failed. No TURN relay is configured; this network may need one.'; }
+      else if (state === 'failed') { p.status = 'failed'; p.error = 'WebRTC transport failed. ICE configuration does not prove relay reachability or a working media path.'; }
       else if (state === 'disconnected') { p.status = 'disconnected'; p.error = 'Connection interrupted. Retry when your network is ready.'; }
       else if (state === 'closed') p.status = 'closed';
       emit();
@@ -193,22 +218,25 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       emit();
     };
     p.timeout = env.setTimeout(() => {
-      if (!p.closed && p.status !== 'connected') failure(p, p.candidateCount ? 'Connection timed out. This peer or network is unreachable; no TURN relay is configured.' : 'No usable ICE candidates were gathered. Calls cannot connect in this browser or network.');
+      if (!p.closed && p.status !== 'connected') failure(p, p.candidateCount ? 'Connection timed out. This peer or network is unreachable; relay reachability has not been verified.' : 'No usable ICE candidates were gathered. Calls cannot connect in this browser or network.');
     }, 15000);
     return p;
   }
-  async function offer(p) {
+  async function offer(p,iceRestart=false) {
     if (!p || !peerCurrent(p)) return;
     try {
       if (!p.pc.getTransceivers().length) for (const kind of MEDIA_KINDS) p.pc.addTransceiver(kind, { direction: peerDirection(p.info) });
       await applyTracks(p); if (!peerCurrent(p)) return;
-      const description = await p.pc.createOffer(); if (!peerCurrent(p)) return;
+      const description = await p.pc.createOffer(iceRestart?{iceRestart:true}:undefined); if (!peerCurrent(p)) return;
       await p.pc.setLocalDescription(description); if (!peerCurrent(p)) return;
       await signal(p, { description: { type: p.pc.localDescription.type, sdp: p.pc.localDescription.sdp } });
     } catch (error) { failure(p, error); }
   }
   function reconcile() {
-    if (!transportAllowed() || !capabilities.rtc) { closePeers(); return; }
+    if (!transportAllowed() || !capabilities.rtc) { retireIce();closePeers(); return; }
+    if(policy?.iceScope&&!ice.configuration(iceContext())){
+      const context=iceContext();void ice.ensure(context).then(()=>{if(iceCurrent(context))reconcile();}).catch(()=>{if(iceCurrent(context))iceFailed('ICE configuration unavailable. Devices and connections were stopped; retry explicitly.');});return;
+    }
     const allowed = new Map(policyPeers(policy).map(p => [p.id, p]));
     for (const [id, p] of peers) {
       const next = allowed.get(id);
@@ -226,11 +254,13 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     // even before the world UI processes its own access-revoked event.
     if (!disposed && next?.roomId === null && next.enabled === false && next.selfId === (actorId || policy?.selfId) && sameContext()) {
       generation++; policyEpoch++; joined = false; joining = false; committedAreas = null; retirePolicyRequest(); policy = next;
-      for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'Room access ended. Join an authorized room again to reconnect.'; emit(); return true;
+      retireIce();for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'Room access ended. Join an authorized room again to reconnect.'; emit(); return true;
     }
     if (disposed || !next || next.roomId !== roomId || !sameContext() || (actorId && next.selfId !== actorId)) return false;
     const previousDenial = publishingDenied(policy) ? denialReason(policy.context) : null;
+    if(authorityKey(next)!==authorityKey(policy)||next.iceScope!==policy?.iceScope){retireIce();closePeers();}
     policyEpoch++; policy = next;
+    if(next.iceRequired===true&&!next.iceScope)pauseMedia();
     if (source === 'fetch' && !localSilent) awaitingPolicy = false;
     policyError = awaitingPolicy && !localSilent ? policyError || POLICY_CONFIRM_MESSAGE : '';
     // Retire area-specific warnings on exit; device errors remain until another user action.
@@ -241,7 +271,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     // Presence pushes must not starve the post-exit confirmation GET. It may
     // clear the latch only for the same authority scope; pushed recipients win.
     if (source === 'push' && !refreshRequest?.confirmation) retirePolicyRequest();
-    if (joined && next.enabled === false) { generation++; joined = false; joining = false; retirePolicyRequest(); for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'The server ended this media session. Join again to reconnect.'; }
+    if (joined && next.enabled === false) { generation++; joined = false; joining = false; retirePolicyRequest(); retireIce(); for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'The server ended this media session. Join again to reconnect.'; }
     // Revoke pending capture as well as live streams. Leaving the area must never revive
     // a permission prompt started before denial; a deliberate later click gets a new token.
     if (publishingDenied(next)) for (const kind of KINDS) {
@@ -298,25 +328,25 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     if (value && policy?.context?.kind === 'silent') { notice = SILENT_MEDIA_MESSAGE; emit(); return false; }
     if (value && !capabilities.rtc) { notice = 'This browser does not support WebRTC calls.'; emit(); return false; }
     if (!value) {
-      joined = false; generation++; joining = false; retirePolicyRequest();
+      joined = false; generation++; joining = false; retirePolicyRequest();retireIce();iceError='';
       for (const kind of KINDS) stopDevice(kind); closePeers(); emit();
       try { await api('/api/media/state', { method: 'POST', body: { enabled: false } }); } catch (error) { notice = `Devices stopped. Server leave could not be confirmed: ${error.message}`; }
       emit(); return false;
     }
     // An earlier GET may still contain enabled:false from before this opt-in.
     policyEpoch++; retirePolicyRequest();
-    const epoch = generation; joining = true; notice = ''; emit();
+    const epoch = generation; joining = true; notice = '';iceError=''; emit();
     try {
       await api('/api/media/state', { method: 'POST', body: { enabled: true } });
       if (disposed || epoch !== generation || !sameContext()) return false;
-      joined = true; await refreshPolicy(true); if (epoch !== generation || !sameContext()) return false; reconcile(); return joined && !policyError && !localSilent && !awaitingPolicy;
+      joined = true; await refreshPolicy(true); if (epoch !== generation || !sameContext()) return false; if(transportAllowed()&&policy?.iceScope)await ice.ensure(iceContext());reconcile(); const idleProximity=policy?.context?.kind==='proximity'&&policy.context.canPublish===false;return joined&&!iceError&&!policyError&&!localSilent&&!awaitingPolicy&&(idleProximity||!policy?.iceRequired||!!policy?.iceScope);
     } catch (error) { if (!disposed && epoch === generation && sameContext()) notice = `Could not join audio: ${String(error?.message || 'server unreachable').slice(0, 150)}`; return false; }
     finally { if (epoch === generation) joining = false; emit(); }
   }
   async function toggleDevice(kind) {
     if (!KINDS.includes(kind) || disposed) return false;
     const locallyDenied = checkLocalPolicy();
-    if (!sameContext() || locallyDenied || policyError) { emit(); return false; }
+    if (!sameContext() || locallyDenied || policyError || iceError) { emit(); return false; }
     if (streams[kind] || devices[kind].status === 'requesting') { stopDevice(kind); emit(); return false; }
     const reason = kind === 'screen' ? capabilities.screenReason : capabilities.deviceReason;
     if (reason) { devices[kind] = { status: 'unavailable', error: reason }; emit(); return false; }
@@ -342,7 +372,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       await refreshPolicy(true);
       // A stale operation disposes only its own stream. Never clobber the next request's UI.
       if (!ownsCapture()) { stopStream(stream); return false; }
-      if (!joined || !policy || policyError || publishingDenied(policy)) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because this area does not currently allow publishing.' }; emit(); return false; }
+      if (!joined || !policy || policyError || iceError || (policy.iceRequired===true&&!policy.iceScope) || publishingDenied(policy)) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because this area does not currently allow publishing.' }; emit(); return false; }
       pendingStreams[kind] = null; streams[kind] = stream; devices[kind] = { status: 'on', error: '' };
       for (const track of stream.getTracks()) track.onended = () => { if (streams[kind] === stream) { stopDevice(kind, 'Sharing stopped by your browser or device.'); emit(); } };
       for (const p of peers.values()) await applyTracks(p);
@@ -359,8 +389,10 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     const eventGeneration = generation, eventActor = actorId;
     await refreshPolicy(true);
     if (eventGeneration !== generation || eventActor !== actorId || !transportAllowed() || event.roomId !== roomId) return;
+    if(policy?.iceScope){const context=iceContext();try{await ice.ensure(context);}catch{if(iceCurrent(context))iceFailed('ICE configuration unavailable. Devices and connections were stopped; retry explicitly.');return;}if(!iceCurrent(context))return;}
     const info = policyPeers(policy).find(p => p.id === event.from); if (!info) return;
     let p = peers.get(info.id);
+    if(event.request==='restart'){if(p&&p.connectionId===event.connectionId&&policy.selfId<info.id)restart(p);return;}
     if (event.request === 'offer') {
       if (policy.selfId < info.id) { dropPeer(info.id); p = makePeer(info); await offer(p); }
       return;
@@ -369,7 +401,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       // Only the lexicographically first server-issued identity originates an offer.
       if (event.from >= policy.selfId) return;
       if (!p || p.connectionId !== event.connectionId) { dropPeer(info.id); p = makePeer(info, event.connectionId); }
-      const peer = p;
+      if(!p)return;const peer = p;
       p.queue = p.queue.then(async () => {
         if (!peerCurrent(peer)) return;
         await peer.pc.setRemoteDescription(event.description);
@@ -403,16 +435,19 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
         else { const queue = earlyCandidates.get(peer.connectionId) || []; if (queue.length < 64) queue.push(event.candidate); earlyCandidates.set(peer.connectionId, queue); }
       }
     }).catch(error => failure(peer, error));
-    await peer.queue;
+    await peer.queue;if(peer.restartPending)restart(peer);
   }
   async function retry() {
     checkLocalPolicy();
     if (disposed || !joined || !sameContext() || localSilent || getState()?.ready === false) return;
-    const retryGeneration = generation; closePeers(); notice = ''; await refreshPolicy(true);
-    if (retryGeneration !== generation || !transportAllowed()) return; reconcile();
+    const retryGeneration = generation;retireIce();const retryEpoch=iceEpoch;iceError=''; closePeers(); notice = ''; await refreshPolicy(true);
+    if (retryGeneration !== generation || retryEpoch !== iceEpoch || !transportAllowed()) return;
+    const context=iceContext();
+    if(policy?.iceScope){try{await ice.ensure(context);}catch{if(iceCurrent(context))iceFailed('ICE configuration unavailable. Devices and connections were stopped; retry explicitly.');return;}if(!iceCurrent(context))return;}reconcile();
     for (const info of policyPeers(policy)) if (info.id < policy.selfId) {
+      if(!iceCurrent(context))return;
       const request = { id: info.id, connectionId: nextId() };
-      try { await signal(request, { request: 'offer' }); } catch (error) { notice = `Retry failed: ${error.message}`; }
+      try { await signal(request, { request: 'offer' }); } catch (error) { if(iceCurrent(context))notice = `Retry failed: ${error.message}`; }
     }
     emit();
   }
@@ -434,7 +469,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   function destroy() {
     if (disposed) return;
-    disposed = true; generation++; policyEpoch++; joined = false; joining = false; retirePolicyRequest();
+    retireIce();disposed = true; generation++; policyEpoch++; joined = false; joining = false; retirePolicyRequest();
     for (const kind of KINDS) stopDevice(kind); closePeers();
     // Best-effort opt-out; server also expires disconnected presence.
     void api('/api/media/state', { method: 'POST', body: { enabled: false } }).catch(() => {});
@@ -452,7 +487,7 @@ const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 export function mountMedia({ root, api, getState, toast = () => {} }) {
   if (!root) throw new Error('A media container is required');
   root.classList.add('universe-media');
-  root.innerHTML = `<div class="media-peers" aria-label="Call participants"></div><section class="media-dock" aria-label="Live media controls"><div class="media-context"><span class="media-dot"></span><div><strong class="media-context-label">Spatial audio</strong><span class="media-context-detail">Mic and camera stay off until you choose</span></div></div><div class="media-actions"><button class="media-join" type="button">Join audio</button><span class="media-divider"></span>${KINDS.map(k => `<button type="button" class="media-device" data-media="${k}" aria-label="${labelFor(k)} off" aria-pressed="false" title="Turn on ${k}">${icon(k)}<span>${k === 'microphone' ? 'Mic' : k === 'camera' ? 'Camera' : 'Share'}</span></button>`).join('')}<button class="media-details-toggle" type="button" aria-expanded="false" aria-label="Media connection details">···</button></div></section><div class="media-warning" role="status" hidden></div><section class="media-details" aria-label="Media connection details" hidden><div class="media-details-heading"><strong>Connection details</strong><button type="button" class="media-retry">Retry connections</button></div><p class="media-policy-detail"></p><div class="media-transport"></div><p class="media-network-note">Peer-to-peer transport · No relay configured. Calls may fail on restricted networks. Use one active tab per account. Devices are requested only when you turn them on.</p></section>`;
+  root.innerHTML = `<div class="media-peers" aria-label="Call participants"></div><section class="media-dock" aria-label="Live media controls"><div class="media-context"><span class="media-dot"></span><div><strong class="media-context-label">Spatial audio</strong><span class="media-context-detail">Mic and camera stay off until you choose</span></div></div><div class="media-actions"><button class="media-join" type="button">Join audio</button><span class="media-divider"></span>${KINDS.map(k => `<button type="button" class="media-device" data-media="${k}" aria-label="${labelFor(k)} off" aria-pressed="false" title="Turn on ${k}">${icon(k)}<span>${k === 'microphone' ? 'Mic' : k === 'camera' ? 'Camera' : 'Share'}</span></button>`).join('')}<button class="media-details-toggle" type="button" aria-expanded="false" aria-label="Media connection details">···</button></div></section><div class="media-warning" role="status" hidden></div><section class="media-details" aria-label="Media connection details" hidden><div class="media-details-heading"><strong>Connection details</strong><button type="button" class="media-retry">Retry connections</button></div><p class="media-policy-detail"></p><div class="media-transport"></div><p class="media-network-note">Peer-to-peer transport · Server ICE configuration is requested after authorized opt-in.</p></section>`;
   const $ = selector => root.querySelector(selector);
   let destroyed = false, expanded = false, lastWarning = '', lastRoom = currentRoomId(getState());
   const elements = new Map();
@@ -484,25 +519,27 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
     const context = s.policy?.context, silent = s.localSilent || context?.kind === 'silent';
     const label = s.localSilent ? 'No calls' : context?.label || context?.name || 'Spatial audio';
     $('.media-context-label').textContent = label;
-    let detail = s.localSilent ? SILENT_MEDIA_MESSAGE : s.policyError || (silent ? SILENT_MEDIA_MESSAGE : s.joining ? 'Joining…' : !s.joined ? 'Mic and camera stay off until you choose' : context?.canPublish === false ? context?.kind === 'audience' ? 'Audience · listening only' : context?.reason || 'Publishing is paused in this area' : s.peers.length ? `${s.peers.length} ${s.peers.length === 1 ? 'participant' : 'participants'} · ${s.peers.filter(p => p.status === 'connected').length} transport connected` : context?.reason || context?.description || 'Ready · stop near someone to connect');
+    let detail = s.localSilent ? SILENT_MEDIA_MESSAGE : s.iceError || s.policyError || (silent ? SILENT_MEDIA_MESSAGE : s.joining ? 'Joining…' : !s.joined ? 'Mic and camera stay off until you choose' : context?.canPublish === false ? context?.kind === 'audience' ? 'Audience · listening only' : context?.reason || 'Publishing is paused in this area' : s.peers.length ? `${s.peers.length} ${s.peers.length === 1 ? 'participant' : 'participants'} · ${s.peers.filter(p => p.status === 'connected').length} transport connected` : context?.reason || context?.description || 'Ready · stop near someone to connect');
     $('.media-context-detail').textContent = detail;
-    $('.media-dot').dataset.state = silent || s.policyError ? 'off' : s.peers.some(p => p.status === 'connected') ? 'connected' : s.joined ? 'ready' : 'off';
+    $('.media-dot').dataset.state = silent || s.policyError || s.iceError ? 'off' : s.peers.some(p => p.status === 'connected') ? 'connected' : s.joined ? 'ready' : 'off';
     const join = $('.media-join'); join.textContent = s.joining ? 'Joining…' : s.joined ? 'Leave audio' : 'Join audio'; join.disabled = s.joining || !s.capabilities.rtc || !s.roomId || ((silent || s.awaitingPolicy) && !s.joined); join.title = silent && !s.joined ? SILENT_MEDIA_MESSAGE : s.joined ? 'Leave audio' : 'Join audio'; join.classList.toggle('is-joined', s.joined);
     for (const kind of KINDS) {
       const button = $(`[data-media="${kind}"]`), device = s.devices[kind];
       const unsupported = kind === 'screen' ? s.capabilities.screenReason : s.capabilities.deviceReason;
-      const denied = silent || s.awaitingPolicy || !!s.policyError || publishingDenied(s.policy);
+      const denied = silent || s.awaitingPolicy || !!s.policyError || !!s.iceError || publishingDenied(s.policy);
       button.disabled = !!unsupported || denied || !s.roomId;
       button.setAttribute('aria-pressed', device.status === 'on' ? 'true' : 'false');
       button.setAttribute('aria-label', `${labelFor(kind)} ${device.status}`);
-      button.title = unsupported || (denied ? (s.localSilent ? SILENT_MEDIA_MESSAGE : s.policyError || denialReason(context)) : device.error || (device.status === 'on' ? `Stop ${labelFor(kind).toLowerCase()}` : `Turn on ${labelFor(kind).toLowerCase()}`));
+      button.title = unsupported || (denied ? (s.localSilent ? SILENT_MEDIA_MESSAGE : s.iceError || s.policyError || denialReason(context)) : device.error || (device.status === 'on' ? `Stop ${labelFor(kind).toLowerCase()}` : `Turn on ${labelFor(kind).toLowerCase()}`));
       button.classList.toggle('is-requesting', device.status === 'requesting');
       button.classList.toggle('has-error', device.status === 'error');
     }
-    const warning = s.policyError || KINDS.map(k => s.devices[k].error).find(Boolean) || s.notice || (s.peers.some(p => p.status === 'failed') ? 'A call could not connect. Open connection details to retry.' : '');
+    const warning = s.iceError || s.policyError || KINDS.map(k => s.devices[k].error).find(Boolean) || s.notice || (s.peers.some(p => p.status === 'failed') ? 'A call could not connect. Open connection details to retry.' : '');
     $('.media-warning').hidden = !warning; $('.media-warning').textContent = warning;
     if (warning && warning !== lastWarning) { lastWarning = warning; }
     $('.media-policy-detail').textContent = silent ? `${SILENT_MEDIA_MESSAGE} ${SILENT_MEDIA_EXIT_MESSAGE}` : `Server-authorized ${context?.kind || 'room'} recipients. ${context?.reason || context?.description || 'Location and room permissions are evaluated by the server.'}`;
+    const networkNote=s.iceTransport==='relay-configured'?'P2P · TURN configured; relay reachability and media delivery are unverified.':s.iceTransport==='stun-configured'?'P2P · STUN configured; no TURN relay configured. Restricted networks may fail.':s.iceTransport==='host-only'?'Host-only P2P · No STUN or TURN configured. Restricted networks may fail.':'P2P · No active ICE configuration. Configuration is requested after authorized opt-in.';
+    $('.media-network-note').textContent=networkNote+' Use one active tab per account. Devices are requested only when you turn them on.';
     const transport = $('.media-transport'); transport.replaceChildren();
     const connectionRows = s.peers.length ? s.peers.map(p => `${p.name}: ${p.status === 'connected' ? 'transport connected' : p.status} · ${p.candidateCount} local ICE candidates · ${p.receivedBytes} bytes received${p.error ? ` — ${p.error}` : ''}`) : [s.joined ? 'No eligible opted-in participants yet.' : 'Not in a call. No peer connection is active.'];
     for (const row of connectionRows) { const p = document.createElement('p'); p.textContent = row; transport.append(p); }

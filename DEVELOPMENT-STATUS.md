@@ -1,41 +1,45 @@
-# Development status · 2026-10-02 18:04 UTC
+# Development status · 2026-10-02 18:49 UTC
 
-This increment pauses world presentation while the 3D character creator is open, retaining its backdrop without drawing the world twice. Presence, chat, media policy and authoritative cleanup continue. Closing resumes the latest actor state, applies deferred resize and discards hidden animation time. Two overlapping decorative ground layers now have distinct depths below custom floor images. No resolution/DPR policy changes are included. See `CREATOR-PRESENTATION.md`.
+## Current increment: ordinary-P2P transport configuration
 
-Fresh integrated evidence on resident commit `d443234a19b9d2d9872138913388bb144f7d874e`: 495 CPU/API tests pass, with the same one explicitly skipped historical adapter-compatibility case. Seven actual-game creator cases and all 29 framing/picking/resident-authoring checks pass with no page errors. The measured world draw counter stays unchanged while creator frames and presence/media requests continue. This is a draw-count/lifecycle result, not an FPS, battery or physical-phone claim.
+The app now has an optional operator-configured STUN/TURN path. Session-scoped issuance validates the current room, presence, opt-in and area policy; relay credentials stay out of SSE, snapshots and diagnostics. Browser connections consume that configuration, renew it with bounded requests and restart ICE on the existing peer. Failure or expiry stops devices and requires deliberate retry. Configuration is empty by default. See `P2P-ICE-ADAPTER.md`.
 
-The tested main bundle is `85f4bd9f209632f0c7daaa660f7ef9c317b914979740fdc579047d73c38862f4`. CSS is byte-identical to the resident checkpoint. Existing groups remain, and CI adds a presentation group. Remote CI for this exact increment is pending; prior green CI does not certify this work tree.
+This increment is based on `d6380d27ebf6ae20c058f02e17807c3e1ff38fc0`, preserving its resident Test readiness correction. Creator pause/depth, full-canvas framing, source-aligned Silent behavior, held-policy freshness and all existing feature groups remain. Current app entry, renderer and CSS are unchanged.
 
-The ordinary app still has no AI provider or relay configured. Private resident protocol tests are local-loopback fixtures, not external AI/MCP integration. No running service changes. The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated.
+Final local checks pass: 572 CPU/API cases, one explicitly skipped historical compatibility fixture, 196-file syntax, build, package startup and container-file simulation. All six media browser suites and seven actual-game creator cases pass on final bundle `e41a7407c5b9e61c8d3f1591ac7c3369f550b7e4a5698db6a6924ff1f3fd054d`; CSS is unchanged. The native ICE suite verifies seven configuration/signaling/restart/teardown scenarios with no device capture or relay allocation. All 39 existing freshness regressions remain passing.
 
-## Earlier feature verification
+Independent review reproduced stale-request failures across scope changes, room changes and same-scope retries; the final client uses current transport-operation, authority and peer fences, with four counterexample regressions and three current-failure/recovery controls. Before that final client-only correction, the same integration also passed all 29 framing/picking/resident-authoring cases and 13 resident private-test cases. Those are prior-bundle evidence, not a claim that every browser group was rerun on the final bundle. Exact-head remote CI remains pending; the previous `d6380d27` baseline is green in all eight jobs.
 
-| Workstream | Implemented boundary | Evidence at this freeze |
-|---|---|---|
-| Custom image assets | Complete PNG validation, immutable room definitions/versions, authenticated bytes, operation receipts, quotas | Shared/schema/storage/HTTP checks included in 324 passing unit/API tests |
-| Image building/rendering | Shared geometry, canonical full-footprint edit rights, painted human/bot collision cells, transparent picking, native texture lifecycle, direct manipulation | Actual desktop flow passed upload/search/place/drag/rotate/duplicate/save/reload, byte identity, alpha/depth, uncertainty/retry and painted-cell movement |
-| Mobile image flow | Original brand ratio, bounded header, native scrollable dock, 48px library/grid controls, native touch placement | Final320px flow and Build heading/status separation passed |
-| Silent media lifecycle | Immediate committed-geometry denial, bounded policy freshness, pending capture invalidation and call-only controls | 396 aggregate unit/API checks, including 39 freshness regressions; 5 media suites pass, including actual-world walk-in/exit and native authenticated SDP teardown. No real media packet claim |
-| Existing quality/authoring | Native3D characters, camera, direct builder, Express, hierarchy, personal spaces, local residents and functional actions | All13 image/core/authoring suites passed on frozen v0.6 source401ae7c4; a subsequent DPR2 correction additionally passes6 actual mouse/touch cases |
-| Deployment configuration | Exact Host/Origin/TLS policy, offline accounts, Node24 files and persistent-volume contract | Syntax/build/package startup and container-file-boundary simulation pass; actual Docker/proxy/deployment unrun |
+## Implemented and locally exercised
 
-The earlier Silent follow-up main bundle was `9e43d3e98d837a6eebacbe649d00888d2fc85660a7fc741c78b2376fdc1c0fdb`; final CSS is `9ffd241303c102e9c65202b4fe31f5aa1893ee57c13256ad71a478a132b18c79`. All13 suites passed against immutable v0.6 source401ae7c4…056e7 with exact261-file comparison. A later actual DPR2 test reproduced a native chair click missing its visible target. The focused picker correction applies Babylon hardware scaling exactly once; six native mouse/touch scenarios now pass at measured DPR2, including camera orbit, image alpha and ghost coordinates. The new DPR regression is included in the core command. The DPR scenarios also passed after initial Silent integration on e642b5d4; the final call-only copy adjustment passed the full media group. No physical-device claim is made. These counts overlap and are not feature completion totals.
+- Native 3D character creation and saved appearance, camera-relative movement, Shift2.5×, orbit/pan/zoom/follow, keyboard and touch controls
+- Direct snapped building with preview, selection, drag, rotation, undo, persisted scenes and scoped permissions
+- Universe/world/room hierarchy, invitations and revocation; local room text/DMs and ephemeral Express
+- Functional item/area actions, audio resource lifecycle, HTTPS content panels, protected documents and authored quest slices
+- Atomic personal-space claim/transfer/assignment and full old/new object footprint authorization
+- Room-scoped PNG definitions and immutable versions, search/reuse, protected image bytes, alpha-aware placement/picking and collision
+- Local resident authoring, ordered patrol, collision-aware movement and permission-checked pause/resume/return
+- Private resident tests with durable operation identity, explicit saved permissions, cancellation and uncertain-result handling; synthetic literal-loopback protocol only
+- Exact Host/Origin/TLS-cookie policy, login-only public preview mode, offline account provisioning and Node24 persistent-volume files
 
-The focused freshness correction passes 396 CPU/API tests, all five media browser suites, 166-file syntax, build, 91-file static/package and container-file checks. The 39 focused regressions were also run against the earlier control: 37 failed and two passed, demonstrating coverage of the corrected behavior. Actual-world held-policy checks use controlled fake tracks and verify immediate device stop and fresh-policy exit; they do not prove successful external media packets.
+Tests exercise explicit boundaries and failure cases. Counts overlap and do not represent a feature-completion percentage. No whole Universe source contract is certified by this status file.
 
-Received committed Silent geometry immediately stops active and acquired-pending devices and retires transport; editor drafts do not supply that guard. Policy GETs use an 8-second monotonic deadline and AbortSignal; overdue results fail closed after event-loop resumption. Exit requires a new authoritative GET and never automatically resumes capture. Current actor/room/peer checks guard delayed SDP/track work. Received geometry and existing context fields do not establish a new server-boot or cross-SSE/session policy revision protocol.
+## Current limitations
 
-## Publication and verification boundary
+- No real relay or AI/MCP provider is configured. Native ICE configuration and SDP restarts do not prove relay allocation, a connected media path or AV packets
+- The existing media graph still has cap-four, opted-in proximity membership. The intended hybrid model, all-member counting and SFU transition/handoff are unfinished
+- Issued TURN credentials are bearer credentials until relay expiry. Local revocation stops issuance/client use; it does not invalidate previously issued credentials at the relay
+- One active media tab per account is supported. The existing recipient/signaling graph is account-based even though new credential issuance is session-bound
+- Real device capture, physical-phone performance, network handover, operator-run Docker/proxy/TLS, backups and production capacity remain unverified
+- Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, image editing/archive/delete, persistent chunks, reusable primitive workshop, terrain and creator games remain partial or missing
 
-The prior Silent lifecycle follow-up was based on the green image/DPR checkpoint `93ae7de9f529f252ecba13230369b404a663ef04`. That Silent source passed remote CI at `40bf07b51b3e9c7441b796dfa673139fa8c9fe4d`; its results are scoped to that revision.
+The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. Source publication does not change the deployed revision or configure a relay.
 
-CI runs core, authoring, images, media, framing, residents and presentation as separate serial groups on independent runners. No checks are removed. Live audio/video packet behavior, cross-stream/session authoritative policy ordering and physical devices remain unverified.
+## Next
 
-## Next checks
+1. Publish this scoped increment and verify every exact-head CI job
+2. Confirm deployed media revisions, actual group/transition configuration and the operator's isolated ICE issuer/relay plan before real-media acceptance
+3. Integrate the independently tested bubble-membership model and implement the authorized hybrid transition contract
+4. Continue current-source parity and hands-on interaction improvements in small tested commits
 
-1. Verify the exact work-branch commit and all CI jobs
-2. Complete separately authorized container/TLS/proxy/storage and real-media acceptance before deployment or live-provider claims
-3. Restore and verify the ordinary P2P ICE/relay adapter; actual relay/provider rollout requires separate operator facts and approval
-4. Add asset editing/archive/delete with atomic reference handling; current image creation and placement do not include those controls
-
-Remaining broader parity includes real AV and AI/MCP/provider integration, Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, persistent chunks, composite asset workshop, terrain and creator game logic. Physical-phone performance, backup/restore and production capacity remain unverified.
+The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification has occurred.
