@@ -1115,3 +1115,7 @@
     min-height: 48px;
   }
 }
+
+/* Private protocol tests use the existing ink surface and native form controls. */
+.resident-test-reply{padding:.8rem;border:1px solid var(--u-surface-border,rgba(167,139,250,.18));border-radius:12px;overflow-wrap:anywhere;max-height:18rem;overflow:auto;color:#fff;background:rgba(255,255,255,.035)}
+.resident-test-reply:empty,.resident-test-tools:empty{display:none}.resident-test-tools{padding-inline-start:1.2rem;font-size:.84rem;color:rgba(255,255,255,.75)}

@@ -14,6 +14,7 @@ import { createHierarchyService } from './hierarchy.mjs';
 import {createPersonalAreaService} from './personal-areas.mjs';
 import {validatePersonalScene} from './personal-area-store.mjs';
 import {createActionAuthority} from './action-authority.mjs';
+import {createResidentTurnService,unavailableResidentTest} from './resident-turns.mjs';
 import {createBotService} from './bots.mjs';
 import {readRuntimeConfig,createRequestSecurity} from './runtime-config.mjs';
 import {createAccessGate} from './access-gate.mjs';
@@ -30,7 +31,7 @@ const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','
 const STATUS = ['online','away','busy','dnd','invisible'];
 const MIME = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.mp4':'video/mp4' };
 
-export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true } = {}) {
+export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
@@ -42,7 +43,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const presence = new Map();
   const rates = new Map();
   const sessionRoles=new Map();
-  let closed = false;
+  let closed = false, residentTurns=null;
   const now = () => clock();
   function limit(key, max, span = 60000) {
     const t = now(); let bucket = rates.get(key);
@@ -76,7 +77,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   function leave(token,userId) {
     const old = store.get('SELECT current_room_id FROM sessions WHERE token_hash=?',token)?.current_room_id;
     store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?', token);
-    images.sessionChanged(token);
+    images.sessionChanged(token);residentTurns?.sessionChanged(token);
     if (old && !store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND token_hash!=? AND expires_at>?',userId,old,token,now())) presence.delete(`${old}:${userId}`);
     if(!presence.has(`${old}:${userId}`))expressions.clear(old,userId);quests.disconnected(userId,old); media.leave(userId,old); broadcastPresence(old);
   }
@@ -90,7 +91,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     const token = String(req.headers.cookie || '').split(';').map(p => p.trim()).find(p => p.startsWith(`${COOKIE}=`))?.slice(COOKIE.length+1);
     const row = token && /^[A-Za-z0-9_-]{43}$/.test(token) ? store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',digest(token),now()) : null;
     if (!row && required) v.fail(401,'AUTH_REQUIRED',runtimeConfig.mode==='public'?'Sign in with an operator-provisioned account first':'Create a guest profile or sign in first');
-    if(row?.current_room_id){let permitted=false;try{permitted=store.canSeeRoom(store.roomRow(row.current_room_id),row.user_id);}catch{}if(!permitted){const old=row.current_room_id;store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',row.token_hash);images.sessionChanged(row.token_hash);row.current_room_id=null;sessionRoles.delete(row.token_hash);presence.delete(`${old}:${row.user_id}`);}}
+    if(row?.current_room_id){let permitted=false;try{permitted=store.canSeeRoom(store.roomRow(row.current_room_id),row.user_id);}catch{}if(!permitted){const old=row.current_room_id;store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',row.token_hash);images.sessionChanged(row.token_hash);residentTurns?.sessionChanged(row.token_hash);row.current_room_id=null;sessionRoles.delete(row.token_hash);presence.delete(`${old}:${row.user_id}`);}}
     return row;
   }
   function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id }; }
@@ -133,12 +134,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const files=createRoomFileService({store,now,send,session});
   const images=createRoomImageAssets({store,session,now,emitRoom});
   function policyChanged(reason,force={}) {
+    residentTurns?.policyChanged();
     const affected=new Set(),revoked=new Set();
     for(const s of store.all('SELECT * FROM sessions WHERE current_room_id IS NOT NULL AND expires_at>?',now())){
       const roomId=s.current_room_id;let row,role;try{row=store.roomRow(roomId);role=store.role(row,s.user_id);}catch{}
       const forced=force.userId===s.user_id&&force.worldId===row?.world_id;
       if(!row||!store.canSeeRoom(row,s.user_id)||forced){
-        store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',s.token_hash);images.sessionChanged(s.token_hash);sessionRoles.delete(s.token_hash);presence.delete(`${roomId}:${s.user_id}`);affected.add(roomId);
+        store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',s.token_hash);images.sessionChanged(s.token_hash);residentTurns?.sessionChanged(s.token_hash);sessionRoles.delete(s.token_hash);presence.delete(`${roomId}:${s.user_id}`);affected.add(roomId);
         const key=`${roomId}:${s.user_id}`;if(!revoked.has(key)){revoked.add(key);quests.disconnected(s.user_id,roomId);expressions.clear(roomId,s.user_id);emitUser(s.user_id,'access-revoked',{roomId,reason,recoverDraft:true});emitUser(s.user_id,'media-policy',{selfId:s.user_id,roomId:null,enabled:false,context:{kind:'none',label:'Access ended',canPublish:false,reason:'Room access changed'},peers:[],iceServers:[]});}
       }else{
         const oldRole=sessionRoles.get(s.token_hash);sessionRoles.set(s.token_hash,role);const room=store.room(row,s.user_id);
@@ -149,7 +151,8 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     for(const roomId of affected)broadcastPresence(roomId);
     for(const s of store.all('SELECT DISTINCT user_id FROM sessions WHERE expires_at>?',now()))emitUser(s.user_id,'catalog',{reason});
   }
-  const bots=createBotService({store,presence,body,send,session,emitRoom,now});
+  const bots=createBotService({store,presence,body,send,session,emitRoom,now,onChanged:(roomId,botId)=>residentTurns?.botChanged(roomId,botId),residentTest:()=>residentTurns?.catalog()??unavailableResidentTest()});
+  try{if(residentTurnOptions!==undefined)residentTurns=createResidentTurnService({store,bots,session,body,send,now,options:residentTurnOptions});}catch(error){bots.close();store.close();throw error;}
   const hierarchy=createHierarchyService({store,now,body,send,changed:policyChanged,emitUser});
   const personalAreas=createPersonalAreaService({store,presence,body,send,session,emitRoom,emitUser,now});
   const actionAuthority=createActionAuthority({store,presence,body,send,now});
@@ -193,6 +196,8 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       if(await images.handle(req,res))return;
       if(await personalAreas.handle({req,res,path,method,userId,url}))return;
       if(await actionAuthority.handle({req,res,path,method,userId,session:s}))return;
+      if(residentTurns&&await residentTurns.handle({req,res,path,method,userId}))return;
+      if(!residentTurns&&/^\/api\/rooms\/[A-Za-z0-9_-]+\/bots\/[A-Za-z0-9_-]+\/turns(?:\/|$)/.test(path)){store.authorize(path.split('/')[3],userId);if(!bots.capabilities(path.split('/')[3],userId).canManage)v.fail(403,'BOT_FORBIDDEN');v.fail(503,'RESIDENT_PROVIDER_UNAVAILABLE','No local test provider is configured');}
       if(await bots.handle({req,res,path,method,userId,session:s}))return;
       if(await hierarchy.handle({req,res,path,method,userId,url}))return;
       if(await files.handle({req,res,path,method,userId,url}))return;
@@ -267,7 +272,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
           store.run('INSERT OR IGNORE INTO members(room_id,user_id,role,granted) VALUES(?,?,?,0)',roomId,targetId,'member');
           if(actionName==='mute'||actionName==='unmute'){const minutes=b.minutes===undefined?10:v.integer(b.minutes,'minutes',1,1440);store.run('UPDATE members SET muted_until=? WHERE room_id=? AND user_id=?',actionName==='mute'?now()+minutes*60000:0,roomId,targetId);}
           if(actionName==='ban'||actionName==='unban')store.run('UPDATE members SET banned=? WHERE room_id=? AND user_id=?',+(actionName==='ban'),roomId,targetId);
-          if(actionName==='kick'||actionName==='ban'){emitUser(targetId,'moderation',{roomId,action:actionName,userId:targetId,actorId:userId});store.run('UPDATE sessions SET current_room_id=NULL WHERE current_room_id=? AND user_id=?',roomId,targetId);presence.delete(`${roomId}:${targetId}`);expressions.clear(roomId,targetId);media.leave(targetId,roomId);emitUser(targetId,'media-policy',{selfId:targetId,roomId:null,enabled:false,context:{kind:'none',canPublish:false},peers:[],iceServers:[]});broadcastPresence(roomId);}
+          if(actionName==='kick'||actionName==='ban'){emitUser(targetId,'moderation',{roomId,action:actionName,userId:targetId,actorId:userId});store.run('UPDATE sessions SET current_room_id=NULL WHERE current_room_id=? AND user_id=?',roomId,targetId);residentTurns?.policyChanged();presence.delete(`${roomId}:${targetId}`);expressions.clear(roomId,targetId);media.leave(targetId,roomId);emitUser(targetId,'media-policy',{selfId:targetId,roomId:null,enabled:false,context:{kind:'none',canPublish:false},peers:[],iceServers:[]});broadcastPresence(roomId);}
           emitRoom(roomId,'members',{roomId,members:store.members(roomId)});return send(res,200,{ok:true,members:store.members(roomId)});
         }
       }
@@ -323,5 +328,5 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     store.run('DELETE FROM sessions WHERE expires_at<?',now());
   },15000);heartbeat.unref();
   server.requestTimeout=15000;server.headersTimeout=10000;
-  return {server,store,presence,listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;bots.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
+  return {server,store,presence,listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
 }

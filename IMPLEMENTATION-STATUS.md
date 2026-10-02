@@ -1,3 +1,12 @@
+## Private resident tests · current increment
+
+- Manager-only API, shared file-backed SQLite journal, exact replay and uncertain-outcome handling are implemented
+- A credential-free literal-loopback adapter is exercised by synthetic local fixtures; no real AI or MCP provider is connected
+- Saved model tools default off, intersect existing manual permissions and current server authority, and use the existing command receipt path
+- Private Test UI requires explicit saved configuration, preserves exact retry identity and never creates a resident on dismissal; native keyboard and320px touch flows pass
+- Fresh combined evidence:488 CPU/API pass,1 explicit historical-compatibility skip,7 component cases,6 actual-game private-test cases and9 resident-authoring cases. Remote CI for this source remains pending
+- Public resident conversation, historical-turn browsing, operational retention/reconciliation and external-provider rollout remain unfinished
+
 # Standalone implementation status · 2026-10-02
 
 This active v0.6.1 tranche adds the integrated custom-image library to the recorded functional-authoring, personal-space, local-resident and deployment-configuration checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.

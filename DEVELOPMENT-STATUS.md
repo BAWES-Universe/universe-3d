@@ -1,10 +1,14 @@
-# Development status · 2026-10-02 17:13 UTC
+# Development status · 2026-10-02 17:38 UTC
 
-This checkpoint adds perspective side-panel framing to the corrected Silent freshness baseline `40bf07b51b3e9c7441b796dfa673139fa8c9fe4d`. Local verification passes 410 CPU/API tests and 29 scoped browser checks: 14 framing, six DPR2 mouse/touch and nine resident-authoring checks. Syntax, build, static/package startup and container-file reconstruction also pass. See `FRAMING.md` for behavior and explicit UI/device limits.
+This increment adds a durable manager-only resident test protocol and deliberate private Test controls on framing commit `3ea185d805bcd706cbd732dbeb55bcc712b09bdb`. The normal app still has no model provider configured. Explicit local-loopback fixtures verify the real protocol, authority and saved command path; no external AI, MCP, credentials or deployment is claimed. See `server/RESIDENT-TURNS.md`.
 
-The current tested main bundle is `e49d5852575146418318c800050ee37ceb15d696682ee1546a6721d3d53aceb8`. Runtime CSS and media freshness tests are unchanged; current-actor geometry hooks and the native DPR/alpha picker are preserved. Framing runs as a separate CI group alongside all existing groups. Exact-head remote CI is pending; prior green CI does not certify this revision. Provider, P2P and creator changes are outside this increment.
+Current tested main bundle: `717eb58ed91f884240d235098a935ccd42e0f3be73b2483ed7af25c7ab014d6c`; CSS: `245cfec2a2f26beb7973dce3351a87f346e9fce93deb2046fba5e92bf35c6c9e`.
 
-Deployment revision selection remains separate. The requested operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. This source publication changes no running service.
+Fresh integrated checks: 488 CPU/API tests pass; one historical compatibility fixture is explicitly skipped because its old adapter is absent. Seven GPU-free UI cases and six actual-game cases pass, covering deliberate creation, saved model permission, private reply/command, exact lost-response replay, focus preservation, reload and native touch at 320px/200% root text. Nine existing resident authoring checks also pass with the new UI. Build, syntax and package startup pass. Existing core/image/media checks remain tied to their recorded revisions until exact-head CI runs for this increment. Counts overlap; none is a whole-feature parity certification.
+
+Tests become available only for a saved, enabled, clean resident with Respond to players on, a trusted server adapter and current management rights. Model permissions default off independently of manual tools. Read-only receipt polling is bounded; POST is never retried automatically. Restarted or unknown work is never regenerated. Cancellation cannot undo an already accepted command. Public resident conversation remains unconnected.
+
+No running service is changed. The operator review pin remains `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. Publication/CI status must be checked against the exact new commit; prior green CI does not certify this work tree.
 
 ## Earlier feature verification
 
@@ -27,13 +31,13 @@ Received committed Silent geometry immediately stops active and acquired-pending
 
 The prior Silent lifecycle follow-up was based on the green image/DPR checkpoint `93ae7de9f529f252ecba13230369b404a663ef04`. That Silent source passed remote CI at `40bf07b51b3e9c7441b796dfa673139fa8c9fe4d`; its results are scoped to that revision.
 
-CI runs core, authoring, images, media and framing as separate serial groups on independent runners. No checks are removed. Live audio/video packet behavior, cross-stream/session authoritative policy ordering and physical devices remain unverified.
+CI runs core, authoring, images, media, framing and residents as separate serial groups on independent runners. No checks are removed. Live audio/video packet behavior, cross-stream/session authoritative policy ordering and physical devices remain unverified.
 
 ## Next checks
 
 1. Verify the exact work-branch commit and all CI jobs
 2. Complete separately authorized container/TLS/proxy/storage and real-media acceptance before deployment or live-provider claims
-3. Review resident-provider changes as an independent increment
+3. Verify the new resident increment remotely; external provider compatibility remains a separate rollout
 4. Add asset editing/archive/delete with atomic reference handling; current image creation and placement do not include those controls
 
 Remaining broader parity includes real AV and AI/MCP/provider integration, Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, persistent chunks, composite asset workshop, terrain and creator game logic. Physical-phone performance, backup/restore and production capacity remain unverified.

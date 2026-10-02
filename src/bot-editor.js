@@ -1,3 +1,4 @@
+import {createResidentTestPanel} from './resident-test.js';
 import {icon as sourceIcon} from './universe-icons.js';
 import { AVATAR_OPTIONS, AVATAR_PALETTES, DEFAULT_APPEARANCE, normalizeAppearance, validateAppearance } from './avatar-spec.js';
 import './bot-editor.css';
@@ -5,8 +6,8 @@ import './bot-editor.css';
 const copy = value => structuredClone(value);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const operationId = () => globalThis.crypto?.randomUUID?.() || `resident-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const CONFIG_KEYS = ['name', 'enabled', 'appearance', 'spawn', 'radius', 'responseRadius', 'behavior', 'waypoints', 'speed', 'pauseMs', 'loop', 'respondToPlayers', 'privateInstructions', 'restrictedAreaIds', 'permissions'];
-const BEHAVIORS = { idle: 'Stay at home', patrol: 'Follow a route', social: 'Social · AI unconnected' };
+const CONFIG_KEYS = ['name', 'enabled', 'appearance', 'spawn', 'radius', 'responseRadius', 'behavior', 'waypoints', 'speed', 'pauseMs', 'loop', 'respondToPlayers', 'privateInstructions', 'restrictedAreaIds', 'permissions', 'modelPermissions'];
+const BEHAVIORS = { idle: 'Stay at home', patrol: 'Follow a route', social: 'Social · public chat off' };
 const TOOL_LABELS = { pause: 'Pause movement', resume: 'Resume movement', return: 'Return home & pause' };
 const APPEARANCE_FIELDS = [['height', 'Height'], ['build', 'Build'], ['skin', 'Skin tone'], ['hairStyle', 'Hair'], ['hairColor', 'Hair color'], ['eyeColor', 'Eye color'], ['topStyle', 'Top'], ['topColor', 'Top color'], ['bottomStyle', 'Bottoms'], ['bottomColor', 'Bottoms color'], ['shoeStyle', 'Shoes'], ['shoeColor', 'Shoe color'], ['hat', 'Hat'], ['glasses', 'Glasses'], ['bag', 'Bag'], ['headphones', 'Headphones']];
 const COLORS = { skin: ['Porcelain peach', 'Warm sand', 'Caramel', 'Chestnut', 'Rich brown', 'Deep cocoa', 'Rose beige', 'Copper rose'], hairColor: ['Midnight', 'Espresso', 'Chestnut', 'Copper', 'Golden blond', 'Silver cream', 'Lavender', 'Dusty rose', 'Ocean teal'], eyeColor: ['Midnight', 'Hazel', 'Forest', 'Blue', 'Violet'], topColor: ['Universe violet', 'Plum', 'Golden yellow', 'Dusty rose', 'Sage teal', 'Denim', 'Cream', 'Ink'], bottomColor: ['Ink', 'Slate', 'Cocoa', 'Lavender', 'Sand', 'Deep teal', 'Burgundy', 'Forest'], shoeColor: ['Cream', 'Ink', 'Violet', 'Gold', 'Rose', 'Teal'] };
@@ -41,7 +42,7 @@ function readPath(object, path) { return path.split('.').reduce((value, key) => 
 function writePath(object, path, value) { const keys = path.split('.'), last = keys.pop(); keys.reduce((value, key) => value[key], object)[last] = value; }
 function roomInfo(room) { return typeof room === 'string' ? { id: room, name: room } : room && { ...room, id: String(room.id || '') }; }
 function defaults(room) {
-  return { name: 'New resident', enabled: true, appearance: copy(DEFAULT_APPEARANCE), spawn: copy(room?.suggestedBotSpawn || room?.scene?.spawn || { x: 0, z: 0 }), radius: 6, responseRadius: 3, behavior: 'idle', waypoints: [], speed: 1.5, pauseMs: 1000, loop: true, respondToPlayers: true, privateInstructions: '', restrictedAreaIds: [], permissions: { pause: true, resume: true, return: true } };
+  return { name: 'New resident', enabled: true, appearance: copy(DEFAULT_APPEARANCE), spawn: copy(room?.suggestedBotSpawn || room?.scene?.spawn || { x: 0, z: 0 }), radius: 6, responseRadius: 3, behavior: 'idle', waypoints: [], speed: 1.5, pauseMs: 1000, loop: true, respondToPlayers: true, privateInstructions: '', restrictedAreaIds: [], permissions: { pause: true, resume: true, return: true }, modelPermissions: { pause: false, resume: false, return: false } };
 }
 function configFrom(record, room) {
   const source = record?.config || record || {}, result = defaults(room);
@@ -92,6 +93,8 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
   const dirty = s => !!s?.draft && (!s.record || !same(s.draft, s.baseline));
   const endpoint = s => `/api/rooms/${encodeURIComponent(s.room.id)}/bots`;
   const busy = s => !!(s?.saving || s?.deleting || s?.commanding);
+  function testContext() { const s=session;if(!active(s)||!s.record)return null;const capability=s.catalog?.residentTest||{};return {actorId:s.actorId,roomId:s.room.id,botId:s.record.id,revision:s.record.revision,saved:true,enabled:s.record.enabled,respondToPlayers:s.record.respondToPlayers,dirty:dirty(s)||s.conflict,busy:busy(s),canManage:s.canManage,available:capability.available===true,mode:capability.mode,limits:capability.limits}; }
+  const testPanel=createResidentTestPanel({request,getContext:testContext});
   function syncActor() {
     const next = getActorId();
     if (next === actorId) return;
@@ -133,6 +136,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     renderStatus();
   }
   function renderStatus() {
+    testPanel.update();
     const s = session;
     errorBox.hidden = !s?.error; errorBox.textContent = s?.error || '';
     recovery.hidden = !s?.conflict && !(s?.draft && !s.canManage);
@@ -207,12 +211,14 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     for (const control of detail.querySelectorAll('[data-live-command]')) control.disabled = !session.record || !draft.enabled || !draft.permissions[control.dataset.liveCommand] || busy(session) || session.conflict;
   }
   function renderDetail() {
+    testPanel.update();
     const s = session, draft = s?.draft;
+    const focusedTestControl=testPanel.element.contains(document.activeElement)?document.activeElement:null;
     const scrollTop = detail.scrollTop, focusPath = detail.contains(document.activeElement) ? document.activeElement.dataset.botField : null, selectionStart = document.activeElement?.selectionStart, selectionEnd = document.activeElement?.selectionEnd;
     const folds = [...detail.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent);
     detail.replaceChildren();
     if (!draft) {
-      detail.append(el('div', { class: 'resident-welcome' }, sourceMark(), el('h3', { text: 'Meet your room’s residents' }), hint('Original 3D characters, with a place to belong and a route of their own.'), el('ul', {}, el('li', { text: 'Give each resident their own look' }), el('li', { text: 'Set a home and an ordered patrol' }), el('li', { text: 'Choose local tools and permissions' })), el('div', { class: 'resident-provider-note' }, badge('AI unconnected'), hint('No AI or external tools are connected. Social residents stay silent.'))));
+      detail.append(el('div', { class: 'resident-welcome' }, sourceMark(), el('h3', { text: 'Meet your room’s residents' }), hint('Original 3D characters, with a place to belong and a route of their own.'), el('ul', {}, el('li', { text: 'Give each resident their own look' }), el('li', { text: 'Set a home and an ordered patrol' }), el('li', { text: 'Choose local tools and permissions' })), el('div', { class: 'resident-provider-note' }, badge(s?.catalog?.residentTest?.available?'Local protocol available':'AI unconnected'), hint('Public resident conversation and external tools are not connected. Configured private tests are available only for saved residents.'))));
       return;
     }
     const heading = el('div', { class: 'resident-detail-heading' }, el('h3', { text: s.record ? 'Resident details' : 'A new resident' }), badge(s.record ? `Revision ${s.record.revision}` : 'Not saved', s.record ? '' : 'is-draft'));
@@ -245,10 +251,13 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
       placement.append(restricted);
     }
     const availableBehaviors = (s.catalog.behaviors || Object.keys(BEHAVIORS)).map(value => typeof value === 'string' ? value : value.id).filter(id => BEHAVIORS[id]);
-    const behavior = section('Behavior', field(s, draft, 'behavior', 'Behavior', 'select', { choices: availableBehaviors.map(id => ({ id, label: BEHAVIORS[id] })), rebuild: true }), hint(draft.behavior === 'idle' ? 'Stays at its assigned home. A zero movement radius also keeps other behaviors stationary.' : draft.behavior === 'patrol' ? 'Walks the waypoints in the order below. Blocked paths stop safely; the server never teleports through furniture.' : 'Social behavior is saved, but AI is unconnected. This resident remains silent and does not call a provider.'));
+    const behavior = section('Behavior', field(s, draft, 'behavior', 'Behavior', 'select', { choices: availableBehaviors.map(id => ({ id, label: BEHAVIORS[id] })), rebuild: true }), hint(draft.behavior === 'idle' ? 'Stays at its assigned home. A zero movement radius also keeps other behaviors stationary.' : draft.behavior === 'patrol' ? 'Walks the waypoints in the order below. Blocked paths stop safely; the server never teleports through furniture.' : 'Public resident conversation is not connected. A configured private manager test is separate and runs only when you request it.'));
     if (draft.behavior === 'patrol') behavior.append(renderWaypoints(s, draft), row(field(s, draft, 'speed', 'Walk speed', 'number', { min: .2, max: 4, step: .1 }), field(s, draft, 'pauseMs', 'Pause at each point (ms)', 'number', { min: 0, max: 60000, step: 100 })), field(s, draft, 'loop', 'Loop the patrol route', 'checkbox'));
     behavior.append(field(s, draft, 'respondToPlayers', 'Allow responses when AI becomes available', 'checkbox', { hint: 'Stored preference only. No connected AI means no replies or greetings.' }));
-    const intelligence = section('Instructions & connections', el('div', { class: 'resident-provider-note' }, badge('AI unconnected'), hint('External providers and MCP tools are not connected. No credentials are collected here.')), field(s, draft, 'privateInstructions', 'Private resident instructions', 'textarea', { maxlength: 4000, placeholder: 'Optional guidance for a future connected provider', hint: 'Stored locally for managers; not executed while AI is unconnected. Do not enter passwords or API keys.' }));
+    const connected=s.catalog?.residentTest?.available===true;
+    const intelligence = section('Instructions & connections', el('div', { class: 'resident-provider-note' }, badge(connected?'Local protocol available':'AI unconnected'), hint(connected?'Private manager tests can use the server-attached local protocol adapter. Public conversation and external MCP tools are not enabled.':'No provider is attached. Instructions are saved for managers and are not executed.')), field(s, draft, 'privateInstructions', 'Private resident instructions', 'textarea', { maxlength: 4000, placeholder: 'Guidance for this resident', hint: 'Private manager configuration. Do not enter passwords or API keys.' }));
+    const modelTools=section('Model tool access',hint('Off by default. A test also needs the corresponding local permission and server-supported tool. Accepted commands affect this resident in the room.'));
+    for(const [command,label] of Object.entries(TOOL_LABELS))modelTools.append(field(s,draft,`modelPermissions.${command}`,`Allow model: ${label.toLowerCase()}`,'checkbox'));
     const tools = section('Local tools & permissions', hint('Room managers can send these server-authorized commands. Each permission applies only to this resident.'));
     for (const [command, label] of Object.entries(TOOL_LABELS)) {
       const run = button(label, () => commandResident(command), { class: 'resident-secondary', 'data-live-command': command, disabled: !s.record || !draft.permissions[command] });
@@ -257,10 +266,11 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!s.record) tools.append(hint('Save this resident before sending a command.'));
     const danger = el('div', { class: 'resident-danger' });
     if (s.record) danger.append(button('Delete resident', () => { if (!active(s) || s.draft !== draft || busy(s)) return; s.deleteConfirm = true; renderDeleteConfirmation(); }, { class: 'resident-delete', 'data-testid': 'bot-delete' }), el('div', { 'data-delete-confirmation': '' }));
-    detail.append(heading, identity, appearance, placement, behavior, intelligence, tools, danger);
+    detail.append(heading, identity, appearance, placement, behavior, intelligence, tools, modelTools, ...(s.record?[testPanel.element]:[]), danger);
     for (const fold of detail.querySelectorAll('details')) fold.open = folds.includes(fold.querySelector('summary')?.textContent);
     detail.scrollTop = scrollTop; renderPlan(); syncFields(); renderDeleteConfirmation();
     if (focusPath) { const next = [...detail.querySelectorAll('[data-bot-field]')].find(node => node.dataset.botField === focusPath); next?.focus({ preventScroll: true }); if (typeof next?.setSelectionRange === 'function' && selectionStart != null) { try { next.setSelectionRange(selectionStart, selectionEnd); } catch { /* Number/select controls have no text selection. */ } } }
+    else if(focusedTestControl?.isConnected){if(focusedTestControl.disabled)closeButton.focus({preventScroll:true});else{focusedTestControl.focus({preventScroll:true});if(typeof focusedTestControl.setSelectionRange==='function'&&selectionStart!=null)focusedTestControl.setSelectionRange(selectionStart,selectionEnd);}}
   }
   function renderDeleteConfirmation() {
     const s = session, place = detail.querySelector('[data-delete-confirmation]'); if (!place) return;
@@ -524,7 +534,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     syncActor();
     const info = roomInfo(room), token = ++navigation, s = session;
     if (destroyed) return false;
-    if (!opened) { session = null; return true; }
+    if (!opened) { session = null; testPanel.update(); return true; }
     if (s?.room.id === info?.id && !s.loadFailed) { s.room = { ...s.room, ...info }; roomLabel.textContent = s.room.name || s.room.id; if (s.draft) renderPlan(); return true; }
     if (s?.draft && !await leaveDraft(s)) return false;
     if (token !== navigation || destroyed || !opened) return false;
@@ -544,7 +554,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     closePromise = Promise.resolve().then(async () => {
       if (s && (s.deleting || s.commanding)) return false;
       if (!await leaveDraft(s) || destroyed || token !== navigation || session !== s) return false;
-      opened = false; root.hidden = true; session = null;
+      opened = false; root.hidden = true; session = null; testPanel.update();
       try { if (s) onPreview({ roomId: s.room.id, botId: s.record?.id || null, bot: null }); } catch { /* Cleanup remains available. */ }
       try { Promise.resolve(onClose()).catch(() => {}); } catch { /* The surface is already closed. */ } finally { if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); }
       return true;
@@ -578,7 +588,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     destroy() {
       if (destroyed) return; destroyed = true; navigation++; opened = false;
       if (session) { try { onPreview({ roomId: session.room.id, botId: session.record?.id || null, bot: null }); } catch { /* Dispose even if renderer is gone. */ } }
-      window.removeEventListener('beforeunload', beforeUnload); root.remove(); session = null; newDrafts.clear();
+      window.removeEventListener('beforeunload', beforeUnload); testPanel.destroy(); root.remove(); session = null; newDrafts.clear();
     },
   };
 }

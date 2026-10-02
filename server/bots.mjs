@@ -2,21 +2,23 @@ import {randomUUID,createHash} from 'node:crypto';
 import * as v from './validation.mjs';
 import {AVATAR_PRESETS,DEFAULT_APPEARANCE,validateAppearance} from '../src/avatar-spec.js';
 import {distance,navigationPolicy,planBotPath,segmentClear} from './bot-navigation.mjs';
+import {unavailableResidentTest} from './resident-turns.mjs';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
 
 export const MAX_ROOM_BOTS=24;
 const TOOLS=['pause','resume','return'];
-const CONFIG_KEYS=['name','enabled','appearance','spawn','radius','responseRadius','behavior','waypoints','speed','pauseMs','loop','respondToPlayers','privateInstructions','permissions','restrictedAreaIds'];
+const CONFIG_KEYS=['name','enabled','appearance','spawn','radius','responseRadius','behavior','waypoints','speed','pauseMs','loop','respondToPlayers','privateInstructions','modelPermissions','permissions','restrictedAreaIds'];
 const clone=value=>structuredClone(value);
 function strict(value,keys,label='body'){v.record(value,label);for(const key of Object.keys(value))if(!keys.includes(key))v.fail(400,'INVALID_BOT_FIELD',`${key} is not an editable ${label} field`);return value;}
 function point(value,label,scene){strict(value,['x','z'],label);return{x:v.finite(value.x,`${label}.x`,-scene.bounds.width/2,scene.bounds.width/2),z:v.finite(value.z,`${label}.z`,-scene.bounds.depth/2,scene.bounds.depth/2)};}
-function defaults(scene){return {name:'New resident',enabled:true,appearance:clone(DEFAULT_APPEARANCE),spawn:{...scene.spawn},radius:6,responseRadius:3,behavior:'idle',waypoints:[],speed:1.5,pauseMs:1000,loop:true,respondToPlayers:true,privateInstructions:'',permissions:{pause:true,resume:true,return:true},restrictedAreaIds:[]};}
+function defaults(scene){return {name:'New resident',enabled:true,appearance:clone(DEFAULT_APPEARANCE),spawn:{...scene.spawn},radius:6,responseRadius:3,behavior:'idle',waypoints:[],speed:1.5,pauseMs:1000,loop:true,respondToPlayers:true,privateInstructions:'',modelPermissions:{pause:false,resume:false,return:false},permissions:{pause:true,resume:true,return:true},restrictedAreaIds:[]};}
 export function validateBotConfig(input,scene,previous=null){
   strict(input,CONFIG_KEYS,'configuration');const c={...(previous??defaults(scene)),...input};
   c.name=v.text(c.name,'name',60);c.enabled=v.boolean(c.enabled,'enabled');c.appearance=validateAppearance(c.appearance);c.spawn=point(c.spawn,'spawn',scene);
   c.radius=v.finite(c.radius,'radius',0,100);c.responseRadius=v.finite(c.responseRadius,'responseRadius',0,20);
   c.behavior=v.oneOf(c.behavior,['idle','patrol','social'],'behavior');c.speed=v.finite(c.speed,'speed',.2,4);c.pauseMs=v.integer(c.pauseMs,'pauseMs',0,60000);
   c.loop=v.boolean(c.loop,'loop');c.respondToPlayers=v.boolean(c.respondToPlayers,'respondToPlayers');c.privateInstructions=v.text(c.privateInstructions,'privateInstructions',4000,{empty:true});
+  c.modelPermissions=c.modelPermissions??{pause:false,resume:false,return:false};strict(c.modelPermissions,TOOLS,'modelPermissions');c.modelPermissions=Object.fromEntries(TOOLS.map(k=>[k,v.boolean(c.modelPermissions[k],`modelPermissions.${k}`)]));
   strict(c.permissions,TOOLS,'permissions');c.permissions=Object.fromEntries(TOOLS.map(k=>[k,v.boolean(c.permissions[k],`permissions.${k}`)]));
   if(!Array.isArray(c.restrictedAreaIds)||c.restrictedAreaIds.length>100)v.fail(400,'INVALID_BOT_AREAS','Choose up to 100 restricted areas');
   const areaIds=new Set((scene.areas??[]).map(a=>a.id));c.restrictedAreaIds=[...new Set(c.restrictedAreaIds.map(id=>v.id(id,'restricted area')))];
@@ -33,8 +35,8 @@ function migrate(store){store.db.exec(`
   CREATE INDEX IF NOT EXISTS room_bot_catalog ON room_bots(room_id,deleted_at);
   CREATE TABLE IF NOT EXISTS bot_operations(user_id TEXT NOT NULL REFERENCES users(id),operation_id TEXT NOT NULL,payload_hash TEXT NOT NULL,result TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(user_id,operation_id));
 `);}
-const record=row=>({id:row.id,roomId:row.room_id,revision:row.revision,...JSON.parse(row.config),createdAt:row.created_at,updatedAt:row.updated_at});
-export function createBotService({store,presence,body,send,session,emitRoom=()=>{},now=Date.now,autoTick=true}={}){
+const record=row=>({id:row.id,roomId:row.room_id,revision:row.revision,modelPermissions:{pause:false,resume:false,return:false},...JSON.parse(row.config),createdAt:row.created_at,updatedAt:row.updated_at});
+export function createBotService({store,presence,body,send,session,emitRoom=()=>{},now=Date.now,autoTick=true,onChanged=()=>{},residentTest=unavailableResidentTest}={}){
   migrate(store);const runtime=new Map(),lastPublished=new Map(),commandRates=new Map();let closed=false,lastTick=now();
   function roomScene(room){const scene=JSON.parse(room.scene);return bindImageDefinitions(scene,store.imageDefinitions?.(room.id,scene)??{},room.id);}
   function authorize(roomId,userId){
@@ -121,7 +123,27 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
     if(old){if(old.payload_hash!==hash)v.fail(409,'OPERATION_REUSED','Use a new operation ID for a different change');return{...JSON.parse(old.result),duplicate:true};}
     const result=action();store.run('INSERT INTO bot_operations(user_id,operation_id,payload_hash,result,created_at) VALUES(?,?,?,?,?)',userId,operationId,hash,JSON.stringify(result),now());return result;
   }
-  function catalog(){return{appearances:clone(AVATAR_PRESETS),behaviors:[{id:'idle',name:'Stay at home'},{id:'patrol',name:'Patrol an ordered route'},{id:'social',name:'Social · AI provider unconnected; remains silent'}],tools:TOOLS.map(id=>({id,name:{pause:'Pause movement',resume:'Resume configured behavior',return:'Return home and pause'}[id],scope:'This resident in this room',implementation:'local-server',requires:'universe owner or world admin/editor'})),provider:{status:'unconnected',message:'No AI provider or external MCP server is connected. Private instructions are stored for managers only and are not executed.'},limits:{maxBots:MAX_ROOM_BOTS,maxWaypoints:64}};}
+  // Both the HTTP controls and model tools pass through this exact command receipt authority.
+  function prepareCommand(roomId,id,userId,b){
+    const row=rowFor(roomId,id),config=JSON.parse(row.config);
+    if(!config.permissions[b.command])v.fail(403,'BOT_TOOL_DISABLED','This local ability is disabled for this resident');
+    if(!config.enabled)v.fail(409,'BOT_DISABLED','Enable this resident before using movement controls');
+    reconcileRoom(roomId,{publishChange:false});if(!runtime.has(id))v.fail(409,'BOT_INACTIVE','A person must be in the room before the resident can move');
+    const key=`${userId}:${id}`,rate=commandRates.get(key),t=now();if(rate&&t-rate.start<10000&&rate.count>=20)v.fail(429,'BOT_COMMAND_LIMIT','Wait a moment before another command');
+    commandRates.set(key,!rate||t-rate.start>=10000?{start:t,count:1}:{start:rate.start,count:rate.count+1});
+    return{accepted:true,id,command:b.command,providerStatus:'unconnected'};
+  }
+  function applyCommand(effect){
+    const r=runtime.get(effect.id);if(!r)v.fail(409,'BOT_INACTIVE','The resident is no longer active');
+    r.command=effect.command==='resume'?null:effect.command;r.blockedUntil=0;r.path=[];r.target=null;r.pauseUntil=0;if(r.routeDone||r.waypoint>=r.config.waypoints.length)r.waypoint=0;r.routeDone=false;stop(r,r.command==='pause'?'paused':r.command==='return'?'returning':'idle');
+  }
+  function command({userId,roomId,id,clientOperationId,command,guard=()=>{}}){
+    if(closed)v.fail(503,'BOT_CLOSED');v.oneOf(command,TOOLS,'command');v.id(clientOperationId,'clientOperationId');let effect=null;
+    const result=store.transaction(()=>{guard();authorize(roomId,userId);return operation(userId,{clientOperationId},{roomId,id,action:'command',command},()=>{const result=prepareCommand(roomId,id,userId,{command});effect={id,command};return result;});});
+    // COMMIT acknowledgement precedes the runtime movement effect. A replay never reapplies it.
+    guard();if(effect)applyCommand(effect);tick();publish(roomId);return result;
+  }
+  function catalog(){return{residentTest:residentTest(),appearances:clone(AVATAR_PRESETS),behaviors:[{id:'idle',name:'Stay at home'},{id:'patrol',name:'Patrol an ordered route'},{id:'social',name:'Social · AI provider unconnected; remains silent'}],tools:TOOLS.map(id=>({id,name:{pause:'Pause movement',resume:'Resume configured behavior',return:'Return home and pause'}[id],scope:'This resident in this room',implementation:'local-server',requires:'universe owner or world admin/editor'})),provider:{status:'unconnected',message:residentTest().available?'Private manager tests use a configured local test provider. Residents remain silent in the room.':'No AI provider or external MCP server is connected. Private instructions are stored for managers only and are not executed.'},limits:{maxBots:MAX_ROOM_BOTS,maxWaypoints:64}};}
   async function handle({req,res,path,method,userId}){
     const permissionPath=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/bot-permissions$/);
     if(permissionPath){store.authorize(permissionPath[1],userId);if(method!=='GET')v.fail(405,'METHOD_NOT_ALLOWED');send(res,200,capabilities(permissionPath[1],userId));return true;}
@@ -144,11 +166,7 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
         }
         const row=rowFor(roomId,id);
         if(action==='commands'){
-          const config=JSON.parse(row.config);if(!config.permissions[b.command])v.fail(403,'BOT_TOOL_DISABLED','This local ability is disabled for this resident');
-          if(!config.enabled)v.fail(409,'BOT_DISABLED','Enable this resident before using movement controls');
-          reconcileRoom(roomId,{publishChange:false});if(!runtime.has(id))v.fail(409,'BOT_INACTIVE','A person must be in the room before the resident can move');
-          const key=`${userId}:${id}`,rate=commandRates.get(key),t=now();if(rate&&t-rate.start<10000&&rate.count>=20)v.fail(429,'BOT_COMMAND_LIMIT','Wait a moment before another command');
-          commandRates.set(key,!rate||t-rate.start>=10000?{start:t,count:1}:{start:rate.start,count:rate.count+1});commandEffect={id,command:b.command};return{accepted:true,id,command:b.command,providerStatus:'unconnected'};
+          const result=prepareCommand(roomId,id,userId,b);commandEffect={id,command:b.command};return result;
         }
         if(row.revision!==b.revision)v.fail(409,'BOT_REVISION_CONFLICT','This resident changed. Reload and review your draft before saving.',{bot:record(row)});
         if(method==='DELETE'){store.run('UPDATE room_bots SET deleted_at=?,updated_at=?,revision=revision+1 WHERE id=?',now(),now(),id);return{deleted:true,id};}
@@ -157,8 +175,9 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
       });
     });
     reconcileRoom(roomId,{publishChange:false});
-    if(commandEffect){const r=runtime.get(commandEffect.id);if(r){r.command=commandEffect.command==='resume'?null:commandEffect.command;r.blockedUntil=0;r.path=[];r.target=null;r.pauseUntil=0;if(r.routeDone||r.waypoint>=r.config.waypoints.length)r.waypoint=0;r.routeDone=false;stop(r,r.command==='pause'?'paused':r.command==='return'?'returning':'idle');}}
+    if(commandEffect)applyCommand(commandEffect);
+    if(id&&(method==='PATCH'||method==='DELETE')&&!result.duplicate)onChanged(roomId,id);
     tick();publish(roomId);send(res,method==='POST'&&!id&&!result.duplicate?201:200,result);return true;
   }
-  return{handle,snapshot,reconcileRoom,tick,capabilities,close(){closed=true;if(timer)clearInterval(timer);runtime.clear();lastPublished.clear();commandRates.clear();}};
+  return{handle,command,snapshot,reconcileRoom,tick,capabilities,close(){closed=true;if(timer)clearInterval(timer);runtime.clear();lastPublished.clear();commandRates.clear();}};
 }
