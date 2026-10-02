@@ -109,15 +109,21 @@ try{
  await hit(page.getByRole('button',{name:'Close social panel',exact:true}));await hit(page.getByRole('button',{name:'Return to world',exact:true}));
  const cameraLayouts=await cameraRowCheck();await page.screenshot({path:out+'/desktop-chat-content.png'});await press(page.getByRole('button',{name:'Read local message',exact:true}));assert.match(await page.locator('#dialog').innerText(),/A local content action/);await press(page.getByRole('button',{name:'Close dialog',exact:true}));
  pass('Chat plus embedded content keeps a horizontal camera row, native Tab/wheel and content return/close targets reachable',{geometry:await noOverflow(),cameraLayouts});
- await reset();await open();await press(page.locator('#dock-chat'));await press(page.locator('#dock-emote'));
+ await reset();await open();await press(page.locator('#dock-chat'));
+ // Home snaps idle follow interpolation to the player. Rotate makes a leaked
+ // Home shortcut observable without allowing startup drift into the baseline.
+ await press(page.locator('#home-camera'));const homeCamera=await page.evaluate(()=>__universe.getCamera());
+ await press(page.locator('#rotate-camera'));await press(page.locator('#dock-emote'));
  assert.equal(await page.locator('#social').isVisible(),true);assert.equal(await page.locator('.embedded-panel').isVisible(),true);await hit(page.getByRole('button',{name:'Close Express',exact:true}));
  const before=await page.evaluate(()=>({position:__universe.getState().position,camera:__universe.getCamera()}));
- await page.locator('.express-input').fill('e f r w');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Home');
- const cdp=await ctx.newCDPSession(page);await cdp.send('Input.imeSetComposition',{text:'編集中',selectionStart:3,selectionEnd:3});await settle();
+ assert.equal(before.camera.follow,true);assert.deepEqual(before.camera.target,before.position,'native Home establishes an exact stationary follow target');assert.notEqual(before.camera.yaw,homeCamera.yaw,'native Rotate establishes a nondefault camera before testing the Home key');
+ const expression=page.locator('.express-input');await press(expression);await expression.pressSequentially('e f r w');assert.equal(await expression.inputValue(),'e f r w');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Home');
+ assert.deepEqual(await expression.evaluate(el=>({focused:document.activeElement===el,start:el.selectionStart,end:el.selectionEnd})),{focused:true,start:0,end:0},'native editing keys stay in the Express input');
+ const cdp=await ctx.newCDPSession(page);await cdp.send('Input.imeSetComposition',{text:'編集中',selectionStart:3,selectionEnd:3});await settle();assert.equal(await expression.inputValue(),'編集中e f r w');
  const after=await page.evaluate(()=>({position:__universe.getState().position,camera:__universe.getCamera()}));assert.deepEqual(after.position,before.position);
- for(const key of['yaw','tilt','distance','framingMode'])assert.deepEqual(after.camera[key],before.camera[key]);for(const axis of['x','z'])assert(Math.abs(after.camera.target[axis]-before.camera.target[axis])<1e-8);
+ for(const key of['yaw','tilt','distance','follow','framingMode','target'])assert.deepEqual(after.camera[key],before.camera[key],`Express input must preserve camera ${key}`);
  await cdp.send('Input.imeSetComposition',{text:'',selectionStart:0,selectionEnd:0});await page.screenshot({path:out+'/desktop-express-chat-content.png'});await press(page.getByRole('button',{name:'Close Express',exact:true}));
- await historyDisposition('Close Express after chat plus embed');pass('Express remains usable with chat plus embed; native text/IME leaves world and camera unchanged');
+ await historyDisposition('Close Express after chat plus embed');pass('Express remains usable with chat plus embed; native text/IME leaves world and camera unchanged',{cameraPrecondition:'Native Home then Rotate, exact stationary follow target and nondefault yaw',before,after});
  await reset();await keyboardDockCheck();
  await reset();await open('Open wide content');await page.setViewportSize({width:1024,height:768});await settle();
  assert(Number.parseFloat(await page.locator('#app').evaluate(e=>e.style.getPropertyValue('--hud-width')))>=359);
