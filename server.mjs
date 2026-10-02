@@ -1,0 +1,11 @@
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createGameServer } from './server/app.mjs';
+import { seedWorlds } from './src/worlds.js';
+const root=dirname(fileURLToPath(import.meta.url));
+const app=createGameServer({database:process.env.UNIVERSE_DB || resolve(root,'data/universe.sqlite'),dist:resolve(root,'dist'),seeds:seedWorlds});
+const address=await app.listen(Number(process.env.PORT || 4190));
+console.log(`Universe standalone is ready at http://127.0.0.1:${address.port}`);
+process.send?.({type:'ready',port:address.port});
+let shuttingDown=false;
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,async()=>{if(shuttingDown)return;shuttingDown=true;await app.close();process.exit(0);});

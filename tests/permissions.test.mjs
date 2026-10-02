@@ -1,0 +1,3 @@
+import test from'node:test';import assert from'node:assert/strict';import{roomAllows}from'../src/permissions.js';
+test('ACCESS-06 explicit server false overrides role-name fallback',()=>{assert(!roomAllows({role:'owner',capabilities:{canEditScene:false}},'canEditScene'));assert(roomAllows({role:'guest',capabilities:{canEditScene:true}},'canEditScene'));});
+test('WORLD-05 capabilities distinguish editor from membership manager',()=>{assert(roomAllows({role:'editor'},'canEditScene'));assert(!roomAllows({role:'editor'},'canManageMembers'));assert(roomAllows({role:'admin'},'canManageMembers'));assert(!roomAllows({role:'guest'},'canEditScene'));assert(!roomAllows(null,'canEditScene'));});

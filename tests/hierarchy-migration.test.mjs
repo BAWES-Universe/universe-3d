@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createGameServer} from '../server/app.mjs';
+
+// Hand-built v0.2 schema, not the current Store: exercises additive migration on
+// the actual old columns and proves no inference from an ambiguous visitor row.
+function legacyDatabase(path){const db=new DatabaseSync(path);db.exec(`
+CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL,woka TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'online',created_at INTEGER NOT NULL);
+CREATE TABLE worlds(id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT REFERENCES users(id),public INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);
+CREATE TABLE rooms(id TEXT PRIMARY KEY,world_id TEXT NOT NULL REFERENCES worlds(id),name TEXT NOT NULL,owner_id TEXT REFERENCES users(id),public INTEGER NOT NULL DEFAULT 1,revision INTEGER NOT NULL DEFAULT 0,scene TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE members(room_id TEXT NOT NULL REFERENCES rooms(id),user_id TEXT NOT NULL REFERENCES users(id),role TEXT NOT NULL DEFAULT 'member',muted_until INTEGER NOT NULL DEFAULT 0,banned INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(room_id,user_id));
+CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE messages(id TEXT PRIMARY KEY,room_id TEXT NOT NULL REFERENCES rooms(id),user_id TEXT NOT NULL REFERENCES users(id),text TEXT NOT NULL,created_at INTEGER NOT NULL,edited_at INTEGER,deleted INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE room_files(id TEXT PRIMARY KEY,room_id TEXT NOT NULL REFERENCES rooms(id),name TEXT NOT NULL,content_type TEXT NOT NULL,size INTEGER NOT NULL,bytes BLOB NOT NULL,sha256 TEXT NOT NULL,created_by TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL,deleted_at INTEGER);
+INSERT INTO metadata VALUES('seeded','1');
+INSERT INTO users VALUES('owner','Owner','{}','online',1),('visitor','Visitor','{}','online',2),('editor','Editor','{}','online',3);
+INSERT INTO worlds VALUES('public-world','Public world','owner',1,1),('private-world','Private world','owner',0,2);
+`);const scene=JSON.stringify({version:1,theme:'legacy',bounds:{width:30,depth:20},spawn:{x:0,z:0},objects:[],areas:[]});for(const[id,w,name,pub]of[['public-room','public-world','Public',1],['room-a','private-world','Private A',0],['room-b','private-world','Private B',0]])db.prepare('INSERT INTO rooms VALUES(?,?,?,?,?,7,?,1)').run(id,w,name,'owner',pub,scene);db.exec("INSERT INTO members(room_id,user_id,role) VALUES('public-room','visitor','member'),('public-room','editor','editor'),('room-a','visitor','member'); INSERT INTO messages VALUES('message-1','public-room','visitor','Legacy chat',3,NULL,0)");db.prepare("INSERT INTO room_files VALUES('file-1','public-room','legacy.txt','text/plain',5,?,'hash','owner',3,NULL)").run(Buffer.from('bytes'));db.close();}
+
+test('v0.2 migration preserves records without promoting visitors or widening private room-only access',async t=>{const dir=await mkdtemp(join(tmpdir(),'hierarchy-legacy-'));t.after(()=>rm(dir,{recursive:true,force:true}));const path=join(dir,'legacy.sqlite');legacyDatabase(path);let app=createGameServer({database:path});let s=app.store;assert.equal(s.all('SELECT * FROM users').length,3);assert.equal(s.room('public-room','owner').revision,7);assert.equal(s.room('public-room','owner').scene.theme,'legacy');assert.equal(s.get('SELECT text FROM messages WHERE id=?','message-1').text,'Legacy chat');assert.equal(Buffer.from(s.get('SELECT bytes FROM room_files WHERE id=?','file-1').bytes).toString(),'bytes');assert.equal(s.worldMembership('public-world','visitor'),undefined);assert.equal(s.worldMembership('private-world','visitor'),undefined);assert.equal(s.membership('public-room','visitor').granted,0);assert.equal(s.membership('room-a','visitor').needs_review,1);assert.equal(s.role(s.roomRow('public-room'),'editor'),'editor');assert.equal(s.canSeeRoom(s.roomRow('room-a'),'visitor'),false);assert.equal(s.canSeeRoom(s.roomRow('room-b'),'visitor'),false);s.run('UPDATE rooms SET public=0 WHERE id=?','public-room');assert.equal(s.canSeeRoom(s.roomRow('public-room'),'visitor'),false);assert.equal(s.canSeeRoom(s.roomRow('public-room'),'editor'),true);const universe=s.worldRow('public-world').universe_id;assert.equal(s.worldRow('private-world').universe_id,universe);assert.equal(s.worldMembership('public-world','owner').role,'admin');await app.listen(0);await app.close();app=createGameServer({database:path});t.after(()=>app.close());await app.listen(0);s=app.store;assert.equal(s.all('SELECT * FROM universes').length,1);assert.equal(s.worldRow('public-world').universe_id,universe);assert.equal(s.membership('room-a','visitor').needs_review,1);assert.equal(s.worldMembership('private-world','visitor'),undefined);});

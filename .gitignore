@@ -1,0 +1,28 @@
+# Dependencies and generated bundles
+node_modules/
+dist/
+
+# Runtime state, uploads, local credentials, and database sidecars
+data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.ses
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local test output and package archives
+evidence/
+tests/*.png
+tests/*-results.json
+*.log
+*.zip
+CHECKPOINT-MANIFEST.json
+.DS_Store
+
+# Legacy sprites require separate distribution clearance
+public/assets/woka-*.png

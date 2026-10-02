@@ -1,0 +1,3 @@
+import {readdir}from'node:fs/promises';import{join}from'node:path';import{spawnSync}from'node:child_process';
+const files=[];async function walk(dir){for(const e of await readdir(dir,{withFileTypes:true})){const p=join(dir,e.name);if(e.isDirectory())await walk(p);else if(/\.(?:mjs|js)$/.test(p))files.push(p);}}
+for(const dir of['src','server','scripts','tests'])await walk(dir);files.push('server.mjs');let failed=false;for(const file of files){const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status){failed=true;console.error(file,result.stderr);}}console.log(`${files.length} source files syntax checked`);if(failed)process.exitCode=1;

@@ -1,0 +1,6 @@
+import {launch} from '../scripts/browser.mjs';
+import {writeFile} from 'node:fs/promises';
+import {createGameServer} from '../server/app.mjs';
+import {seedWorlds} from '../src/worlds.js';
+const app=createGameServer({seeds:seedWorlds,dist:new URL('../dist',import.meta.url).pathname});await app.listen(4190);
+const b=await launch();const page=await b.newPage({viewport:{width:1440,height:960}});const errors=[];page.on('pageerror',e=>errors.push(e.stack));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await page.goto('http://127.0.0.1:4190');await page.waitForTimeout(2000);await page.screenshot({path:'evidence/welcome-desktop.png'});console.log('welcome errors',errors);await page.getByPlaceholder('Your name').fill('Avery');await page.getByRole('button',{name:'Enter Universe'}).click();await page.waitForFunction(()=>window.__universe?.getState().ready);await page.waitForTimeout(1500);await page.screenshot({path:'evidence/commons-desktop.png'});console.log(await page.evaluate(()=>({state:window.__universe.getState(),stats:window.__universe.getStats()})));console.log(errors);await writeFile('evidence/smoke-errors.json',JSON.stringify(errors,null,2));await b.close();await app.close();
