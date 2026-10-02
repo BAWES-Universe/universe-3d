@@ -1,0 +1,63 @@
+/* Scoped to boundary C. Tokens are provided by the host's current Universe theme. */
+.u-image-library {
+  --image-cell-size:44px;
+  box-sizing: border-box; width: min(560px, 100%); max-height: 100dvh; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain; padding: 18px;
+  color: var(--u-text); background: var(--u-surface-flat);
+  border-radius: 18px; box-shadow: var(--u-shadow-flat);
+  font: 14px/1.5 Roboto, Arial, sans-serif; isolation: isolate;
+}
+.u-image-library *, .u-image-library *::before, .u-image-library *::after { box-sizing: border-box; }
+.u-image-library [hidden] { display: none !important; }
+.u-image-library h2, .u-image-library h3, .u-image-library p { margin: 0; }
+.u-image-library h2 { font: 700 24px/1.2 Space, Inter, Arial, sans-serif; }
+.u-image-library h3 { font-size: 18px; }
+.u-image-library button, .u-image-library input, .u-image-library select { font: inherit; }
+.u-image-library button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 44px; border: 1px solid var(--u-secondary-border); border-radius: var(--u-pill); background: var(--u-secondary); color: inherit; padding: 9px 13px; cursor: pointer; touch-action: manipulation; white-space: normal; }
+@media (hover: hover) { .u-image-library button:hover:enabled { background: var(--u-control-hover); } }
+.u-image-library button:disabled, .u-image-library input:disabled, .u-image-library select:disabled { opacity: .55; cursor: default; }
+.u-image-library :focus-visible { outline: 2px solid var(--u-text); outline-offset: -3px; }
+.u-image-library .uil-primary { color: var(--u-text); background: var(--u-primary); border-color: transparent; }
+@media (hover: hover) { .u-image-library .uil-primary:hover:enabled { background: var(--u-primary-hover); } }
+.uil-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 12px; }
+.uil-icon { display: inline-flex; flex-shrink: 0; width: 20px; height: 20px; }
+.uil-icon svg { width: 20px; height: 20px; }
+.uil-note { color: var(--u-text-soft); font-size: 12px; overflow-wrap: anywhere; }
+.u-image-library .uil-status { min-height: 24px; margin: 10px 0; color: var(--u-chat-live); font-size: 12px; }
+.uil-tools { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; }
+.uil-search { display: grid; gap: 5px; flex: 1 1 100%; }
+.u-image-library input:not([type=checkbox]):not([type=file]), .u-image-library select { width: 100%; min-width: 0; min-height: 44px; color: inherit; background: var(--u-input); border: 1px solid var(--u-secondary-hover-border); border-radius: 10px; padding: 9px 11px; }
+.u-image-library input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--kind-universe-solid); }
+.u-image-library option { background: var(--u-ink); }
+.uil-cards { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 12px; }
+.uil-card { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 12px; border: 1px solid var(--u-card-border); padding: 12px; border-radius: 15px; background: var(--u-secondary); }
+.uil-card-copy { display: grid; overflow-wrap: anywhere; gap: 3px; }
+.uil-card > button { grid-column: 1 / -1; }
+.uil-thumb { min-width: 0; height: 74px; border-radius: 10px; background: var(--u-input); display: grid; place-items: center; overflow: hidden; text-align: center; }
+.uil-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.u-image-library .uil-empty { margin: 12px 0; }
+.uil-draft { display: grid; gap: 14px; }
+.uil-drop { border: 1px dashed var(--u-secondary-hover-border); border-radius: 15px; padding: 14px; text-align: center; }
+.uil-drop p { font-size: 12px; color: var(--u-text-soft); margin-top: 8px; }
+.uil-file { display: none; }
+.uil-preview { display: grid; gap: 8px; text-align: center; }
+.uil-preview img { display: block; max-width: 100%; width: auto; height: 140px; margin: auto; object-fit: contain; background: repeating-conic-gradient(var(--u-card) 0 25%,var(--u-ink) 0 50%) 0 / 16px 16px; border-radius: 10px; }
+.uil-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 14px; }
+.uil-fields legend { padding: 0; margin-bottom: 12px; font-weight: 600; }
+.uil-field { display: grid; gap: 5px; min-width: 0; }
+.uil-field small { color: var(--u-text-soft); font-size: 12px; }
+.uil-grid-wrap { min-width: 0; }
+.uil-grid { display: grid; gap: 4px; overflow: auto; max-height: 250px; max-width: 100%; padding: 6px; margin-top: 8px; }
+.u-image-library .uil-cell { width: var(--image-cell-size); min-height: var(--image-cell-size); height: var(--image-cell-size); padding: 2px; font-size: 9px; border-radius: 6px; }
+.u-image-library .uil-cell[aria-pressed=true] { background: var(--u-selected); border-color: var(--u-selected-border); color: var(--u-text); }
+.uil-error { padding: 12px; color: var(--u-text); border: 1px solid var(--u-danger); background: var(--u-secondary); border-radius: 10px; overflow-wrap: anywhere; }
+.uil-actions, .uil-recovery { display: flex; flex-wrap: wrap; gap: 9px; }
+.uil-actions { position: sticky; bottom: -18px; padding: 12px 0; background: var(--u-ink); margin-bottom: -6px; z-index: 2; }
+.uil-actions button { flex: 1 1 auto; }
+@media (max-width: 360px) { .u-image-library { padding: 12px; border-radius: 12px; }.uil-header { gap: 7px; }.uil-close > span:last-child { max-width: 70px; }.uil-actions { bottom: -12px; }.uil-card { padding: 10px; } }
+@media (max-height: 420px) { .u-image-library { max-height: 100dvh; }.uil-preview img { height: 80px; }.uil-header { margin-bottom: 5px; } }
+@media (prefers-reduced-motion: reduce) { .u-image-library * { scroll-behavior: auto; } }
+
+.u-image-library button:active:enabled { background: var(--u-control-pressed); }
+.u-image-library .uil-primary:active:enabled { background: var(--u-primary-pressed); }
+@media (pointer: coarse) { .u-image-library {--image-cell-size:48px} .u-image-library button,.u-image-library input:not([type=checkbox]):not([type=file]),.u-image-library select { min-height:48px; } .u-image-library .uil-cell { width:48px;height:48px;min-height:48px; } }

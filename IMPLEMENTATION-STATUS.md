@@ -1,8 +1,10 @@
 # Standalone implementation status · 2026-10-02
 
-This active tranche adds functional authoring, personal spaces, locally configured residents, deployment configuration and a source-audited chrome port to the earlier play-quality checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+This active v0.6 tranche adds the integrated custom-image library to the recorded functional-authoring, personal-space, local-resident and deployment-configuration checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Integrated now
+
+- Room-authorized PNG upload/search/reuse, immutable pinned versions, native floor/upright panels, alpha-aware picking, shared painted collision/full edit footprints and explicit resource/error lifecycle
 
 - Original native3D character creator, durable appearance, correct world-facing animation and live portraits
 - Camera-relative movement, normalized diagonals, manual Shift2.5×, orbit/tilt/zoom/pan/follow, pointer and separated multitouch gestures
@@ -22,13 +24,11 @@ Resident social/private-instruction settings are stored but inactive without a r
 
 ## Current verification boundary
 
-The current source passes205 unit/API tests, syntax checks, build and package startup. Focused module checks cover action authoring, personal authority/UI, resident authority/UI, source token/icon roles and lifecycle behavior. Separate actual full-world runs pass resident creation/save/reload, nine action scenarios, nine personal-space scenarios and five native resident-handle scenarios, with no page exceptions. The latter verifies actual home/waypoint drags, release-only commits, Escape cancellation and saved ordered-route reload on browser bundle SHA-256 `973a5845d612e611cdb127ab4ac6cd14738acd55612cd476bae86ba7d1214e26`. These counts overlap and are not feature-completion totals. Final bundle `bdcd43aa59fbc3ec84020e1019fdd6ebacd126c33a916a41067f993c8e5be9e0` now passes all four actual-authoring suites (29 focused checks). Core fallback/camera/build/avatar/layout pass; Express passes all five checks after replacing its fixed 100ms test delay with observed camera/bubble state. Raw failed timing attempts are retained. New-draft editor lifecycle additionally passes 21 DOM/protocol checks. Remote CI remains pending for this revision.
+The frozen v0.6 source401ae7c4…056e7 passed324 unit/API tests, syntax/build/package/container-file checks and all13 serial browser suites (3 image,6 core,4 authoring), with an exact261-file source comparison. The image suite includes final320px native-touch behavior and nonoverlapping Build heading/status.
 
-Native audio503 failure recovery was initially broken in the full-world test. The corrected Retry reloads the failed native source, reauthorizes the action and now passes the same actual-browser scenario. Scoped object-footprint checks were corrected to match rendered geometry rather than trusting an inert scale field.
+A subsequent actual DPR2 regression exposed a pre-existing ray-input double-scaling bug despite those DPR1 checks. The focused renderer fix now passes6 actual native mouse/touch scenarios: exact chair selection before/after camera orbit, projected image ghost coordinates, opaque selection and transparent pass-through. Measured framebuffer ratios match the real DPR2 hardware scale, including raster rounding. Tested bundle `8c0d91282d59b7f17079ec227762b178213369cb2a380b728b0cd69a1b5fb3a5`; CSS remains `9ffd241303c102e9c65202b4fe31f5aa1893ee57c13256ad71a478a132b18c79`. Test-harness attempts that encountered deliberately unobscured-point guards remain recorded; they are not hidden product exceptions. The core command now includes this DPR regression. Counts overlap and do not certify whole source parity.
 
-Reproduce core quality checks with `npm run test:browser`, current actual authoring flows with `npm run test:browser:authoring`, and isolated fixture/media checks with `npm run test:browser:modules`. `npm run verify:container-files` tests Dockerfile source-file boundaries and dependency-free runtime startup; it does not run Docker.
-
-Browser tests use Chromium software WebGL and touch emulation. Physical iPhone/Android GPUs, cross-network real media, production load and a live reverse proxy remain unverified. The latest published quality-only commit60fcfc6705b0cc7760dc9f130f904a3ba76c81a3 has green remote CI; that result does not automatically cover this newer tranche until publication and its own CI finish.
+Reproduce with `npm run test:browser`, `npm run test:browser:authoring` and `npm run test:browser:images`; isolated module checks use `npm run test:browser:modules`. `npm run verify:container-files` simulates declared Dockerfile source boundaries and dependency-free startup, not actual Docker. Browser tests use Chromium software WebGL and touch emulation; physical phones, real cross-network media, live reverse proxy and production load remain unverified. Publication/CI of newer source must be verified by exact commit.
 
 ## Prior immutable quality checkpoint
 
@@ -40,8 +40,8 @@ The earlier quality checkpoint and v0.3 hierarchy evidence remain unchanged. The
 - Successful real AV packets, existing LiveKit/TURN/broadcast adapter, physical devices and network handover
 - Operator-run Docker/TLS/proxy, resource and disk quotas, consistent backup/restore and isolated deployment
 - Matrix/E2EE/federation, SSO, external integrations, upstream owned-avatar catalogs and full quest programs
-- Expandable persistent room chunks, reusable composite asset workshop/textures, terrain tools and creator-made social game logic
+- Image definition editing/replacement/archive/delete, collection import, expandable persistent room chunks, reusable composite asset workshop, terrain tools and creator-made social game logic
 - Positions remain bounded client reports, not authoritative physics or hardened anti-cheat
 - Local original wardrobe and room-scoped file access do not imply upstream entitlement or all area-tag file semantics
 
-See `ACTION-AUTHORING.md`, `server/PERSONAL-AREAS.md`, `server/BOTS.md`, `BRAND-PORT.md` and `DEV-PREVIEW-OPERATOR.md` for implemented contracts and limitations. No deployment has occurred.
+See `CUSTOM-IMAGES.md`, `IMAGE-LIBRARY-CONTRACT.md`, `ACTION-AUTHORING.md`, `server/PERSONAL-AREAS.md`, `server/BOTS.md`, `BRAND-PORT.md` and `DEV-PREVIEW-OPERATOR.md` for implemented contracts and limitations. No deployment has occurred.

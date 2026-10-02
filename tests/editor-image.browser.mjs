@@ -1,0 +1,66 @@
+import {build} from 'esbuild';
+import {launch} from '../scripts/browser.mjs';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const source=`
+import {mountEditor} from './src/editor.js';
+import {emptyScene,clone} from './src/worlds.js';
+import {imageDefinitions,resolvedImage,bindImageDefinitions} from './src/image-asset-context.js';
+import {normalizeImageAssetDraft,validateImageDefinition,validateImageInstance} from './src/image-asset-schema.js';
+const stamp='2026-10-02T00:00:00.000Z';
+window.makeEntry=(assetId,versionId,options={})=>{const roomId=options.roomId||'test',definition={schemaVersion:1,assetId,roomId,createdBy:'editor',createdAt:stamp,originKind:'upload'};const version={...normalizeImageAssetDraft({name:options.name||'Custom tree',floating:options.floating??true,...(options.collisionGrid?{collisionGrid:options.collisionGrid}:{})},{width:options.width||64,height:options.height||96,byteLength:100,mediaType:'image/png'}),schemaVersion:1,assetId,roomId,versionId,sequence:options.sequence||1,sha256:'a'.repeat(64),createdBy:'editor',createdAt:stamp};return {...validateImageDefinition(definition,version),status:options.status||'active'};};
+window.defs={'tree:v1':makeEntry('tree','v1'),'solid:v1':makeEntry('solid','v1',{name:'Collision tree',floating:false,width:64,height:32,collisionGrid:[[1,0]]})};
+const scene=emptyScene();window.state={scene,room:{id:'test',role:'owner',revision:1,scene:clone(scene),imageDefinitions:defs},position:{x:0,z:7}};
+window.logs={toasts:[],opened:0,requests:[]};
+window.checkInstances=()=>state.scene.objects.forEach(validateImageInstance);
+window.resolved=()=>state.scene.objects.map(item=>resolvedImage(state.scene,item)?.version.versionId);
+window.definitionKeys=()=>Object.keys(imageDefinitions(state.scene));
+window.addDefinition=entry=>{const key=entry.definition.assetId+':'+entry.version.versionId;state.room.imageDefinitions={...state.room.imageDefinitions,[key]:entry};bindImageDefinitions(state.scene,state.room.imageDefinitions,state.room.id);};
+window.editor=mountEditor({root:document.querySelector('#editor'),getState:()=>state,onScene:s=>state.scene=s,onSelect:()=>{},toast:t=>logs.toasts.push(t),onOpenImageLibrary:()=>logs.opened++,getCameraAngle:()=>0,api:async(url,args)=>{logs.requests.push({url,args});if(window.saveOverride)return window.saveOverride;return {room:{...state.room,revision:state.room.revision+1,scene:JSON.parse(JSON.stringify(args.body.scene)),imageDefinitions:JSON.parse(JSON.stringify(state.room.imageDefinitions))}};}});
+editor.attachRoom();editor.setBuild(true);
+`;
+const bundle=await build({stdin:{contents:source,resolveDir:process.cwd(),sourcefile:'editor-image-fixture.js'},bundle:true,format:'iife',write:false});
+const browser=await launch(),page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const check=name=>console.log('PASS',name);
+try{
+ await page.route('https://editor.test/',route=>route.fulfill({status:200,contentType:'text/html',body:'<canvas id="game" tabindex="0"></canvas><aside id="editor"></aside>'}));
+ await page.goto('https://editor.test/');await page.addScriptTag({content:bundle.outputFiles[0].text});
+ await page.getByRole('button',{name:'Custom images',exact:true}).click();assert.equal(await page.evaluate(()=>logs.opened),1);
+ assert.equal(await page.evaluate(()=>editor.setImageAsset({assetId:'tree',versionId:'missing'})),false);
+ assert.equal(await page.evaluate(()=>{const ref={assetId:'tree',versionId:'v1'};const result=editor.setImageAsset(ref);ref.versionId='forged';return result}),true);
+ await page.evaluate(()=>editor.pointerMove({point:{x:4.23,z:2.37}}));
+ let preview=await page.evaluate(()=>editor.getInteractionState().preview);assert.equal(preview.type,'image');assert.equal(preview.valid,true);assert.equal(preview.x,4.23);assert.equal(preview.z,2.37);assert.equal(preview.assetRef.versionId,'v1');assert.match(preview.id,/^[A-Za-z0-9_-]+$/);assert.equal(preview.width,undefined);assert.equal(preview.snap,0);
+ await page.evaluate(()=>{editor.pick({point:{x:4.23,z:2.37}});editor.rotate();editor.pick({point:{x:7.15,z:2.2}});checkInstances();});
+ assert.equal(await page.evaluate(()=>state.scene.objects.length),2);assert.equal(await page.evaluate(()=>state.scene.objects[1].rotation),90);assert.equal(await page.evaluate(()=>editor.getTool()),'image');assert.equal(await page.evaluate(()=>Object.isFrozen(state.scene.objects[0].assetRef)),true);check('Custom image entry, pinned strict ghost, free positioning, repeated place and rotation');
+ await page.getByRole('button',{name:'Image placement: Free position',exact:true}).click();await page.evaluate(()=>editor.pointerMove({point:{x:4.23,z:5.71}}));assert.deepEqual(await page.evaluate(()=>({x:editor.getInteractionState().preview.x,z:editor.getInteractionState().preview.z})),{x:4,z:6});
+ await page.getByRole('button',{name:'Image placement: Grid 1m',exact:true}).click();assert.equal(await page.evaluate(()=>editor.getInteractionState().snap),.5);
+ await page.getByRole('button',{name:'Image placement: Grid 0.5m',exact:true}).click();assert.equal(await page.evaluate(()=>editor.getInteractionState().snap),0);check('Discoverable free / metre / half-metre snapping override');
+ await page.evaluate(()=>{const item=state.scene.objects[0];editor.select(item.id);editor.pointerDown({id:item.id,point:{x:item.x,z:item.z}},{clientX:10,clientY:10,pointerId:1});editor.pointerMove({point:{x:item.x+1.12,z:item.z+.27}},{clientX:40,clientY:40,pointerId:1});});
+ assert.equal(await page.evaluate(()=>state.scene.objects[0].x),4.23);await page.evaluate(()=>{const item=state.scene.objects[0];editor.pointerUp({point:{x:item.x+1.12,z:item.z+.27}},{clientX:40,clientY:40,pointerId:1});});assert.ok(Math.abs(await page.evaluate(()=>state.scene.objects[0].x)-5.35)<1e-8);
+ const dragged=await page.evaluate(()=>state.scene.objects[0]);await page.evaluate(()=>editor.undo());assert.equal(await page.evaluate(()=>state.scene.objects[0].x),4.23);await page.evaluate(()=>editor.redo());assert.deepEqual(await page.evaluate(()=>state.scene.objects[0]),dragged);
+ await page.locator('#game').focus();await page.keyboard.press('ArrowRight');assert.ok(Math.abs(await page.evaluate(()=>state.scene.objects[0].z)-2.74)<1e-8);await page.keyboard.press('r');await page.keyboard.press('d');await page.keyboard.press('ArrowRight');await page.keyboard.press('Space');await page.evaluate(()=>checkInstances());assert.equal(await page.evaluate(()=>state.scene.objects.length),3);assert.equal(await page.evaluate(()=>state.scene.objects[2].rotation),90);assert.equal(await page.evaluate(()=>state.scene.objects[2].assetRef.versionId),'v1');check('Transactional fractional drag, undo/redo, camera-relative nudge, rotate, duplicate and Space');
+ assert.equal(await page.locator('.builder-image-summary').textContent().then(t=>t.includes('64 × 96 px · 2 × 3 m')),true);assert.equal(await page.getByLabel('Color',{exact:true}).count(),0);assert.equal(await page.getByLabel('Description',{exact:true}).count(),0);assert.equal(await page.getByLabel('Open URL on interaction',{exact:true}).count(),0);
+ await page.locator('[data-section="item-actions"] summary').click();await page.getByRole('button',{name:'+ Message',exact:true}).click();await page.getByRole('button',{name:'+ Link',exact:true}).click();await page.getByRole('button',{name:'Move up action 2',exact:true}).click();assert.deepEqual(await page.evaluate(()=>state.scene.objects[2].actions.map(a=>a.type)),['link','message']);await page.evaluate(()=>checkInstances());check('Image inspector resolves asset name/version/dimensions and edits ordered canonical actions without legacy fields');
+ await page.route('https://editor.test/api/rooms/test/files',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({files:[{id:'document1',name:'Brief.pdf',url:'/api/rooms/test/files/document1',size:120,contentType:'application/pdf'}]})}));
+ await page.locator('[data-section="documents"] summary').click();await page.waitForFunction(()=>document.querySelector('[aria-label="Saved room document"]')?._files?.length===1);await page.getByRole('combobox',{name:'Saved room document'}).selectOption('document1');
+ assert.equal(await page.evaluate(()=>state.scene.objects[2].actions.at(-1).url),'/api/rooms/test/files/document1');await page.evaluate(()=>checkInstances());assert.equal(await page.evaluate(()=>state.scene.objects[2].document),undefined);assert.equal(await page.evaluate(()=>state.scene.objects[2].url),undefined);check('Image attachment is an ordered protected document link with no forbidden legacy metadata');
+ await page.evaluate(()=>editor.save());assert.equal(await page.evaluate(()=>editor.isDirty()),false);assert.deepEqual(await page.evaluate(()=>resolved()),['v1','v1','v1']);assert.equal(await page.evaluate(()=>logs.requests.at(-1).args.body.scene.imageDefinitions),undefined);check('Authoritative save response rebinds image definitions without serializing them');
+ await page.evaluate(()=>{addDefinition(makeEntry('new','v2',{name:'Fresh image',sequence:2}));editor.setImageAsset({assetId:'new',versionId:'v2'});editor.pick({point:{x:-4.2,z:2.3}});const incoming={...state.room,revision:state.room.revision+1,scene:structuredClone(state.room.scene),imageDefinitions:defs};editor.receiveScene(incoming);});assert.deepEqual(await page.evaluate(()=>resolved()),['v1','v1','v1','v2']);assert.equal(await page.evaluate(()=>editor.isDirty()),true);assert.equal(await page.getByRole('button',{name:'Load server version',exact:true}).isVisible(),true);
+ await page.evaluate(()=>editor.revert());assert.equal(await page.evaluate(()=>state.scene.objects.length),3);assert.deepEqual(await page.evaluate(()=>resolved()),['v1','v1','v1']);assert.equal(await page.evaluate(()=>editor.isDirty()),false);check('New-version draft definitions survive incoming conflict, and explicit revert restores bound server scene');
+ await page.evaluate(()=>{editor.setImageAsset({assetId:'solid',versionId:'v1'});editor.pointerMove({point:{x:-6.26,z:-3.68}});});preview=await page.evaluate(()=>editor.getInteractionState().preview);assert.equal(preview.x,-6.5);assert.equal(preview.z,-3.5);assert.equal(preview.snap,.5);assert.equal(preview.valid,true);check('Collision-source images always stay snapped');
+ await page.evaluate(()=>{editor.pick({point:{x:-6.26,z:-3.68}});window.saveOverride={room:{...state.room,id:'other',role:'guest',revision:99}};return editor.save();});assert.equal(await page.evaluate(()=>state.room.id),'test');assert.equal(await page.evaluate(()=>state.room.role),'owner');assert.equal(await page.evaluate(()=>editor.isDirty()),true);assert.match(await page.evaluate(()=>logs.toasts.at(-1)),/another room/);await page.evaluate(()=>window.saveOverride=null);check('Unexpected cross-room save response cannot replace draft or change room authority');
+ await page.evaluate(()=>{state.room={id:'other',role:'owner',revision:1,imageDefinitions:{},scene:{...state.room.scene,objects:[]}};state.scene=structuredClone(state.room.scene);editor.attachRoom();});assert.deepEqual(await page.evaluate(()=>definitionKeys()),[]);assert.equal(await page.evaluate(()=>editor.setImageAsset({assetId:'tree',versionId:'v1'})),false);assert.equal(await page.evaluate(()=>editor.getTool()),'select');check('Room switch clears placement and prevents cross-room image context reuse');
+ await page.addStyleTag({content:(await readFile('public/style.css','utf8')).replace('@import "/universe-tokens.css";','')});
+ await page.addStyleTag({content:await readFile('public/universe-tokens.css','utf8')});await page.addStyleTag({content:await readFile('src/editor.css','utf8')});
+ await page.locator('.builder-toolbelt button:nth-child(3)').click();
+ for(const width of [320,393,700,800,1024,1440]){
+  await page.setViewportSize({width,height:900});
+  const layout=await page.evaluate(()=>{const belt=document.querySelector('.builder-toolbelt'),buttons=[...belt.querySelectorAll('button')];return {rect:JSON.parse(JSON.stringify(belt.getBoundingClientRect())),buttons:buttons.map(b=>({text:b.textContent,rect:JSON.parse(JSON.stringify(b.getBoundingClientRect())),scroll:b.scrollWidth,client:b.clientWidth})),tray:JSON.parse(JSON.stringify(document.querySelector('.builder-tray').getBoundingClientRect()))};});
+  for(const button of layout.buttons){assert.ok(button.rect.x>=-1&&button.rect.right<=width+1,width+'px button inside viewport: '+button.text);assert.ok(button.scroll<=button.client+1,width+'px button label fits: '+button.text);}
+  assert.ok(layout.tray.bottom<=layout.rect.top+1,width+'px open tray does not cover toolbar');
+  if(width===393)await page.screenshot({path:'/tmp/editor-image-mobile.png'});
+  if(width<=700)assert.ok(new Set(layout.buttons.map(b=>Math.round(b.rect.y+b.rect.height/2))).size===2,width+'px toolbar remains two rows');
+ }
+ check('Custom images stays reachable and labels fit at 320/393/700/800/1024/1440px');
+ assert.deepEqual(errors,[]);console.log('PASS No unhandled browser errors');
+}finally{await browser.close();}

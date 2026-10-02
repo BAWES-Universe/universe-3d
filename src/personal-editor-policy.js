@@ -3,7 +3,8 @@ import {roomAllows} from './permissions.js';
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 export function canBuildInRoom(room){return typeof room?.capabilities?.canBuild==='boolean'?room.capabilities.canBuild:roomAllows(room,'canEditScene');}
 export function personalEditPolicy({room,user}){
- const allowed=item=>!!user?.id&&canEditPersonalObject(room,item,user.id);
+ const sameRoomImage=item=>item?.type!=='image'||room?.imageDefinitions?.[`${item.assetRef?.assetId}:${item.assetRef?.versionId}`]?.definition.roomId===room?.id;
+ const allowed=item=>sameRoomImage(item)&&!!user?.id&&(roomAllows(room,'canEditScene')||room?.capabilities?.canEditObjects===true)&&canEditPersonalObject(room,item,user.id,room?.imageDefinitions||{});
  const denial='Keep every changed object entirely inside a personal area you own';
  return {canEdit:canBuildInRoom(room),canEditItem:allowed,validateItem:(item,previous)=>!allowed(item)||previous&&!allowed(previous)?denial:null,
   validateChange(before,next){

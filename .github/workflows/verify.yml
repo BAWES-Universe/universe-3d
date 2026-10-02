@@ -5,9 +5,9 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,5 +20,20 @@ jobs:
       - run: npm run build
       - run: npm run verify
       - run: npm run verify:container-files
-      - run: npm run test:browser
-      - run: npm run test:browser:authoring
+  browser:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [core, authoring, images]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/test-browser.mjs ${{ matrix.group }}

@@ -79,7 +79,8 @@ export function createPersonalAreaService({store,presence,body,send,session,emit
         if(!area.ownerId)v.fail(409,'PERSONAL_AREA_UNCLAIMED','This personal area is already unclaimed');
         if(handling==='remove-owned'){
           const owned=new Set(store.all('SELECT object_id FROM personal_area_objects WHERE room_id=? AND area_id=? AND creator_id=? AND claim_revision=?',roomId,areaId,area.ownerId,area.revision).map(o=>o.object_id));
-          const removed=scene.objects.filter(o=>owned.has(o.id)&&footprintInside(area,objectFootprint(o)));const ids=new Set(removed.map(o=>o.id));scene.objects=scene.objects.filter(o=>!ids.has(o.id));
+          const imageDefinitions=store.imageDefinitions?.(roomId,scene)??{};
+          const removed=scene.objects.filter(o=>owned.has(o.id)&&footprintInside(area,objectFootprint(o,imageDefinitions)));const ids=new Set(removed.map(o=>o.id));scene.objects=scene.objects.filter(o=>!ids.has(o.id));
           for(const id of ids)store.run('DELETE FROM personal_area_objects WHERE room_id=? AND object_id=?',roomId,id);
           sceneChanged=ids.size>0;result={removedObjectIds:[...ids]};
         }

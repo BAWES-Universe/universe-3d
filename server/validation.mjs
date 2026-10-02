@@ -1,5 +1,7 @@
 import {validateAppearance} from '../src/avatar-spec.js';
 import {safeActionUrl,validateActions} from '../src/action-schema.js';
+import {validateImageInstance,canUseImageReference} from '../src/image-asset-schema.js';
+import {imagePlacementInside} from '../src/image-asset-geometry.js';
 export class HttpError extends Error {
   constructor(status, code, message = code, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
 }
@@ -50,17 +52,26 @@ export function safeJson(value, { maxBytes = 512000, maxDepth = 14 } = {}) {
 }
 function actions(value,scope='area'){try{validateActions(value,{scope});}catch(error){fail(400,'INVALID_SCENE',error.message);}}
 function interactionUrl(value){if(value!==undefined&&value!==''&&!safeActionUrl(value))fail(400,'INVALID_URL','Use a safe HTTP(S), local asset, or protected room document URL without credentials');}
-export function scene(value) {
+export function scene(value,imageDefinitions={}) {
   record(value, 'scene');
+  for(const key of ['imageDefinitions','imageAssets','assetDefinitions','imageLibrary'])if(Object.hasOwn(value,key))fail(400,'SERVER_OWNED_FIELD','Image definitions are a server-resolved room projection, not scene data');
   if (!Array.isArray(value.objects) || value.objects.length > 2000) fail(400, 'INVALID_SCENE', 'scene.objects must contain at most 2000 objects');
   record(value.bounds, 'scene.bounds');
   finite(value.bounds.width, 'bounds.width', 8, 200); finite(value.bounds.depth, 'bounds.depth', 8, 200);
   record(value.spawn, 'scene.spawn'); finite(value.spawn.x, 'spawn.x', -value.bounds.width/2, value.bounds.width/2); finite(value.spawn.z, 'spawn.z', -value.bounds.depth/2, value.bounds.depth/2);
   if (value.theme !== undefined) text(value.theme, 'theme', 40);
-  const types = ['table','chair','sofa','plant','tree','wall','lamp','screen','podium','portal','rug','board','bench','rock'];
+  const types = ['table','chair','sofa','plant','tree','wall','lamp','screen','podium','portal','rug','board','bench','rock','image'];
   const seen = new Set();
   for (const object of value.objects) {
     record(object, 'object'); id(object.id, 'object id'); oneOf(object.type, types, 'object type');
+    if(object.type==='image'){
+      try{
+        const image=validateImageInstance(object),key=`${image.assetRef.assetId}:${image.assetRef.versionId}`;
+        const definition=Object.hasOwn(imageDefinitions,key)?imageDefinitions[key]:null;
+        if(!canUseImageReference(image.assetRef,definition))fail(400,'IMAGE_REFERENCE_UNAVAILABLE','Use an existing image version from this room');
+        if(!imagePlacementInside({x:0,z:0,...value.bounds},definition,image))fail(400,'IMAGE_OUTSIDE_ROOM','Keep the entire image footprint inside the room');
+      }catch(error){if(error.status)throw error;fail(400,error.code??'INVALID_SCENE',error.message);}
+    }
     finite(object.x, 'object.x', -value.bounds.width/2, value.bounds.width/2); finite(object.z, 'object.z', -value.bounds.depth/2, value.bounds.depth/2);
     if(object.name !== undefined) text(object.name, 'object name', 120);
     if(object.color !== undefined && (typeof object.color !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(object.color))) fail(400, 'INVALID_SCENE', 'Use a hex object color');

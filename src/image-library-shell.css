@@ -1,0 +1,11 @@
+/* Placement of the nonmodal library and truthful render status, using the host tokens. */
+#image-library{position:absolute;right:18px;top:80px;z-index:19;max-height:calc(100dvh - 100px);width:min(560px,calc(100vw - 36px));backdrop-filter:var(--u-backdrop);border:1px solid var(--u-edge)}
+#image-library[hidden],#image-render-status[hidden]{display:none!important}
+#image-render-status{position:absolute;left:18px;bottom:110px;z-index:13;max-width:min(390px,calc(100vw - 36px));max-height:180px;overflow:auto;padding:9px 12px;border-radius:12px;background:var(--u-surface-flat);border:1px solid var(--u-edge);color:var(--u-text-soft);font:12px/1.5 Roboto,Arial,sans-serif;backdrop-filter:var(--u-backdrop)}
+#image-render-status>div{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#image-render-status button{min-height:44px;padding:7px 12px;border:1px solid var(--u-secondary-border);border-radius:var(--u-pill);background:var(--u-secondary);color:var(--u-text);font:inherit;cursor:pointer}
+#image-render-status button:focus-visible{outline:2px solid var(--u-text);outline-offset:2px}
+@media(max-width:600px){#image-library{top:8px;right:8px;width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}#image-render-status{bottom:86px}}
+@media(max-height:420px){#image-library{top:6px;max-height:calc(100dvh - 12px)}}
+
+@media(pointer:coarse){#image-render-status button{min-height:48px}}

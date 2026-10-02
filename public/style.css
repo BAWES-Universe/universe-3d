@@ -1763,3 +1763,19 @@ kbd {
     right: 256px;
   }
 }
+/* Narrow phones keep the complete original logo and every 48px action in bounds. */
+@media (max-width:380px){
+ #hud .brand{width:124px;flex:0 0 124px}
+ #hud .brand .brand-logo{width:124px;height:62px}
+ #hud .brand .brand-tag{margin-left:15px;margin-top:-8px;letter-spacing:.65px}
+ #hud .hud-right{min-width:0;flex:1 1 0;max-width:calc(100% - 124px);gap:2px;justify-content:flex-end}
+ #manage-bots,#manage-place{min-width:48px;max-width:50px;padding:6px;font-size:9px}
+ #hud #invite{min-width:48px;width:48px;flex:0 0 48px;padding:10px;font-size:0;gap:0}
+ #hud #invite .u-icon{width:24px;height:24px}
+}
+@media(max-width:700px){
+ #dock{left:8px;right:8px;transform:none;width:auto;max-width:none;min-width:0;contain:inline-size;overflow-x:auto}
+}
+#dock-more{position:fixed;right:10px;bottom:39px;width:16px;height:20px;z-index:6;pointer-events:none;color:var(--u-text);display:none;background:var(--u-ink);border-radius:var(--u-pill)}
+#dock-more .u-icon{width:16px;height:20px}
+@media(max-width:700px){#dock-more:not([hidden]){display:block}}

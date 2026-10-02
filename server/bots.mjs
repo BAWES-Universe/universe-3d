@@ -2,6 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import * as v from './validation.mjs';
 import {AVATAR_PRESETS,DEFAULT_APPEARANCE,validateAppearance} from '../src/avatar-spec.js';
 import {distance,navigationPolicy,planBotPath,segmentClear} from './bot-navigation.mjs';
+import {bindImageDefinitions} from '../src/image-asset-context.js';
 
 export const MAX_ROOM_BOTS=24;
 const TOOLS=['pause','resume','return'];
@@ -35,6 +36,7 @@ function migrate(store){store.db.exec(`
 const record=row=>({id:row.id,roomId:row.room_id,revision:row.revision,...JSON.parse(row.config),createdAt:row.created_at,updatedAt:row.updated_at});
 export function createBotService({store,presence,body,send,session,emitRoom=()=>{},now=Date.now,autoTick=true}={}){
   migrate(store);const runtime=new Map(),lastPublished=new Map(),commandRates=new Map();let closed=false,lastTick=now();
+  function roomScene(room){const scene=JSON.parse(room.scene);return bindImageDefinitions(scene,store.imageDefinitions?.(room.id,scene)??{},room.id);}
   function authorize(roomId,userId){
     const {row}=store.authorize(roomId,userId),role=store.worldRole(store.worldRow(row.world_id),userId);
     if(!['owner','admin','editor'].includes(role))v.fail(403,'BOT_FORBIDDEN','Only the universe owner or a world admin/editor can manage residents');
@@ -107,7 +109,7 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
   function tick(){
     if(closed)return;const t=now(),dt=Math.max(0,Math.min(.25,(t-lastTick)/1000));lastTick=t;
     const rooms=new Set([...presence.values()].map(p=>p.roomId).concat([...runtime.values()].map(r=>r.roomId)));
-    for(const roomId of rooms){reconcileRoom(roomId,{publishChange:false});let room;try{room=store.roomRow(roomId);}catch{continue;}const scene=JSON.parse(room.scene),players=humans(roomId,room);
+    for(const roomId of rooms){reconcileRoom(roomId,{publishChange:false});let room;try{room=store.roomRow(roomId);}catch{continue;}const scene=roomScene(room),players=humans(roomId,room);
       for(const r of runtime.values())if(r.roomId===roomId)advance(r,scene,dt,players);publish(roomId);
     }
   }
@@ -137,7 +139,7 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
       return operation(userId,b,payload,()=>{
         if(method==='POST'&&!id){
           if(store.get('SELECT COUNT(*) AS n FROM room_bots WHERE room_id=? AND deleted_at IS NULL',roomId).n>=MAX_ROOM_BOTS)v.fail(409,'BOT_LIMIT','This room has reached its resident limit');
-          const config=validateBotConfig(b.config,JSON.parse(room.scene)),botId=`bot-${randomUUID()}`;
+          const config=validateBotConfig(b.config,roomScene(room)),botId=`bot-${randomUUID()}`;
           store.run('INSERT INTO room_bots(id,room_id,config,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?)',botId,roomId,JSON.stringify(config),userId,now(),now());return{bot:record(rowFor(roomId,botId))};
         }
         const row=rowFor(roomId,id);
@@ -150,7 +152,7 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
         }
         if(row.revision!==b.revision)v.fail(409,'BOT_REVISION_CONFLICT','This resident changed. Reload and review your draft before saving.',{bot:record(row)});
         if(method==='DELETE'){store.run('UPDATE room_bots SET deleted_at=?,updated_at=?,revision=revision+1 WHERE id=?',now(),now(),id);return{deleted:true,id};}
-        const config=validateBotConfig(b.patch,JSON.parse(room.scene),JSON.parse(row.config));
+        const config=validateBotConfig(b.patch,roomScene(room),JSON.parse(row.config));
         store.run('UPDATE room_bots SET config=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?',JSON.stringify(config),now(),id,b.revision);return{bot:record(rowFor(roomId,id))};
       });
     });

@@ -27,14 +27,14 @@ export function migratePersonalAreas(store){
 function configIdentity(area){return area&&{x:area.x,z:area.z,width:area.width,depth:area.depth,personalArea:area.personalArea};}
 export const personalAreaMethods={
   personalAreas(roomOrId,userId){
-    const room=typeof roomOrId==='string'?this.roomRow(roomOrId):roomOrId,scene=JSON.parse(room.scene);
+    const room=typeof roomOrId==='string'?this.roomRow(roomOrId):roomOrId,scene=JSON.parse(room.scene),imageDefinitions=this.imageDefinitions?.(room.id,scene)??{};
     const active=this.canSeeRoom(room,userId),manage=active&&FULL_EDIT.includes(this.role(room,userId));
     const tags=JSON.parse(this.worldMembership(room.world_id,userId)?.tags??'[]');
     const rows=new Map(this.all('SELECT * FROM personal_areas WHERE room_id=? AND active=1',room.id).map(r=>[r.area_id,r]));
     return(scene.areas??[]).filter(a=>a.personalArea&&rows.has(a.id)).map(area=>{
       const row=rows.get(area.id),owner=row.owner_id?this.user(row.owner_id):null,decline=this.get('SELECT revision FROM personal_area_declines WHERE room_id=? AND area_id=? AND user_id=?',room.id,area.id,userId),box=area;
       const ownedObjects=new Set(this.all('SELECT object_id FROM personal_area_objects WHERE room_id=? AND area_id=? AND creator_id=? AND claim_revision=?',room.id,area.id,row.owner_id??'',row.revision).map(o=>o.object_id));
-      const inside=scene.objects.filter(o=>footprintInside(box,objectFootprint(o)));
+      const inside=scene.objects.filter(o=>footprintInside(box,objectFootprint(o,imageDefinitions)));
       return{areaId:area.id,name:area.name,x:area.x,z:area.z,width:area.width,depth:area.depth,mode:area.personalArea.mode,allowedTags:area.personalArea.allowedTags??[],revision:row.revision,ownerId:row.owner_id,owner:owner?{id:owner.id,name:owner.name,username:owner.username}:null,isOwner:row.owner_id===userId,canEditObjects:active&&row.owner_id===userId,canManage:manage,canClaim:active&&!!this.user(userId)?.account&&!row.owner_id&&area.personalArea.mode==='dynamic'&&(!(area.personalArea.allowedTags??[]).length||(area.personalArea.allowedTags??[]).some(tag=>tags.includes(tag))),declined:decline?.revision===row.revision,objectCount:inside.length,ownedObjectCount:inside.filter(o=>ownedObjects.has(o.id)).length,updatedAt:row.updated_at};
     });
   },
@@ -56,29 +56,29 @@ export const personalAreaMethods={
       else if(!row.active)this.run('UPDATE personal_areas SET active=1,owner_id=NULL,revision=revision+1,updated_at=? WHERE room_id=? AND area_id=?',this.now(),roomId,area.id);
     }
   },
-  validatePersonalObjectDelta(room,userId,before,next,expected){
+  validatePersonalObjectDelta(room,userId,before,next,expected,beforeImages={},nextImages={}){
     const full=FULL_EDIT.includes(this.role(room,userId));
     if(full)return;
     const areas=this.personalAreas(room,userId);if(!areas.some(a=>a.canEditObjects))v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');
     const {objects:oldObjects,...oldOther}=before,{objects:newObjects,...newOther}=next;
     if(!isDeepStrictEqual(oldOther,newOther))v.fail(403,'PERSONAL_AREA_ONLY','Personal-area ownership only allows object edits inside your own area');
     const revisions=v.record(expected,'personalAreaRevisions'),old=new Map(oldObjects.map(o=>[o.id,o])),fresh=new Map(newObjects.map(o=>[o.id,o]));
-    const allowed=new Set(['id','type','name','x','y','z','rotation','rotationY','width','height','depth','scale','color','text','url','target','document','actions']);
+    const allowed=new Set(['id','type','name','x','y','z','rotation','rotationY','width','height','depth','scale','color','text','url','target','document','actions','assetRef']);
     for(const objectId of new Set([...old.keys(),...fresh.keys()])){
       const a=old.get(objectId),b=fresh.get(objectId);if(isDeepStrictEqual(a,b))continue;
       for(const object of [a,b].filter(Boolean)){
         if(object===b)for(const key of Object.keys(object))if(!allowed.has(key))v.fail(400,'INVALID_OBJECT_FIELD',`${key} is not an editable object field`);
-        const area=editablePersonalArea(areas,object,userId);if(!area)v.fail(403,'OBJECT_OUTSIDE_PERSONAL_AREA','Keep the entire object inside your personal area and outside other owners’ areas',{objectId});
+        const area=editablePersonalArea(areas,object,userId,object===a?beforeImages:nextImages);if(!area)v.fail(403,'OBJECT_OUTSIDE_PERSONAL_AREA','Keep the entire object inside your personal area and outside other owners’ areas',{objectId});
         if(revisions[area.areaId]!==area.revision)v.fail(409,'PERSONAL_AREA_CONFLICT','Your personal-area access changed. Refresh before saving.',{areaId:area.areaId,room:this.room(room.id,userId)});
       }
     }
   },
-  recordPersonalObjects(roomId,userId,before,next){
+  recordPersonalObjects(roomId,userId,before,next,imageDefinitions={}){
     const old=new Set(before.objects.map(o=>o.id)),current=new Set(next.objects.map(o=>o.id));
     for(const row of this.all('SELECT object_id FROM personal_area_objects WHERE room_id=?',roomId))if(!current.has(row.object_id))this.run('DELETE FROM personal_area_objects WHERE room_id=? AND object_id=?',roomId,row.object_id);
     const areas=this.personalAreas(roomId,userId);
     for(const object of next.objects)if(!old.has(object.id)){
-      const box=objectFootprint(object),area=areas.find(a=>a.ownerId&&footprintInside(a,box)&&!areas.some(b=>b.areaId!==a.areaId&&b.ownerId&&b.ownerId!==a.ownerId&&footprintsOverlap(b,box)));
+      const box=objectFootprint(object,imageDefinitions),area=areas.find(a=>a.ownerId&&footprintInside(a,box)&&!areas.some(b=>b.areaId!==a.areaId&&b.ownerId&&b.ownerId!==a.ownerId&&footprintsOverlap(b,box)));
       if(area)this.run('INSERT INTO personal_area_objects(room_id,object_id,area_id,creator_id,claim_revision,created_at) VALUES(?,?,?,?,?,?)',roomId,object.id,area.areaId,userId,area.revision,this.now());
     }
   },

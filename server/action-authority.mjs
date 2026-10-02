@@ -2,6 +2,7 @@
 import {fail,id,integer,oneOf,record} from './validation.mjs';
 import {itemActions} from '../src/action-schema.js';
 import {contains,collisionBox} from '../src/worlds.js';
+import {bindImageDefinitions} from '../src/image-asset-context.js';
 export function canonicalAreaActions(area){
  const legacy=[];
  if(area.action==='link'&&area.url)legacy.push({id:'legacy-area-link',type:'link',url:area.url,label:area.name,mode:'tab',trigger:'enter'});
@@ -21,12 +22,13 @@ export function createActionAuthority({store,presence,body,send,now=Date.now}){
   if(row.revision!==revision)fail(409,'SCENE_CHANGED','This room changed. Open the item again.',{revision:row.revision});
   const entityType=oneOf(input.entityType,['item','area'],'entity type'),entityId=id(input.entityId,'entity id'),actionId=id(input.actionId,'action id');
   const scene=JSON.parse(row.scene),entity=(entityType==='item'?scene.objects:scene.areas||[]).find(e=>e.id===entityId);
+  bindImageDefinitions(scene,store.imageDefinitions?.(roomId,scene)??{},roomId);
   if(!entity)fail(404,'ITEM_REMOVED','This item is no longer here');
   const person=presence.get(roomId+':'+userId);
   if(!person||now()-person.lastSeen>=60000)fail(409,'POSITION_UNCONFIRMED','Your room position needs to reconnect');
   if(entityType==='area'&&!contains(entity,person.x,person.z))fail(403,'OUTSIDE_AREA','Enter this area to use its action');
   if(entityType==='item'){
-   const box=collisionBox(entity),dx=Math.max(Math.abs(person.x-box.x)-box.width/2,0),dz=Math.max(Math.abs(person.z-box.z)-box.depth/2,0);
+   const box=collisionBox(entity,scene),dx=Math.max(Math.abs(person.x-box.x)-box.width/2,0),dz=Math.max(Math.abs(person.z-box.z)-box.depth/2,0);
    if(Math.hypot(dx,dz)>2.7)fail(403,'ITEM_TOO_FAR','Move closer to this item');
   }
   const action=(entityType==='item'?itemActions(entity):canonicalAreaActions(entity)).find(a=>a.id===actionId);

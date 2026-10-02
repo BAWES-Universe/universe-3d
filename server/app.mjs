@@ -17,6 +17,8 @@ import {createActionAuthority} from './action-authority.mjs';
 import {createBotService} from './bots.mjs';
 import {readRuntimeConfig,createRequestSecurity} from './runtime-config.mjs';
 import {createAccessGate} from './access-gate.mjs';
+import {createRoomImageAssets} from './image-asset-context.mjs';
+import {validateImageSceneDelta} from './image-scene-authority.mjs';
 
 const passwordHash = promisify(scrypt);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -74,6 +76,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   function leave(token,userId) {
     const old = store.get('SELECT current_room_id FROM sessions WHERE token_hash=?',token)?.current_room_id;
     store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?', token);
+    images.sessionChanged(token);
     if (old && !store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND token_hash!=? AND expires_at>?',userId,old,token,now())) presence.delete(`${old}:${userId}`);
     if(!presence.has(`${old}:${userId}`))expressions.clear(old,userId);quests.disconnected(userId,old); media.leave(userId,old); broadcastPresence(old);
   }
@@ -87,7 +90,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     const token = String(req.headers.cookie || '').split(';').map(p => p.trim()).find(p => p.startsWith(`${COOKIE}=`))?.slice(COOKIE.length+1);
     const row = token && /^[A-Za-z0-9_-]{43}$/.test(token) ? store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',digest(token),now()) : null;
     if (!row && required) v.fail(401,'AUTH_REQUIRED',runtimeConfig.mode==='public'?'Sign in with an operator-provisioned account first':'Create a guest profile or sign in first');
-    if(row?.current_room_id){let permitted=false;try{permitted=store.canSeeRoom(store.roomRow(row.current_room_id),row.user_id);}catch{}if(!permitted){const old=row.current_room_id;store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',row.token_hash);row.current_room_id=null;sessionRoles.delete(row.token_hash);presence.delete(`${old}:${row.user_id}`);}}
+    if(row?.current_room_id){let permitted=false;try{permitted=store.canSeeRoom(store.roomRow(row.current_room_id),row.user_id);}catch{}if(!permitted){const old=row.current_room_id;store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',row.token_hash);images.sessionChanged(row.token_hash);row.current_room_id=null;sessionRoles.delete(row.token_hash);presence.delete(`${old}:${row.user_id}`);}}
     return row;
   }
   function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id }; }
@@ -128,13 +131,14 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const quests=createQuestService({store,presence,media,emitUser,now,enabled:questsEnabled});
   const expressions=createExpressionService({store,presence,emitRoom,now,limit});
   const files=createRoomFileService({store,now,send,session});
+  const images=createRoomImageAssets({store,session,now,emitRoom});
   function policyChanged(reason,force={}) {
     const affected=new Set(),revoked=new Set();
     for(const s of store.all('SELECT * FROM sessions WHERE current_room_id IS NOT NULL AND expires_at>?',now())){
       const roomId=s.current_room_id;let row,role;try{row=store.roomRow(roomId);role=store.role(row,s.user_id);}catch{}
       const forced=force.userId===s.user_id&&force.worldId===row?.world_id;
       if(!row||!store.canSeeRoom(row,s.user_id)||forced){
-        store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',s.token_hash);sessionRoles.delete(s.token_hash);presence.delete(`${roomId}:${s.user_id}`);affected.add(roomId);
+        store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',s.token_hash);images.sessionChanged(s.token_hash);sessionRoles.delete(s.token_hash);presence.delete(`${roomId}:${s.user_id}`);affected.add(roomId);
         const key=`${roomId}:${s.user_id}`;if(!revoked.has(key)){revoked.add(key);quests.disconnected(s.user_id,roomId);expressions.clear(roomId,s.user_id);emitUser(s.user_id,'access-revoked',{roomId,reason,recoverDraft:true});emitUser(s.user_id,'media-policy',{selfId:s.user_id,roomId:null,enabled:false,context:{kind:'none',label:'Access ended',canPublish:false,reason:'Room access changed'},peers:[],iceServers:[]});}
       }else{
         const oldRole=sessionRoles.get(s.token_hash);sessionRoles.set(s.token_hash,role);const room=store.room(row,s.user_id);
@@ -186,6 +190,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       }
       const s=session(req); const userId=s.user_id;
       limit(`requests:${s.token_hash}`,1200);
+      if(await images.handle(req,res))return;
       if(await personalAreas.handle({req,res,path,method,userId,url}))return;
       if(await actionAuthority.handle({req,res,path,method,userId,session:s}))return;
       if(await bots.handle({req,res,path,method,userId,session:s}))return;
@@ -228,17 +233,21 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         if(action==='expression'&&method==='POST'){const b=await body(req),active=session(req);const result=expressions.post(roomId,userId,active.current_room_id,b);return send(res,result.duplicate?200:201,result);}
         if(action==='expressions'&&method==='GET')return send(res,200,expressions.list(roomId,userId,session(req).current_room_id));
         if(action==='scene'&&method==='PUT') {
-          const b=await body(req);if(!store.roomCapabilities(store.authorize(roomId,userId).row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');for(const key of Object.keys(b))if(!['revision','scene','personalAreaRevisions'].includes(key))v.fail(400,'IMMUTABLE_FIELD',`${key} cannot be set here`);v.integer(b.revision,'revision');const encoded=v.scene(b.scene);validatePersonalScene(b.scene);
+          const imageSessionEpoch=images.sessionEpoch(s.token_hash);
+          const b=await body(req);if(!store.roomCapabilities(store.authorize(roomId,userId).row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');for(const key of Object.keys(b))if(!['revision','scene','personalAreaRevisions'].includes(key))v.fail(400,'IMMUTABLE_FIELD',`${key} cannot be set here`);v.integer(b.revision,'revision');
           // Re-check room and scoped ownership after body streaming, under the same
           // SQLite write lock as CAS, geometry validation and provenance writes.
           let questChanges=[];const room=store.transaction(()=>{
             const live=session(req);if(live.user_id!==userId)v.fail(401,'AUTH_REQUIRED');
             const {row}=store.authorize(roomId,userId),before=JSON.parse(row.scene);
             if(row.revision!==b.revision)v.fail(409,'REVISION_CONFLICT','The room changed. Review the latest scene before saving.',{room:store.room(roomId,userId)});
-            store.validatePersonalObjectDelta(row,userId,before,b.scene,b.personalAreaRevisions);
+            const resolvedImages=images.resolveScenePair({roomId,userId,token:live.token_hash,before,next:b.scene,expectedEpoch:imageSessionEpoch});
+            const encoded=v.scene(b.scene,resolvedImages.next);validatePersonalScene(b.scene);
+            store.validatePersonalObjectDelta(row,userId,before,b.scene,b.personalAreaRevisions,resolvedImages.before,resolvedImages.next);
+            validateImageSceneDelta({store,presence,now,room:row,before,next:b.scene,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
             store.syncPersonalAreas(roomId,before,b.scene);
             store.run('UPDATE rooms SET scene=?,revision=revision+1 WHERE id=? AND revision=?',encoded,roomId,b.revision);
-            store.recordPersonalObjects(roomId,userId,before,b.scene);
+            store.recordPersonalObjects(roomId,userId,before,b.scene,resolvedImages.next);
             const saved=store.room(roomId,userId);if(EDIT.includes(saved.role))questChanges=quests.observeBuild(userId,roomId,before,saved.scene,saved.revision);return saved;
           });quests.notify(questChanges);
           emitRoom(roomId,'scene',{roomId,room,actorId:userId});bots.reconcileRoom(roomId);media.refresh(roomId);quests.reconcileRoom(roomId);return send(res,200,{room});

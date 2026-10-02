@@ -24,6 +24,7 @@ Data lives in `data/universe.sqlite`. Keep it across restarts. Create a local ac
 - **Camera:** drag to orbit; right-drag also orbits. Wheel or +/− zooms. Middle-drag / Shift-right-drag pans. `[ ]` orbits, Page Up/Down tilts, F follows, Home resets. Pan mode gives arrows to the camera. Touch: two fingers orbit/pinch, three fingers pan; joystick moves the character.
 - **Interact:** Space on key release, or click nearby functional furniture. Stored documents download through authenticated access checks.
 - **Build:** E (B is an alias). Choose furniture, inspect the snapped footprint, rotate with R, click or Space to place. Select and drag to move; V selects, X erases, D duplicates, Delete removes. Arrows move the preview or selection; `[ ]` cycles selection. Undo/redo uses Cmd/Ctrl Z / Shift Z; save uses Cmd/Ctrl S. Escape cancels the current operation before closing.
+- **Custom images:** open Build → Custom images. Choose a PNG, name/tag it, choose a floor or upright representation and optional collision cells, then explicitly Upload. Search the room library and place a pinned reusable instance. Drag, quarter-turn, duplicate and Save work as with furniture. Images stay flat; they are not converted into 3D meshes. See `CUSTOM-IMAGES.md` for limits and current lifecycle gaps.
 - **Express:** Enter on key release opens Say; Ctrl+Enter opens Think. Think is visible to others, not a private note. Favorites use 1–6. Room chat is a separate durable conversation.
 - **Direct sections:** C Chat, U People, G Explore, J Quests, P You, M Connect, L Personal spaces, N Bots when authorized. Cmd/Ctrl K searches actual actions, people and places. `?` or F1 opens the shortcut guide.
 - **Personal spaces:** managers configure dynamic/static personal areas in Build. Registered eligible users can claim or transfer a dynamic space, then edit objects only within its full footprint. L reopens the area controls; Cmd/Ctrl D walks to your first desk in the current room at 2.5× speed. Managers can assign/revoke with explicit object-retention choices.
@@ -44,6 +45,7 @@ Visible controls support Tab / Shift Tab and native Enter / Space. Text fields a
 - Authenticated room documents: 5 MiB/file validation, safe attachment downloads, editor attachment, recoverable delete/restore
 - Optional authored quests: named-area exploration, committed authorized building and reciprocal waves with real opted-in proximity peers; private durable stamps
 - Persistent local room chat and DMs, plus separate ephemeral in-world Say/Think/reactions
+- Room-scoped immutable PNG assets with authenticated bytes, search, reusable version-pinned instances, transparent-pixel picking and shared collision/edit-footprint geometry
 - Original procedural 3D characters, environment materials and furniture, without a restricted sprite dependency
 
 These are partial source-contract implementations. In particular, local chat is not Matrix/E2EE/federation; the free original wardrobe is not a migration of upstream owned catalogs; room-only file access is not complete area-tag authorization; quest authoring and guest merge semantics remain incomplete. AI-provider conversations and external MCP/tool connections, infinite persistent chunks, an asset workshop/marketplace, creator game-logic systems and external provider/admin integrations remain unfinished. Bot authoring and local movement permissions do not imply an AI provider is connected.
@@ -67,6 +69,7 @@ npm run verify:container-files
 npm run test:browser
 npm run test:browser:modules
 npm run test:browser:authoring
+npm run test:browser:images
 ```
 
 Core browser tests run serially through the actual shell for camera, direct building, character persistence, Express and WebGL-unavailable fallback. Module tests separately cover fixtures and media-policy/lifecycle behavior. Browser tests use Chromium software WebGL; local results do not certify physical phones or production capacity. Old test scripts remain as historical probes and are not implicitly passing checks.

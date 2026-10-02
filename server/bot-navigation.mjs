@@ -1,5 +1,5 @@
 /** Native-3D ground-plane navigation. Original local implementation; no provider. */
-import {CATALOG,contains} from '../src/worlds.js';
+import {CATALOG,contains,collisionBoxes} from '../src/worlds.js';
 import {objectFootprint} from '../src/personal-area-policy.js';
 export const BOT_BODY_RADIUS = .34;
 export const distance = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
@@ -8,7 +8,7 @@ export function navigationPolicy(scene, config, {returnFrom = null} = {}) {
   // residents. Explicit restricted areas are an additional deny-only policy.
   const restricted = new Set(config.restrictedAreaIds ?? []);
   const zones = (scene.areas ?? []).filter(a => restricted.has(a.id) || a.personalArea || (a.allowedTags?.length));
-  const colliders=(scene.objects??[]).filter(o=>CATALOG[o.type]?.solid).map(objectFootprint);
+  const colliders=(scene.objects??[]).flatMap(o=>o.type==='image'?collisionBoxes(scene,o):CATALOG[o.type]?.solid?[objectFootprint(o)]:[]);
   // Coarse broad phase avoids rescanning all furniture for each swept sample.
   const buckets=new Map(),large=[],cell=4,key=(x,z)=>`${x},${z}`;
   for(const box of colliders){

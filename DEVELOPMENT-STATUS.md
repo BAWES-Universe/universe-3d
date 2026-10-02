@@ -1,30 +1,34 @@
-# Development status · 2026-10-02 11:54 UTC
+# Development status · 2026-10-02 15:31 UTC
 
-This is a work-in-progress source checkpoint. It is not deployed and is not a full-parity replacement. The latest fixes are published in small reviewable work-branch commits; each commit's CI is authoritative for that revision.
+This is the v0.6 custom-image work-in-progress source checkpoint. It is not deployed and is not a full-parity replacement. Publication and CI status must be checked against the exact work-branch commit; no prior green CI is reused for this newer source.
 
-## Built and locally exercised
+## Built and locally checked
 
-| Workstream | Boundary | Current evidence |
+| Workstream | Implemented boundary | Evidence at this freeze |
 |---|---|---|
-| Play/character quality | Renderer, input, native appearance and direct builder | Core fallback/camera/build/avatar/layout flows passed; Express passed its corrected targeted rerun |
-| Functional authoring | Shared action schema, scene validation, canonical action resolver, audio/panel lifecycle | 205 aggregate unit/API tests include these paths; 9 actual-world action checks passed |
-| Personal spaces | Server-owned claims/revisions and scoped scene commits; client controls and desk routing | Authority/module tests passed; 9 actual-world checks passed |
-| Local residents | Dedicated resident store/runtime, separate SSE list, editor/3D handles | Server/module tests passed; 8 final actual-world checks and 21 editor DOM checks passed, including explicit Create only |
-| Source visual port | Shared tokens/SVG/font roles with stable accessible markup | Focused visual/DOM checks and the final 48px creator layout regression passed |
-| Deployment configuration | Exact Host/Origin/TLS policy, offline accounts, Node24 files/volume contract | Unit/HTTP and staged file-boundary/startup checks passed; Docker/proxy/live deployment unrun |
+| Custom image assets | Complete PNG validation, immutable room definitions/versions, authenticated bytes, operation receipts, quotas | Shared/schema/storage/HTTP checks included in 324 passing unit/API tests |
+| Image building/rendering | Shared geometry, canonical full-footprint edit rights, painted human/bot collision cells, transparent picking, native texture lifecycle, direct manipulation | Actual desktop flow passed upload/search/place/drag/rotate/duplicate/save/reload, byte identity, alpha/depth, uncertainty/retry and painted-cell movement |
+| Mobile image flow | Original brand ratio, bounded header, native scrollable dock, 48px library/grid controls, native touch placement | Final320px flow and Build heading/status separation passed |
+| Existing quality/authoring | Native3D characters, camera, direct builder, Express, hierarchy, personal spaces, local residents and functional actions | All13 image/core/authoring suites passed on frozen v0.6 source401ae7c4; a subsequent DPR2 correction additionally passes6 actual mouse/touch cases |
+| Deployment configuration | Exact Host/Origin/TLS policy, offline accounts, Node24 files and persistent-volume contract | Syntax/build/package startup and container-file-boundary simulation pass; actual Docker/proxy/deployment unrun |
 
-The current tested bundle is `bdcd43aa59fbc3ec84020e1019fdd6ebacd126c33a916a41067f993c8e5be9e0`. Earlier combined action/personal checks used bundle `973a5845d612e611cdb127ab4ac6cd14738acd55612cd476bae86ba7d1214e26`; the later changes affect new-resident draft dismissal/identity and the creator touch-target CSS. Both have now passed their final actual-browser regressions. The final aggregate still passes 205 unit/API tests. `CHECKPOINT-STATUS.md` preserves the earlier pending state at publication freeze. Express initially hit a fixed-100ms software-render timing assumption; its focused test correction waits for observed camera yaw and the same real bubble displacement after a native click. All five Express checks then passed. The complete authoring group now passes against the final bundle: four suites and 29 focused checks, with no page exceptions. Remote CI remains pending. No previous green CI is being reused as proof of a newer revision.
+The latest focused DPR2 main bundle is `8c0d91282d59b7f17079ec227762b178213369cb2a380b728b0cd69a1b5fb3a5`; final CSS is `9ffd241303c102e9c65202b4fe31f5aa1893ee57c13256ad71a478a132b18c79`. All13 suites passed against immutable v0.6 source401ae7c4…056e7 with exact261-file comparison. A later actual DPR2 test reproduced a native chair click missing its visible target. The focused picker correction applies Babylon hardware scaling exactly once; six native mouse/touch scenarios now pass at measured DPR2, including camera orbit, image alpha and ghost coordinates. The new DPR regression is included in the core command. No physical-device claim is made. These counts overlap and are not feature completion totals.
 
-## Integration checks
+## Integration boundary
 
-Changes to shared app entry points, action schemas, permissions, or room/session lifecycle need regression coverage across affected features. Run full software-WebGL suites serially to avoid graphics resource contention. Tests should verify actual operations rather than treating a visible panel as a working feature.
+The custom-image checkpoint and focused DPR correction are exported together. Runtime source matches the tested snapshots; public documentation retains the existing generic operator examples and source-distribution exclusions.
 
-## Next and blocked
+Live media and external resident providers remain acceptance gates. They require deployed-version compatibility, scoped authorization and revocation checks, explicit model/tool permissions and real packet/provider tests. This checkpoint includes no configured external credentials or live-service verification.
 
-1. Verify remote CI for the published revision; publish any corrections as focused follow-up commits
-2. Hand the exact reviewed revision and operator checklist to the existing dev operator for an isolated preview; actual container/TLS/network/credential actions require the appropriate operator approval
-3. In progress as an isolated code lane: implement and locally protocol-test the existing LiveKit/TURN adapter boundary: scoped admission, publish/subscribe roles, removal and lifecycle cleanup. Real credentials, provider isolation and cross-network packets remain gates
-4. In progress as an isolated code lane: extend resident provider/tool adapters with real local protocol tests, explicit permissions and safe failure behavior. No connected AI/MCP response is claimed today
-5. Source review is specifying the missing EDIT-06/09 custom image/object library slice, with one shared asset/footprint contract across rendering, picking, placement, movement and scoped permissions. This is not yet implemented; source terrain authoring is a separate unfinished target
+CI runs each existing browser group (core, authoring and images) serially on its own runner after the shared verification job. This keeps software-WebGL suites from contending on one GPU and gives each group a bounded timeout.
 
-Source parity gaps include Matrix/E2EE/federation, SSO, provider/bot conversation and tool contracts, full quest programs, upstream owned-avatar entitlements, persistent chunks and creator asset/game-logic workflows. Physical-phone performance, real AV, operator backup/restore and production capacity are not yet certified.
+## Publication and next checks
+
+This update is prepared for `work/native-3d-avatars`; remote CI for its exact commit is pending. The prior authoring checkpoint `957c5286646cd107f38340a35a11e2c013aafb07` passed remote CI. The operator handoff remains pinned to that reviewed revision until a separate review selects a newer one; this source update does not change that deployment choice.
+
+1. Verify remote CI for this image-plus-DPR source revision
+2. Complete operator-run Docker/TLS/proxy/storage checks for any separately selected preview revision
+3. Add asset lifecycle editing/archive/delete with atomic reference handling; current creation and placement do not include those controls
+4. Review further camera framing, media semantics and resident-provider changes separately; they are not included here
+
+Remaining broader parity includes real AV and AI/MCP/provider integration, Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, persistent chunks, composite asset workshop, terrain and creator game logic. Physical-phone performance, backup/restore and production capacity remain unverified.

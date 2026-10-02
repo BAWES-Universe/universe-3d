@@ -936,3 +936,73 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
     right: 88px;
   }
 }
+
+/* Custom images use the same semantic brand palette and touch targets as furniture. */
+.builder-image-summary {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--u-surface-raised);
+  border: 1px solid var(--u-secondary-hover-border);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.builder-image-summary > strong {
+  color: var(--u-text-soft);
+  font-size: 12px;
+}
+.builder-image-summary > span {
+  color: var(--u-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.builder-image-summary .panel-hint {
+  margin: 4px 0 0;
+}
+@media (min-width: 701px) and (max-width: 850px) {
+  .builder-toolbelt {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: max-content;
+    border-radius: 20px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 850px) {
+  .builder-tray { bottom: 238px; }
+  .builder-hint { bottom: 234px; }
+  .builder-tray:not([hidden]) ~ .builder-hint { bottom: 468px; }
+}
+@media (max-width: 700px) {
+  .builder-toolbelt .builder-custom-images,
+  .builder-toolbelt [aria-label^="Image placement:"] {
+    white-space: normal;
+    line-height: 1.25;
+    min-width: 0;
+  }
+}
+@media (max-width: 700px) {
+  /* Twelve controls remain two rows after adding the custom-image entry. */
+  .builder-toolbelt button:nth-child(3),
+  .builder-toolbelt .primary {
+    grid-column: span 1;
+    white-space: normal;
+    line-height: 1.25;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  /* Keep save feedback in layout instead of overlaying the title at 320px. */
+  .builder-heading .builder-title { grid-column: 1; grid-row: 1; min-width: 0; }
+  .builder-heading .builder-done { grid-column: 2; grid-row: 1 / span 2; }
+  .editor-workbench .builder-heading .editor-status {
+    position: static;
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+}

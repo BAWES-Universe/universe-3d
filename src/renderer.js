@@ -1,3 +1,5 @@
+import {createBabylonImageTexturePool,createBabylonImageObjectView,pickWithImageAlpha} from './babylon-image-object-view.js';
+import {resolvedImage,imageGeometry} from './image-asset-context.js';
 import {Engine} from '@babylonjs/core/Engines/engine.js';
 import {Scene} from '@babylonjs/core/scene.js';
 import {FreeCamera} from '@babylonjs/core/Cameras/freeCamera.js';
@@ -39,6 +41,13 @@ export async function createRenderer(canvas,labels){
  const sun=new DirectionalLight('late-afternoon',new Vector3(-.65,-1,.4),scene);sun.position.set(20,32,-18);sun.intensity=.85;sun.diffuse=hex('#fff0ca');
  const shadows=new ShadowGenerator(1024,sun);shadows.usePercentageCloserFiltering=true;shadows.filteringQuality=ShadowGenerator.QUALITY_LOW;shadows.bias=.0008;shadows.normalBias=.012;shadows.setDarkness(.28);
  const surfaces=createEnvironmentMaterials(scene),materials=new Map(),signMaterials=new Map(),worldLabels=[],pendingLabels=[];
+ const imagePool=createBabylonImageTexturePool(scene),imageViews=new Map(),missingImages=new Map();let imageContext={roomId:'unjoined',roomEpoch:0,authorityEpoch:0,canRead:false},imageStateListener=null,ghostImage=null;
+ function cleanImage(value,id=value.id||'image-preview'){const out={id,type:'image',assetRef:value.assetRef,x:value.x,z:value.z,rotation:value.rotation||0};if(value.name!==undefined)out.name=value.name;if(value.actions!==undefined)out.actions=value.actions;return out;}
+ function getImageStates(){return [...missingImages.values(),...[...imageViews].map(([id,view])=>{const value=view.getState();return{id,status:value.status,name:world?.objects.find(o=>o.id===id)?.name||'Image',message:value.error?.message||value.label};})];}
+ function notifyImageStates(){try{imageStateListener?.(getImageStates());}catch{}}
+ function syncImages(){missingImages.clear();if(!imageContext.canRead){for(const view of imageViews.values())view.dispose();imageViews.clear();notifyImageStates();return;}const ids=new Set((world?.objects||[]).filter(o=>o.type==='image').map(o=>o.id));for(const[id,view]of imageViews)if(!ids.has(id)){view.dispose();imageViews.delete(id);}for(const object of world?.objects||[]){if(object.type!=='image')continue;const entry=resolvedImage(world,object);if(!entry){imageViews.get(object.id)?.dispose();imageViews.delete(object.id);missingImages.set(object.id,{id:object.id,status:'error',name:object.name||'Image',message:'Image metadata is unavailable. Refresh Custom or remove this instance.'});continue;}const input={resolved:entry,instance:cleanImage(object),context:imageContext};if(imageViews.has(object.id))imageViews.get(object.id).update(input);else{const view=createBabylonImageObjectView({scene,texturePool:imagePool,...input,onState:notifyImageStates});imageViews.set(object.id,view);view.ready.then(notifyImageStates);} }notifyImageStates();}
+ function setImageContext(next){const value={...next},previousRoom=imageContext.roomId,changed=JSON.stringify(value)!==JSON.stringify(imageContext);if(!changed)return;imageContext=value;setGhost(null);missingImages.clear();for(const view of imageViews.values())view.dispose();imageViews.clear();if(world&&value.roomId===previousRoom&&value.canRead)syncImages();else notifyImageStates();}
+
  let botPreview=null,botPreviewLabel=null;
  let nodes=[],avatars=new Map(),world=null,floor=null,grid=[],selection=null,guide=null,ghost=null,destination=null,build=false,ghostKey=null,tick=0,frameTimes=[],motions=[];
  const brandMat=new StandardMaterial('source-bawes',scene);brandMat.diffuseTexture=new Texture('/assets/bawes-logo.png',scene);brandMat.diffuseTexture.hasAlpha=true;brandMat.useAlphaFromDiffuseTexture=true;brandMat.backFaceCulling=false;brandMat.specularColor=Color3.Black();
@@ -116,7 +125,7 @@ export async function createRenderer(canvas,labels){
  function sync(newWorld){
   if(!newWorld)return;world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
   const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,material});floor.metadata={type:'ground'};
-  for(const o of world.objects)addObject(o);
+  for(const o of world.objects)if(o.type!=='image')addObject(o);syncImages();
   if(build)for(const a of world.areas){const col={silent:'#67bdae',meeting:'#b09add',stage:'#e0bd77',audience:'#bc9bca',welcome:'#9eccab',teleport:'#c3a8fa'}[a.action]||'#aa9cc2';box(a.id,a.x,.083,a.z,a.width,.015,a.depth,col,root,{alpha:.15,pickable:false,metadata:{id:a.id,type:'area'}});worldLabels.push({el:label(a.id,a.name,'area-label'),position:new Vector3(a.x,.5,a.z)});}
   // Merge by material, pickability and shadow behavior, preserving exact face ranges.
   const batches=new Map();for(const parent of nodes)for(const mesh of parent.getChildMeshes()){
@@ -174,36 +183,41 @@ export async function createRenderer(canvas,labels){
   for(const l of worldLabels)positionLabel(l.el,l.position);resolveLabelVisibility();engine._drawCalls?.fetchNewFrame();scene.render();
  }
  function pick(clientX,clientY){
-  updateCamera();const rect=canvas.getBoundingClientRect(),x=(clientX-rect.left)*engine.getRenderWidth()/rect.width,y=(clientY-rect.top)*engine.getRenderHeight()/rect.height;
-  const picked=scene.pick(x,y,m=>m.isPickable&&m!==floor&&m.metadata?.type!=='area');let metadata=picked?.pickedMesh?.metadata;
+  updateCamera();const rect=canvas.getBoundingClientRect(),scale=engine.getHardwareScalingLevel();
+  // Babylon divides ray inputs by hardware scale. Convert CSS to its input
+  // space once, including framebuffer rounding; never apply DPR separately.
+  const x=(clientX-rect.left)*engine.getRenderWidth()*scale/rect.width,y=(clientY-rect.top)*engine.getRenderHeight()*scale/rect.height;
+  const ray=scene.createPickingRay(x,y,Matrix.Identity(),camera);const picked=pickWithImageAlpha(scene,ray,m=>m.isPickable&&m!==floor&&m.metadata?.type!=='area'&&m.metadata?.type!=='image-ghost');let metadata=picked?.pickedMesh?.metadata;
   if(metadata?.type==='batch')metadata=metadata.ranges.find(r=>picked.faceId>=r.start&&picked.faceId<r.end)?.metadata;
-  const ray=scene.createPickingRay(x,y,Matrix.Identity(),camera),distance=-ray.origin.y/ray.direction.y;
+  const distance=-ray.origin.y/ray.direction.y;
   const point=Number.isFinite(distance)&&distance>=0?{x:ray.origin.x+ray.direction.x*distance,z:ray.origin.z+ray.direction.z*distance}:null;
   return {id:metadata?.id,type:metadata?.type,point};
  }
- function outline(o,color,height=.11,parent=null){const {width,depth}=o.type==='area'?o:dimensions(o);const angle=-(o.rotation||0)*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);const points=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(([x,z])=>{const px=x*(width/2+.055),pz=z*(depth/2+.055);return new Vector3((parent?0:o.x)+px*cs+pz*sn,height,(parent?0:o.z)-px*sn+pz*cs);});const n=CreateLines('footprint',{points},scene);n.color=hex(color);n.isPickable=false;n.parent=parent;return n;}
- function select(id){selection?.dispose();selection=null;const o=world?.objects.find(o=>o.id===id)||world?.areas.find(o=>o.id===id);if(o)selection=outline({...o,type:o.type||'area'},'#ffe29b');}
+ function outline(o,color,height=.11,parent=null){if(o.type==='image'){const geometry=imageGeometry(world,cleanImage(o)),points=geometry.editBounds.corners.map(p=>new Vector3(p.x,height,p.z));points.push(points[0].clone());const line=CreateLines('image-footprint',{points},scene);line.color=hex(color);line.isPickable=false;line.parent=parent;return line;}const {width,depth}=o.type==='area'?o:dimensions(o,world);const angle=-(o.rotation||0)*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);const points=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(([x,z])=>{const px=x*(width/2+.055),pz=z*(depth/2+.055);return new Vector3((parent?0:o.x)+px*cs+pz*sn,height,(parent?0:o.z)-px*sn+pz*cs);});const n=CreateLines('footprint',{points},scene);n.color=hex(color);n.isPickable=false;n.parent=parent;return n;}
+ function select(id){selection?.dispose();selection=null;const o=world?.objects.find(o=>o.id===id)||world?.areas.find(o=>o.id===id);if(o)try{selection=outline({...o,type:o.type||'area'},'#ffe29b');}catch{notifyImageStates();}}
  function setGhost(value){
-  if(!value){ghost?.dispose();ghost=null;ghostKey=null;return;}
-  const {x,z,...style}=value,key=JSON.stringify(style);if(ghost&&key===ghostKey){ghost.position.set(x,0,z);return;}
-  ghost?.dispose();const valid=value.valid!==false,col=valid?'#73edaa':'#ff687c';ghost=new TransformNode('build-preview',scene);ghost.position.set(x,0,z);ghostKey=key;
+  if(!value){ghostImage?.dispose();ghostImage=null;ghost?.dispose();ghost=null;ghostKey=null;return;}
+  const {x,z,...style}=value,key=JSON.stringify(style);if(ghost&&key===ghostKey){ghost.position.set(x,0,z);if(value.type==='image')updateImageGhost(value);return;}
+  ghostImage?.dispose();ghostImage=null;ghost?.dispose();const valid=value.valid!==false,col=valid?'#73edaa':'#ff687c';ghost=new TransformNode('build-preview',scene);ghost.position.set(x,0,z);ghostKey=key;
   const mat=material(col,true,.32);mat.disableLighting=true;mat.emissiveColor=hex(col);
   if(value.type==='area')box('area-preview',0,.13,0,value.width||4,.08,value.depth||3,col,ghost,{alpha:.23,pickable:false});
+  else if(value.type==='image')updateImageGhost(value);
   else{const object=addObject({...value,id:'ghost-preview',x:0,z:0},{preview:true});object.parent=ghost;for(const mesh of object.getChildMeshes()){mesh.material=mat;mesh.isPickable=false;mesh.receiveShadows=false;}}
   const shape=outline({...value,x:0,z:0},col,.16);shape.parent=ghost;
-  const dims=value.type==='area'?value:dimensions(value),frame=new TransformNode('ghost-frame',scene);frame.parent=ghost;frame.rotation.y=-(value.rotation||0)*Math.PI/180;
+  const dims=value.type==='area'?value:dimensions(value,world),frame=new TransformNode('ghost-frame',scene);frame.parent=ghost;frame.rotation.y=-(value.rotation||0)*Math.PI/180;
   for(const side of [-1,1]){box('preview-edge',0,.105,side*dims.depth/2,dims.width+.06,.035,.055,col,frame,{glow:true,pickable:false});box('preview-edge',side*dims.width/2,.105,0,.055,.035,dims.depth+.06,col,frame,{glow:true,pickable:false});}
  }
+ function updateImageGhost(value){const entry=resolvedImage(world,value);if(!entry)return;const input={resolved:entry,instance:cleanImage(value,'image-preview'),context:imageContext},style=()=>{if(!ghostImage)return;const mesh=ghostImage.node.imageParts.mesh;mesh.isPickable=false;mesh.metadata={...mesh.metadata,type:'image-ghost'};mesh.material.diffuseColor=hex(value.valid===false?'#ff9c9c':'#adf4c9');};if(ghostImage){ghostImage.update(input);style();}else{ghostImage=createBabylonImageObjectView({scene,texturePool:imagePool,...input,onState:style});style();ghostImage.ready.then(style);}}
  function marker(name,target,color,size){if(!target)return null;const m=CreateTorus(name,{diameter:size,thickness:.07,tessellation:40},scene);m.position.set(target.x,.11,target.z);m.material=material(color,true);m.isPickable=false;return m;}
  const act=fn=>(...args)=>{fn(...args);updateCamera();};
  resize();window.addEventListener('resize',resize);
  function setBotPreview(bot){if(!bot){botPreview?.dispose();botPreview=null;botPreviewLabel?.remove();botPreviewLabel=null;return;}if(!botPreview){botPreview=createBotMapPreview(scene,bot,world);botPreviewLabel=label('resident-draft','Draft · '+bot.name,'player-label');}else{botPreview.set(bot);botPreviewLabel.textContent='Draft · '+bot.name;}}
- return {sync,syncPeople,render,pick,select,screenPoint,setGhost,setBotPreview,
+ return {sync,syncPeople,render,pick,select,screenPoint,setGhost,setBotPreview,setImageContext,getImageStates,setImageStateListener(fn){imageStateListener=fn;notifyImageStates();},async retryImage(id){if(!imageContext.canRead)return false;const view=imageViews.get(id);if(!view)return false;const result=await view.retry();return result.status==='ready';},
   setDestination(target){if(destination&&target&&Math.hypot(destination.position.x-target.x,destination.position.z-target.z)<.01)return;destination?.dispose();destination=marker('walk-destination',target,'#ffe6a4',.75);},
   setGuide(target){guide?.dispose();guide=marker('quest-marker',target,'#e9c74c',1.7);},
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},
   setAuthoringViewport:fraction=>{const width=Math.max(.25,Math.min(1,fraction));if(Math.abs(camera.viewport.width-width)>.001){camera.viewport.width=width;updateCamera();}},focusPoint:(x,z)=>rig.focusPoint(x,z),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
   getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width}),getCameraAngle:()=>rig.getState().yaw,
   getStats:()=>({engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState()}),
-  dispose(){setBotPreview(null);window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
+  dispose(){setBotPreview(null);ghostImage?.dispose();for(const view of imageViews.values())view.dispose();imageViews.clear();imagePool.dispose();window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
 }
