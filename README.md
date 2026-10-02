@@ -54,7 +54,7 @@ These are partial source-contract implementations. In particular, local chat is 
 
 Positions are validated client reports, not authoritative server physics or anti-cheat. The local service is one long-lived process with SQLite and in-memory live state; it is not yet horizontally distributed.
 
-**Media is still an acceptance gate.** Native SDP, signaling authorization and cleanup were tested, but the cloud browser yielded zero ICE candidates. Successful end-to-end audio/video packets, TURN traversal, physical-phone capture and network handover have not been verified. No external SFU/TURN service is configured. The UI reports real failures rather than claiming a connected call. Use one active media tab per account.
+**Media is still an acceptance gate.** Native SDP, signaling authorization and cleanup were tested, but the cloud browser yielded zero ICE candidates. Successful end-to-end audio/video packets, TURN traversal, physical-phone capture and network handover have not been verified. No external SFU/TURN service is configured. Silent areas stop outgoing capture and incoming spatial calls, including overlapping meeting areas; room text chat and authored ambient sounds are separate. Leaving Silent never automatically turns a device on. The UI reports real failures rather than claiming a connected call. Use one active media tab per account.
 
 The code includes exact Host/Origin checks, explicit Secure-cookie policy behind external TLS, fail-closed public startup, login-only preview admission, offline account provisioning and a Node24 container definition. An operator must still build/run the image, verify proxy/TLS, quotas, backups and real media adapters. No deployment or existing dev resource mutation has occurred. See `DEV-PREVIEW-OPERATOR.md` and `HOSTING-READINESS.md`.
 
@@ -70,6 +70,7 @@ npm run test:browser
 npm run test:browser:modules
 npm run test:browser:authoring
 npm run test:browser:images
+npm run test:browser:media
 ```
 
 Core browser tests run serially through the actual shell for camera, direct building, character persistence, Express and WebGL-unavailable fallback. Module tests separately cover fixtures and media-policy/lifecycle behavior. Browser tests use Chromium software WebGL; local results do not certify physical phones or production capacity. Old test scripts remain as historical probes and are not implicitly passing checks.

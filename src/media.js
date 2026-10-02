@@ -1,9 +1,18 @@
+import {SILENT_MEDIA_MESSAGE,SILENT_MEDIA_EXIT_MESSAGE} from './media-policy-copy.js';
 // Real, opt-in WebRTC. Room membership and recipients come only from the server.
 // No external STUN/TURN service is configured or contacted by this module.
 const KINDS = ['microphone', 'camera', 'screen'];
 const MEDIA_KINDS = ['audio', 'video', 'video'];
+const POLICY_TIMEOUT_MS = 8000;
+const POLICY_TIMEOUT_MESSAGE = 'Current media policy request timed out. Devices and connections have been stopped; retry when connected.';
+const POLICY_CONFIRM_MESSAGE = 'Media is paused until the server confirms your current location. Devices stay off until you turn them on again.';
+// Same inclusive axis-aligned test as world areas, kept local so media stays standalone.
+const containsCommittedArea = (area, x, z) => Math.abs(x-area.x) <= area.width/2 && Math.abs(z-area.z) <= area.depth/2;
 const labelFor = kind => ({ microphone: 'Microphone', camera: 'Camera', screen: 'Screen sharing' }[kind]);
 const currentRoomId = state => state?.room?.id || (typeof state?.room === 'string' ? state.room : null);
+const currentActorId = state => state?.user?.id || null;
+const publishingDenied = policy => policy?.context?.canPublish === false || policy?.context?.kind === 'silent';
+const denialReason = context => context?.kind === 'silent' ? SILENT_MEDIA_MESSAGE : context?.reason || (context?.kind === 'audience' ? 'Audience members can listen. Move to the stage to publish.' : 'Publishing is not allowed in this area.');
 const stopStream = stream => stream?.getTracks?.().forEach(track => track.stop());
 export function mediaCapabilities(env = globalThis) {
   const secure = env.isSecureContext === true;
@@ -35,17 +44,28 @@ export function policyPeers(policy) {
 export function createMediaSession({ api, getState, onChange = () => {}, env = globalThis, now = () => Date.now() }) {
   const capabilities = mediaCapabilities(env);
   const streams = { microphone: null, camera: null, screen: null };
+  // Captured tracks awaiting policy/join are still live devices and must be stoppable.
+  const pendingStreams = { microphone: null, camera: null, screen: null };
   const devices = Object.fromEntries(KINDS.map(k => [k, { status: 'off', error: '' }]));
   const peers = new Map();
   const earlyCandidates = new Map();
   let policy = null, joined = false, joining = false, disposed = false, generation = 0;
-  let roomId = currentRoomId(getState()), policyError = '', notice = '', refreshPromise = null;
-  let lastRefresh = 0, lastStats = 0, captureSequence = { microphone: 0, camera: 0, screen: 0 };
+  let roomId = currentRoomId(getState()), actorId = currentActorId(getState()), policyError = '', notice = '', refreshRequest = null;
+  // Orders overlapping HTTP fetches against accepted pushes within this client lifecycle.
+  // The server has no monotonic revision; this is not an ordering claim across SSE reconnects.
+  let policyEpoch = 0, localSilent = false, awaitingPolicy = false, roomUnavailable = false, committedAreas = null;
+  const transportAllowed = () => !disposed && joined && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy && !policyError && policy?.enabled !== false && policy?.roomId === roomId && policy?.context?.kind !== 'silent' && !(policy?.context?.kind === 'proximity' && policy.context.canPublish === false);
+  // Compare the authority fields this historical host-only policy actually provides.
+  const authorityKey = value => JSON.stringify([value?.selfId,value?.roomId,value?.context?.kind,value?.context?.group,value?.context?.canPublish]);
+  function peerCurrent(p) { return transportAllowed() && !p.closed && peers.get(p.id) === p && policyPeers(policy).some(info => info.id === p.id && peerDirection(info) === peerDirection(p.info)); }
+  const sameContext = () => currentRoomId(getState()) === roomId && currentActorId(getState()) === actorId;
+  const elapsedNow = () => env.performance?.now?.() ?? now();
+  let lastRefresh = null, lastStats = 0, captureSequence = { microphone: 0, camera: 0, screen: 0 };
   let idSequence = 0;
   const nextId = () => env.crypto?.randomUUID?.() || `${now().toString(36)}-${++idSequence}`;
   const emit = () => { if (!disposed) onChange(snapshot()); };
   function snapshot() {
-    return { capabilities, roomId, joined, joining, policy, policyError, notice,
+    return { capabilities, roomId, joined, joining, policy, policyError, notice, localSilent, awaitingPolicy,
       devices: Object.fromEntries(KINDS.map(k => [k, { ...devices[k], stream: streams[k] }])),
       peers: [...peers.values()].map(p => ({ id: p.id, name: p.info.displayName || p.info.name || 'Participant', canSend: p.info.canSend, canReceive: p.info.canReceive,
         status: p.status, error: p.error, candidateCount: p.candidateCount, gathering: p.pc.iceGatheringState,
@@ -65,30 +85,84 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     captureSequence[kind]++;
     const stream = streams[kind]; streams[kind] = null;
     devices[kind] = { status: 'off', error: reason };
-    stopStream(stream);
+    stopStream(stream); stopStream(pendingStreams[kind]); pendingStreams[kind] = null;
     for (const p of peers.values()) void applyTracks(p);
   }
+  function retirePolicyRequest() {
+    const request = refreshRequest; refreshRequest = null; request?.cancel?.();
+  }
+  function pauseMedia(reason = '') {
+    closePeers();
+    for (const kind of KINDS) stopDevice(kind, reason);
+  }
+  function rememberCommittedAreas(room) {
+    if (room?.id !== roomId || !Number.isSafeInteger(room.revision) || room.revision < 0 || !Array.isArray(room.scene?.areas) || (committedAreas && room.revision <= committedAreas.revision)) return false;
+    // Copy only denial geometry; never retain the DTO, editor base or draft by reference.
+    committedAreas = {revision:room.revision,areas:room.scene.areas.filter(area => area.action === 'silent').map(({id,action,x,z,width,depth}) => ({id,action,x,z,width,depth}))};
+    return true;
+  }
+  function acceptCommittedRoom(room, sourceActorId) {
+    checkLocalPolicy();
+    if (disposed || getState()?.ready === false || !sourceActorId || sourceActorId !== actorId || !sameContext() || room?.id !== roomId) return false;
+    if (!rememberCommittedAreas(room)) return false;
+    checkLocalPolicy(); return true;
+  }
+  // Synchronous and deny-only. The editor's state.scene is a draft, so only the
+  // current room's committed area projection (or saved-scene fallback) can deny. Exiting
+  // never grants recipients or capture: a new post-exit GET must confirm policy.
+  function checkLocalPolicy() {
+    if (disposed) return true;
+    const state = getState(), nextRoom = currentRoomId(state), nextActor = currentActorId(state);
+    if (nextRoom !== roomId || nextActor !== actorId) {
+      generation++; policyEpoch++; retirePolicyRequest(); pauseMedia();
+      roomId = nextRoom; actorId = nextActor; joined = false; joining = false;
+      policy = null; policyError = ''; lastRefresh = null; localSilent = false; awaitingPolicy = false; committedAreas = null;
+      notice = nextRoom ? 'Your room or account changed. Join audio again when you are ready.' : ''; emit();
+    }
+    if (state?.ready === false) {
+      if (!roomUnavailable) {
+        roomUnavailable = true; committedAreas = null; generation++; policyEpoch++; retirePolicyRequest();
+        joined = false; joining = false; policy = null; awaitingPolicy = true;
+        policyError = 'Media is paused because your room session is unavailable. Join audio again when ready.';
+        pauseMedia(); emit();
+      }
+      return true;
+    }
+    if (roomUnavailable) { roomUnavailable = false; lastRefresh = null; }
+    rememberCommittedAreas(state?.room);
+    const areas = committedAreas?.areas || state?.room?.scene?.areas;
+    const silent = !!areas?.some(area => area.action === 'silent' && containsCommittedArea(area, state.position?.x, state.position?.z));
+    if (silent !== localSilent) {
+      localSilent = silent; awaitingPolicy = true; generation++; policyEpoch++; joining = false;
+      retirePolicyRequest(); lastRefresh = null; pauseMedia(silent ? SILENT_MEDIA_MESSAGE : '');
+      policyError = silent ? '' : POLICY_CONFIRM_MESSAGE;
+      notice = silent ? SILENT_MEDIA_MESSAGE : ''; emit();
+    }
+    return localSilent || awaitingPolicy;
+  }
   async function applyTracks(p) {
-    if (p.closed || !joined) return;
+    if (!peerCurrent(p)) return;
     const transceivers = p.pc.getTransceivers();
     for (let i = 0; i < transceivers.length && i < KINDS.length; i++) {
+      if (!peerCurrent(p)) return;
       const transceiver = transceivers[i];
       const track = p.info.canSend ? streams[KINDS[i]]?.getTracks().find(t => t.kind === MEDIA_KINDS[i] && t.readyState !== 'ended') || null : null;
       try { if (transceiver.sender.track !== track) await transceiver.sender.replaceTrack(track); }
       catch (error) { if (!p.closed) { p.error = `Track could not be sent: ${error.message}`; emit(); } }
     }
   }
-  const signal = (p, data) => api('/api/media/signal', { method: 'POST', body: { to: p.id, roomId, connectionId: p.connectionId, ...data } });
+  const signal = (p, data) => { if (!transportAllowed() || !policyPeers(policy).some(info => info.id === p.id) || (p.pc && !peerCurrent(p))) return Promise.resolve(); return api('/api/media/signal', { method: 'POST', body: { to: p.id, roomId, connectionId: p.connectionId, ...data } }); };
   function failure(p, error) {
     if (p.closed) return;
     p.status = 'failed'; p.error = String(error?.message || error || 'Connection failed').slice(0, 200); emit();
   }
   function makePeer(info, connectionId = null) {
+    if (!transportAllowed()) return null;
     const pc = new env.RTCPeerConnection({ iceServers: [] });
     const p = { id: info.id, info, pc, connectionId: connectionId || nextId(), closed: false, status: 'connecting', error: '', remote: {}, candidateCount: 0, receivedBytes: 0, sentBytes: 0, queue: Promise.resolve(), timeout: null };
     peers.set(p.id, p);
     pc.onicecandidate = event => {
-      if (p.closed || !event.candidate) return;
+      if (!peerCurrent(p) || !event.candidate) return;
       p.candidateCount++;
       void signal(p, { candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate }).catch(error => failure(p, error)); emit();
     };
@@ -110,7 +184,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     pc.onconnectionstatechange = pc.oniceconnectionstatechange = updateConnection;
     pc.ontrack = event => {
       // Receive permissions are checked again, independently of remote SDP.
-      if (p.closed || !p.info.canReceive || !joined) { event.track.stop(); return; }
+      if (!peerCurrent(p) || !p.info.canReceive) { event.track.stop(); return; }
       const index = pc.getTransceivers().indexOf(event.transceiver);
       const kind = KINDS[index] || (event.track.kind === 'audio' ? 'microphone' : 'camera');
       const stream = new env.MediaStream([event.track]); p.remote[kind] = stream;
@@ -124,16 +198,17 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     return p;
   }
   async function offer(p) {
-    if (p.closed) return;
+    if (!p || !peerCurrent(p)) return;
     try {
       if (!p.pc.getTransceivers().length) for (const kind of MEDIA_KINDS) p.pc.addTransceiver(kind, { direction: peerDirection(p.info) });
-      await applyTracks(p); if (p.closed) return;
-      await p.pc.setLocalDescription(await p.pc.createOffer()); if (p.closed) return;
+      await applyTracks(p); if (!peerCurrent(p)) return;
+      const description = await p.pc.createOffer(); if (!peerCurrent(p)) return;
+      await p.pc.setLocalDescription(description); if (!peerCurrent(p)) return;
       await signal(p, { description: { type: p.pc.localDescription.type, sdp: p.pc.localDescription.sdp } });
     } catch (error) { failure(p, error); }
   }
   function reconcile() {
-    if (!joined || !capabilities.rtc || !policy || policy.roomId !== roomId) { closePeers(); return; }
+    if (!transportAllowed() || !capabilities.rtc) { closePeers(); return; }
     const allowed = new Map(policyPeers(policy).map(p => [p.id, p]));
     for (const [id, p] of peers) {
       const next = allowed.get(id);
@@ -144,56 +219,110 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       const p = makePeer(info); void offer(p);
     }
   }
-  function acceptPolicy(next) {
-    if (disposed || !next || next.roomId !== roomId || currentRoomId(getState()) !== roomId) return;
-    policy = next; policyError = '';
-    if (joined && next.enabled === false) { joined = false; for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'The server ended this media session. Join again to reconnect.'; }
-    // Entering a listening-only or quiet area stops capture, rather than hiding a live microphone.
-    if (next.context?.canPublish === false || next.context?.kind === 'silent') for (const kind of KINDS) if (streams[kind]) stopDevice(kind, next.context?.kind === 'silent' ? 'Stopped in this quiet area.' : 'This area is listen-only.');
-    reconcile(); emit();
+  function acceptPolicy(next, source = 'push') {
+    checkLocalPolicy();
+    if (getState()?.ready === false) return false;
+    // A personalized terminal revocation has no current room. Fail closed immediately,
+    // even before the world UI processes its own access-revoked event.
+    if (!disposed && next?.roomId === null && next.enabled === false && next.selfId === (actorId || policy?.selfId) && sameContext()) {
+      generation++; policyEpoch++; joined = false; joining = false; committedAreas = null; retirePolicyRequest(); policy = next;
+      for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'Room access ended. Join an authorized room again to reconnect.'; emit(); return true;
+    }
+    if (disposed || !next || next.roomId !== roomId || !sameContext() || (actorId && next.selfId !== actorId)) return false;
+    const previousDenial = publishingDenied(policy) ? denialReason(policy.context) : null;
+    policyEpoch++; policy = next;
+    if (source === 'fetch' && !localSilent) awaitingPolicy = false;
+    policyError = awaitingPolicy && !localSilent ? policyError || POLICY_CONFIRM_MESSAGE : '';
+    // Retire area-specific warnings on exit; device errors remain until another user action.
+    if (previousDenial) for (const kind of KINDS) {
+      if (devices[kind].status === 'off' && devices[kind].error === previousDenial) devices[kind].error = publishingDenied(next) ? denialReason(next.context) : '';
+    }
+    if (notice === SILENT_MEDIA_MESSAGE && !localSilent && next.context?.kind !== 'silent') notice = '';
+    // Presence pushes must not starve the post-exit confirmation GET. It may
+    // clear the latch only for the same authority scope; pushed recipients win.
+    if (source === 'push' && !refreshRequest?.confirmation) retirePolicyRequest();
+    if (joined && next.enabled === false) { generation++; joined = false; joining = false; retirePolicyRequest(); for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'The server ended this media session. Join again to reconnect.'; }
+    // Revoke pending capture as well as live streams. Leaving the area must never revive
+    // a permission prompt started before denial; a deliberate later click gets a new token.
+    if (publishingDenied(next)) for (const kind of KINDS) {
+      if (streams[kind] || devices[kind].status === 'requesting') stopDevice(kind, denialReason(next.context));
+    }
+    reconcile(); emit(); return true;
   }
   async function refreshPolicy(force = false) {
-    if (disposed || !currentRoomId(getState())) return null;
-    if (refreshPromise) return refreshPromise;
-    if (!force && now() - lastRefresh < 900) return policy;
-    const expectedRoom = roomId, epoch = generation; lastRefresh = now();
-    refreshPromise = (async () => {
+    checkLocalPolicy();
+    if (disposed || !roomId || !sameContext() || getState()?.ready === false) return null;
+    if (refreshRequest) return refreshRequest.promise;
+    const elapsed = elapsedNow(), since = elapsed - lastRefresh;
+    if (!force && lastRefresh !== null && since >= 0 && since < 900) return policy;
+    const request = { roomId, actorId, generation, policyEpoch, startedAt:elapsed, confirmation:awaitingPolicy && !localSilent, promise: null }; lastRefresh = elapsed;
+    refreshRequest = request;
+    const current = () => !disposed && request.generation === generation && request.roomId === roomId && request.actorId === actorId && sameContext();
+    request.promise = (async () => {
+      let timeout;
+      const Controller = env.AbortController || globalThis.AbortController;
+      const controller = Controller ? new Controller() : null;
       try {
-        const next = await api('/api/media');
-        if (disposed || epoch !== generation || expectedRoom !== roomId) return null;
-        if (next.roomId !== roomId) { policyError = 'Room changed. Media is paused until the server confirms your room.'; closePeers(); return null; }
-        acceptPolicy(next); return next;
+        // The timeout measures elapsed time, independent of wall-clock changes.
+        // Racing as well as aborting also bounds adapters that ignore AbortSignal.
+        const deadline = new Promise((_, reject) => {
+          request.cancel = () => { reject(Error('Media policy request retired')); controller?.abort(); };
+          timeout = env.setTimeout(() => { reject(Error(POLICY_TIMEOUT_MESSAGE)); controller?.abort(); }, POLICY_TIMEOUT_MS);
+        });
+        const next = await Promise.race([api('/api/media', {signal:controller?.signal}), deadline]);
+        checkLocalPolicy();
+        if (!current()) return null;
+        // A newer push owns policy/recipients. A post-exit GET can only confirm
+        // its matching scope, without replacing newer recipients or denials.
+        const confirming = request.confirmation && awaitingPolicy && !localSilent;
+        if (request.policyEpoch !== policyEpoch && !confirming) return policy;
+        if (elapsedNow() - request.startedAt >= POLICY_TIMEOUT_MS) throw Error(POLICY_TIMEOUT_MESSAGE);
+        if (!next || next.roomId !== roomId || (actorId && next.selfId !== actorId)) { policyError = 'Room or account changed. Media is paused until the server confirms your session.'; pauseMedia(); emit(); return null; }
+        if (request.policyEpoch !== policyEpoch) {
+          if (next.enabled === policy?.enabled && authorityKey(next) === authorityKey(policy)) { awaitingPolicy = false; policyError = ''; reconcile(); emit(); }
+          return policy;
+        }
+        acceptPolicy(next, 'fetch'); return policy;
       } catch (error) {
-        if (epoch === generation && !disposed) { policyError = `Media policy unavailable: ${String(error?.message || 'server unreachable').slice(0, 150)}`; closePeers(); emit(); }
-        return null;
-      } finally { refreshPromise = null; }
+        if (current() && (request.policyEpoch === policyEpoch || (request.confirmation && awaitingPolicy))) { policyError = `Media policy unavailable: ${String(error?.message || 'server unreachable').slice(0, 150)}`; pauseMedia(); emit(); }
+        return current() && request.policyEpoch !== policyEpoch ? policy : null;
+      } finally { if (timeout !== undefined) env.clearTimeout(timeout); if (refreshRequest === request) refreshRequest = null; }
     })();
-    return refreshPromise;
+    return request.promise;
   }
   async function setJoined(value) {
+    const locallyDenied = checkLocalPolicy();
+    if (value && locallyDenied) { emit(); return false; }
     if (disposed || (value && (joining || joined)) || (!value && !joined && !joining)) return joined;
+    if (value && !sameContext()) return false;
+    if (value && policy?.context?.kind === 'silent') { notice = SILENT_MEDIA_MESSAGE; emit(); return false; }
     if (value && !capabilities.rtc) { notice = 'This browser does not support WebRTC calls.'; emit(); return false; }
     if (!value) {
-      joined = false; generation++; joining = false;
+      joined = false; generation++; joining = false; retirePolicyRequest();
       for (const kind of KINDS) stopDevice(kind); closePeers(); emit();
       try { await api('/api/media/state', { method: 'POST', body: { enabled: false } }); } catch (error) { notice = `Devices stopped. Server leave could not be confirmed: ${error.message}`; }
       emit(); return false;
     }
+    // An earlier GET may still contain enabled:false from before this opt-in.
+    policyEpoch++; retirePolicyRequest();
     const epoch = generation; joining = true; notice = ''; emit();
     try {
       await api('/api/media/state', { method: 'POST', body: { enabled: true } });
-      if (disposed || epoch !== generation) return false;
-      joined = true; await refreshPolicy(true); return true;
-    } catch (error) { notice = `Could not join audio: ${String(error?.message || 'server unreachable').slice(0, 150)}`; return false; }
+      if (disposed || epoch !== generation || !sameContext()) return false;
+      joined = true; await refreshPolicy(true); if (epoch !== generation || !sameContext()) return false; reconcile(); return joined && !policyError && !localSilent && !awaitingPolicy;
+    } catch (error) { if (!disposed && epoch === generation && sameContext()) notice = `Could not join audio: ${String(error?.message || 'server unreachable').slice(0, 150)}`; return false; }
     finally { if (epoch === generation) joining = false; emit(); }
   }
   async function toggleDevice(kind) {
     if (!KINDS.includes(kind) || disposed) return false;
+    const locallyDenied = checkLocalPolicy();
+    if (!sameContext() || locallyDenied || policyError) { emit(); return false; }
     if (streams[kind] || devices[kind].status === 'requesting') { stopDevice(kind); emit(); return false; }
     const reason = kind === 'screen' ? capabilities.screenReason : capabilities.deviceReason;
     if (reason) { devices[kind] = { status: 'unavailable', error: reason }; emit(); return false; }
-    if (policy?.context?.canPublish === false || policy?.context?.kind === 'silent') { devices[kind] = { status: 'off', error: policy?.context?.kind === 'silent' ? 'Quiet areas pause all media.' : 'Audience members can listen. Move to the stage to publish.' }; emit(); return false; }
+    if (publishingDenied(policy)) { devices[kind] = { status: 'off', error: denialReason(policy.context) }; emit(); return false; }
     const epoch = generation, sequence = ++captureSequence[kind];
+    const ownsCapture = () => !disposed && epoch === generation && sequence === captureSequence[kind] && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy;
     devices[kind] = { status: 'requesting', error: '' }; notice = ''; emit();
     let stream;
     try {
@@ -201,26 +330,35 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       const capture = kind === 'screen'
         ? env.navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
         : env.navigator.mediaDevices.getUserMedia(kind === 'camera' ? { video: { width: { ideal: 640 }, height: { ideal: 360 } }, audio: false } : { video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      stream = await capture;
-      if (disposed || epoch !== generation || sequence !== captureSequence[kind]) { stopStream(stream); return false; }
+      stream = await capture; checkLocalPolicy();
+      if (!ownsCapture()) { stopStream(stream); return false; }
+      pendingStreams[kind] = stream;
       if (!stream.getTracks().length) throw new Error('No media track was returned');
-      if (!joined && !await setJoined(true)) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because the call could not be joined.' }; emit(); return false; }
+      if (!joined) {
+        const didJoin = await setJoined(true);
+        if (!ownsCapture()) { stopStream(stream); return false; }
+        if (!didJoin) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because the call could not be joined.' }; emit(); return false; }
+      }
       await refreshPolicy(true);
-      if (disposed || epoch !== generation || sequence !== captureSequence[kind] || !joined || !policy || policyError || policy.context?.canPublish === false || policy.context?.kind === 'silent') { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because this area does not currently allow publishing.' }; emit(); return false; }
-      streams[kind] = stream; devices[kind] = { status: 'on', error: '' };
+      // A stale operation disposes only its own stream. Never clobber the next request's UI.
+      if (!ownsCapture()) { stopStream(stream); return false; }
+      if (!joined || !policy || policyError || publishingDenied(policy)) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because this area does not currently allow publishing.' }; emit(); return false; }
+      pendingStreams[kind] = null; streams[kind] = stream; devices[kind] = { status: 'on', error: '' };
       for (const track of stream.getTracks()) track.onended = () => { if (streams[kind] === stream) { stopDevice(kind, 'Sharing stopped by your browser or device.'); emit(); } };
       for (const p of peers.values()) await applyTracks(p);
+      if (!ownsCapture()) { stopStream(stream); return false; }
       emit(); return true;
     } catch (error) {
       stopStream(stream);
-      if (!disposed && epoch === generation && sequence === captureSequence[kind]) { devices[kind] = { status: 'error', error: describeMediaError(error, kind) }; emit(); }
+      if (ownsCapture()) { devices[kind] = { status: 'error', error: describeMediaError(error, kind) }; emit(); }
       return false;
-    }
+    } finally { if (pendingStreams[kind] === stream) pendingStreams[kind] = null; }
   }
   async function onSignal(event) {
-    if (disposed || !joined || !event || event.roomId !== roomId || !event.from || !event.connectionId) return;
+    if (!transportAllowed() || !event || event.roomId !== roomId || !event.from || !event.connectionId) return;
+    const eventGeneration = generation, eventActor = actorId;
     await refreshPolicy(true);
-    if (disposed || !joined || event.roomId !== roomId || policyError) return;
+    if (eventGeneration !== generation || eventActor !== actorId || !transportAllowed() || event.roomId !== roomId) return;
     const info = policyPeers(policy).find(p => p.id === event.from); if (!info) return;
     let p = peers.get(info.id);
     if (event.request === 'offer') {
@@ -233,16 +371,18 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       if (!p || p.connectionId !== event.connectionId) { dropPeer(info.id); p = makePeer(info, event.connectionId); }
       const peer = p;
       p.queue = p.queue.then(async () => {
-        if (peer.closed) return;
+        if (!peerCurrent(peer)) return;
         await peer.pc.setRemoteDescription(event.description);
+        if (!peerCurrent(peer)) return;
         const transceivers = peer.pc.getTransceivers();
         if (transceivers.length !== 3) throw new Error('Unsupported media offer; expected audio, camera and screen slots.');
         for (const t of transceivers) t.direction = peerDirection(info);
-        await applyTracks(peer); if (peer.closed) return;
-        await peer.pc.setLocalDescription(await peer.pc.createAnswer());
-        if (peer.closed) return;
+        await applyTracks(peer); if (!peerCurrent(peer)) return;
+        const answer = await peer.pc.createAnswer(); if (!peerCurrent(peer)) return;
+        await peer.pc.setLocalDescription(answer);
+        if (!peerCurrent(peer)) return;
         await signal(peer, { description: { type: peer.pc.localDescription.type, sdp: peer.pc.localDescription.sdp } });
-        for (const candidate of earlyCandidates.get(peer.connectionId) || []) await peer.pc.addIceCandidate(candidate);
+        for (const candidate of earlyCandidates.get(peer.connectionId) || []) { if (!peerCurrent(peer)) return; await peer.pc.addIceCandidate(candidate); }
         earlyCandidates.delete(peer.connectionId);
       }).catch(error => failure(peer, error));
       await p.queue; return;
@@ -253,10 +393,10 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     }
     const peer = p;
     peer.queue = peer.queue.then(async () => {
-      if (peer.closed) return;
+      if (!peerCurrent(peer)) return;
       if (event.description?.type === 'answer') {
         await peer.pc.setRemoteDescription(event.description);
-        for (const candidate of earlyCandidates.get(peer.connectionId) || []) await peer.pc.addIceCandidate(candidate);
+        for (const candidate of earlyCandidates.get(peer.connectionId) || []) { if (!peerCurrent(peer)) return; await peer.pc.addIceCandidate(candidate); }
         earlyCandidates.delete(peer.connectionId);
       } else if (event.candidate) {
         if (peer.pc.remoteDescription) await peer.pc.addIceCandidate(event.candidate);
@@ -266,8 +406,10 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     await peer.queue;
   }
   async function retry() {
-    if (!joined || disposed) return;
-    closePeers(); notice = ''; await refreshPolicy(true);
+    checkLocalPolicy();
+    if (disposed || !joined || !sameContext() || localSilent || getState()?.ready === false) return;
+    const retryGeneration = generation; closePeers(); notice = ''; await refreshPolicy(true);
+    if (retryGeneration !== generation || !transportAllowed()) return; reconcile();
     for (const info of policyPeers(policy)) if (info.id < policy.selfId) {
       const request = { id: info.id, connectionId: nextId() };
       try { await signal(request, { request: 'offer' }); } catch (error) { notice = `Retry failed: ${error.message}`; }
@@ -276,13 +418,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   async function update() {
     if (disposed) return;
-    const nextRoom = currentRoomId(getState());
-    if (nextRoom !== roomId) {
-      generation++; roomId = nextRoom; joined = false; joining = false; policy = null; policyError = ''; lastRefresh = 0;
-      for (const kind of KINDS) stopDevice(kind); closePeers();
-      notice = nextRoom ? 'You changed rooms. Join audio again when you are ready.' : ''; emit();
-      // The room-change endpoint also resets server media opt-in; never send a leave for the old room into a newer room.
-    }
+    checkLocalPolicy();
     await refreshPolicy();
     if (now() - lastStats > 3000) {
       lastStats = now();
@@ -298,12 +434,12 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   function destroy() {
     if (disposed) return;
-    disposed = true; generation++; joined = false;
+    disposed = true; generation++; policyEpoch++; joined = false; joining = false; retirePolicyRequest();
     for (const kind of KINDS) stopDevice(kind); closePeers();
     // Best-effort opt-out; server also expires disconnected presence.
     void api('/api/media/state', { method: 'POST', body: { enabled: false } }).catch(() => {});
   }
-  return { snapshot, update, refreshPolicy, acceptPolicy, setJoined, toggleDevice, retry, onSignal, destroy };
+  return { snapshot, update, checkLocalPolicy, acceptCommittedRoom, refreshPolicy, acceptPolicy, setJoined, toggleDevice, retry, onSignal, destroy };
 }
 
 const ICONS = {
@@ -345,33 +481,33 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
   }
   function render(s) {
     if (destroyed) return;
-    const context = s.policy?.context;
-    const label = context?.label || context?.name || 'Spatial audio';
+    const context = s.policy?.context, silent = s.localSilent || context?.kind === 'silent';
+    const label = s.localSilent ? 'No calls' : context?.label || context?.name || 'Spatial audio';
     $('.media-context-label').textContent = label;
-    let detail = s.joining ? 'Joining…' : !s.joined ? 'Mic and camera stay off until you choose' : context?.kind === 'silent' ? 'Quiet area · proximity calls paused' : context?.canPublish === false ? 'Audience · listening only' : s.peers.length ? `${s.peers.length} ${s.peers.length === 1 ? 'participant' : 'participants'} · ${s.peers.filter(p => p.status === 'connected').length} transport connected` : context?.reason || context?.description || 'Ready · stop near someone to connect';
+    let detail = s.localSilent ? SILENT_MEDIA_MESSAGE : s.policyError || (silent ? SILENT_MEDIA_MESSAGE : s.joining ? 'Joining…' : !s.joined ? 'Mic and camera stay off until you choose' : context?.canPublish === false ? context?.kind === 'audience' ? 'Audience · listening only' : context?.reason || 'Publishing is paused in this area' : s.peers.length ? `${s.peers.length} ${s.peers.length === 1 ? 'participant' : 'participants'} · ${s.peers.filter(p => p.status === 'connected').length} transport connected` : context?.reason || context?.description || 'Ready · stop near someone to connect');
     $('.media-context-detail').textContent = detail;
-    $('.media-dot').dataset.state = s.peers.some(p => p.status === 'connected') ? 'connected' : s.joined ? 'ready' : 'off';
-    const join = $('.media-join'); join.textContent = s.joining ? 'Joining…' : s.joined ? 'Leave audio' : 'Join audio'; join.disabled = s.joining || !s.capabilities.rtc || !s.roomId; join.classList.toggle('is-joined', s.joined);
+    $('.media-dot').dataset.state = silent || s.policyError ? 'off' : s.peers.some(p => p.status === 'connected') ? 'connected' : s.joined ? 'ready' : 'off';
+    const join = $('.media-join'); join.textContent = s.joining ? 'Joining…' : s.joined ? 'Leave audio' : 'Join audio'; join.disabled = s.joining || !s.capabilities.rtc || !s.roomId || ((silent || s.awaitingPolicy) && !s.joined); join.title = silent && !s.joined ? SILENT_MEDIA_MESSAGE : s.joined ? 'Leave audio' : 'Join audio'; join.classList.toggle('is-joined', s.joined);
     for (const kind of KINDS) {
       const button = $(`[data-media="${kind}"]`), device = s.devices[kind];
       const unsupported = kind === 'screen' ? s.capabilities.screenReason : s.capabilities.deviceReason;
-      const denied = context?.canPublish === false || context?.kind === 'silent';
+      const denied = silent || s.awaitingPolicy || !!s.policyError || publishingDenied(s.policy);
       button.disabled = !!unsupported || denied || !s.roomId;
       button.setAttribute('aria-pressed', device.status === 'on' ? 'true' : 'false');
       button.setAttribute('aria-label', `${labelFor(kind)} ${device.status}`);
-      button.title = unsupported || (denied ? context?.kind === 'silent' ? 'Media is paused in quiet areas' : 'Audience members are listen-only' : device.error || (device.status === 'on' ? `Stop ${labelFor(kind).toLowerCase()}` : `Turn on ${labelFor(kind).toLowerCase()}`));
+      button.title = unsupported || (denied ? (s.localSilent ? SILENT_MEDIA_MESSAGE : s.policyError || denialReason(context)) : device.error || (device.status === 'on' ? `Stop ${labelFor(kind).toLowerCase()}` : `Turn on ${labelFor(kind).toLowerCase()}`));
       button.classList.toggle('is-requesting', device.status === 'requesting');
       button.classList.toggle('has-error', device.status === 'error');
     }
     const warning = s.policyError || KINDS.map(k => s.devices[k].error).find(Boolean) || s.notice || (s.peers.some(p => p.status === 'failed') ? 'A call could not connect. Open connection details to retry.' : '');
     $('.media-warning').hidden = !warning; $('.media-warning').textContent = warning;
     if (warning && warning !== lastWarning) { lastWarning = warning; }
-    $('.media-policy-detail').textContent = `Server-authorized ${context?.kind || 'room'} recipients. ${context?.reason || context?.description || 'Location and room permissions are evaluated by the server.'}`;
+    $('.media-policy-detail').textContent = silent ? `${SILENT_MEDIA_MESSAGE} ${SILENT_MEDIA_EXIT_MESSAGE}` : `Server-authorized ${context?.kind || 'room'} recipients. ${context?.reason || context?.description || 'Location and room permissions are evaluated by the server.'}`;
     const transport = $('.media-transport'); transport.replaceChildren();
     const connectionRows = s.peers.length ? s.peers.map(p => `${p.name}: ${p.status === 'connected' ? 'transport connected' : p.status} · ${p.candidateCount} local ICE candidates · ${p.receivedBytes} bytes received${p.error ? ` — ${p.error}` : ''}`) : [s.joined ? 'No eligible opted-in participants yet.' : 'Not in a call. No peer connection is active.'];
     for (const row of connectionRows) { const p = document.createElement('p'); p.textContent = row; transport.append(p); }
     if (!s.capabilities.secure || !s.capabilities.devices || !s.capabilities.display || !s.capabilities.rtc) { const p = document.createElement('p'); p.textContent = [s.capabilities.deviceReason, s.capabilities.screenReason].filter(Boolean).join(' '); transport.append(p); }
-    $('.media-retry').disabled = !s.joined;
+    $('.media-retry').disabled = !s.joined || silent;
     const used = new Set();
     for (const kind of ['camera', 'screen']) if (s.devices[kind].stream) { const key = 'self-' + kind; used.add(key); mediaTile(key, 'You', kind, s.devices[kind].stream, true); }
     for (const p of s.peers) for (const [kind, stream] of Object.entries(p.streams)) {
@@ -396,6 +532,8 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
       if (type === 'media-policy') session.acceptPolicy(event.data || event);
       if (['presence', 'scene', 'room', 'role', 'moderation'].includes(type)) void session.update();
     },
+    checkLocalPolicy: () => session.checkLocalPolicy(),
+    acceptCommittedRoom: (room, actorId) => session.acceptCommittedRoom(room, actorId),
     update() { const room = currentRoomId(getState()); if (room !== lastRoom) { lastRoom = room; expanded = false; $('.media-details').hidden = true; $('.media-details-toggle').setAttribute('aria-expanded', 'false'); } void session.update(); },
     destroy() { destroyed = true; clearInterval(interval); session.destroy(); for (const tile of elements.values()) { tile.media.pause(); tile.media.srcObject = null; } elements.clear(); root.replaceChildren(); },
     // Read-only diagnostics for automated checks; no fixture identities or synthetic success.

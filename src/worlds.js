@@ -1,3 +1,4 @@
+import {SILENT_MEDIA_MESSAGE} from './media-policy-copy.js';
 import {IMAGE_PIXELS_PER_METRE} from './image-asset-schema.js';
 import {cloneWithImageContext,imageGeometry,resolvedImage} from './image-asset-context.js';
 // Original standalone room layouts; source-native Woka identity is rendered as legacy sprites.
@@ -27,7 +28,7 @@ const commons={...emptyScene(),objects:[
  obj('commons-studio','portal',-10,-8,{name:'The Studio',target:'studio',color:'#2dd4bf'}),obj('commons-assembly','portal',10,-8,{name:'Assembly',target:'assembly',color:'#e9c74c'}),
  obj('commons-tree1','tree',-13,-3),obj('commons-tree2','tree',13,3),obj('commons-tree3','tree',-11,9),obj('commons-tree4','tree',12,-11),
  obj('commons-bench','bench',-10,6,{rotation:90}),obj('commons-lamp1','lamp',-3,5),obj('commons-lamp2','lamp',3,5),obj('commons-rock','rock',12,8),
- ],areas:[area('welcome','The Commons',0,7,6,4,'welcome',{message:'Welcome to your Universe. Wander, meet someone, make a place.'}),area('quiet','Quiet garden',6,-3,8,6,'silent',{message:'A quiet corner. Proximity calls are paused here.'})]};
+ ],areas:[area('welcome','The Commons',0,7,6,4,'welcome',{message:'Welcome to your Universe. Wander, meet someone, make a place.'}),area('quiet','Quiet garden',6,-3,8,6,'silent',{message:SILENT_MEDIA_MESSAGE})]};
 const studio={...emptyScene('studio'),spawn:{x:0,z:8},objects:[
  obj('studio-rug','rug',0,-1,{width:10,depth:8,color:'#454067'}),obj('studio-table1','table',-4,-1),obj('studio-table2','table',4,-1),obj('studio-chair1','chair',-4,1),obj('studio-chair2','chair',4,1),
  obj('studio-screen','screen',0,-7,{name:'Project screen',text:'Use the media controls to share your screen with eligible participants.'}),

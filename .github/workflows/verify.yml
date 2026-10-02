@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [core, authoring, images]
+        group: [core, authoring, images, media]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -168,7 +168,7 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
   const row=el('div','field-row');row.append(field('X',v.x,val=>patch('x',val),{type:'number',step:placementStep(v)||.1}),field('Z',v.z,val=>patch('z',val),{type:'number',step:placementStep(v)||.1}));inspector.append(row);
   if(a){
    const size=el('div','field-row');size.append(field('Width',a.width,val=>patch('width',val),{type:'number',min:.5,max:scene.bounds.width,step:.5}),field('Depth',a.depth,val=>patch('depth',val),{type:'number',min:.5,max:scene.bounds.depth,step:.5}));inspector.append(size);
-   inspector.append(field('On entry',a.action,val=>patch('action',val),{options:[['welcome','Show a message'],['silent','Quiet / no proximity'],['meeting','Meeting room'],['stage','Broadcast stage'],['audience','Broadcast audience'],['teleport','Teleport to room'],['link','Open a website prompt']]}));
+   inspector.append(field('On entry',a.action,val=>patch('action',val),{options:[['welcome','Show a message'],['silent','Silent / no calls'],['meeting','Meeting room'],['stage','Broadcast stage'],['audience','Broadcast audience'],['teleport','Teleport to room'],['link','Open a website prompt']]}));
    if(['meeting','stage','audience'].includes(a.action))inspector.append(field('Shared meeting name',a.meetingName||a.name,val=>patch('meetingName',val)));
    if(a.action==='teleport')inspector.append(field('Destination room ID',a.target||'',val=>patch('target',val)));
    if(a.action==='link')inspector.append(field('Website URL',a.url||'',val=>patch('url',val),{type:'url'}));

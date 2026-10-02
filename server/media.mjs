@@ -1,3 +1,4 @@
+import {SILENT_MEDIA_MESSAGE} from '../src/media-policy-copy.js';
 import * as v from './validation.mjs';
 const inside=(a,p)=>Number.isFinite(a.x)&&Number.isFinite(a.z)&&Math.abs(p.x-a.x)<=a.width/2&&Math.abs(p.z-a.z)<=a.depth/2;
 export function createMediaPolicy({store,presence,emitUser,now}) {
@@ -6,7 +7,7 @@ export function createMediaPolicy({store,presence,emitUser,now}) {
   function context(p) {
     const room=store.room(p.roomId,p.userId),areas=(room.scene.areas||[]).filter(a=>inside(a,p));
     const a=areas.find(a=>a.action==='silent')||areas.find(a=>a.action==='stage'||a.action==='audience')||areas.find(a=>a.action==='meeting');
-    if(a?.action==='silent')return {kind:'silent',label:a.name||'Quiet area',canPublish:false,reason:'Media is paused in this quiet area',group:a.id};
+    if(a?.action==='silent')return {kind:'silent',label:a.name||'Quiet area',canPublish:false,reason:SILENT_MEDIA_MESSAGE,group:a.id};
     if(a?.action==='stage'){const canPublish=['owner','admin','editor','moderator'].includes(room.role);return {kind:'stage',label:a.name||'Stage',canPublish,reason:canPublish?'Stage speakers can broadcast':'The room owner must grant editor or moderator access to speak on stage',group:a.meetingName||a.id};}
     if(a?.action==='audience')return {kind:'audience',label:a.name||'Audience',canPublish:false,reason:'Audience listens to stage speakers',group:a.meetingName||a.id};
     if(a?.action==='meeting')return {kind:'meeting',label:a.name||'Meeting',canPublish:true,reason:'Everyone in this meeting area can talk',group:a.meetingName||a.id};

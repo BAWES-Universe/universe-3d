@@ -1,6 +1,6 @@
 # Standalone implementation status · 2026-10-02
 
-This active v0.6 tranche adds the integrated custom-image library to the recorded functional-authoring, personal-space, local-resident and deployment-configuration checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+This active v0.6.1 tranche adds the integrated custom-image library to the recorded functional-authoring, personal-space, local-resident and deployment-configuration checkpoint. Full Universe source parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Integrated now
 
@@ -28,7 +28,9 @@ The frozen v0.6 source401ae7c4…056e7 passed324 unit/API tests, syntax/build/pa
 
 A subsequent actual DPR2 regression exposed a pre-existing ray-input double-scaling bug despite those DPR1 checks. The focused renderer fix now passes6 actual native mouse/touch scenarios: exact chair selection before/after camera orbit, projected image ghost coordinates, opaque selection and transparent pass-through. Measured framebuffer ratios match the real DPR2 hardware scale, including raster rounding. Tested bundle `8c0d91282d59b7f17079ec227762b178213369cb2a380b728b0cd69a1b5fb3a5`; CSS remains `9ffd241303c102e9c65202b4fe31f5aa1893ee57c13256ad71a478a132b18c79`. Test-harness attempts that encountered deliberately unobscured-point guards remain recorded; they are not hidden product exceptions. The core command now includes this DPR regression. Counts overlap and do not certify whole source parity.
 
-Reproduce with `npm run test:browser`, `npm run test:browser:authoring` and `npm run test:browser:images`; isolated module checks use `npm run test:browser:modules`. `npm run verify:container-files` simulates declared Dockerfile source boundaries and dependency-free startup, not actual Docker. Browser tests use Chromium software WebGL and touch emulation; physical phones, real cross-network media, live reverse proxy and production load remain unverified. Publication/CI of newer source must be verified by exact commit.
+The subsequent Silent correction passes396 aggregate unit/API checks and four media suites: controlled DOM, native permission-denial/lifecycle, authenticated native SDP/teardown, and actual-world walk-in/exit through overlapping Silent/meeting areas. It invalidates pending devices on denial and rejects stale HTTP responses after a newer pushed policy. Incoming calls are blocked; room text chat and ambient item audio remain separate. Final bundle `d43d098708afdcc272e4743a8603b751143161066b868495aa4f25e875e284a9` passes final copy/layout/world behavior and package/container-file checks. No successful AV packets, provider or physical-device claim follows from SDP negotiation. Full cross-SSE/session policy revision ordering is still a documented protocol limitation, not silently declared solved.
+
+Reproduce with `npm run test:browser`, `npm run test:browser:authoring` and `npm run test:browser:images` and `npm run test:browser:media`; isolated module checks use `npm run test:browser:modules`. `npm run verify:container-files` simulates declared Dockerfile source boundaries and dependency-free startup, not actual Docker. Browser tests use Chromium software WebGL and touch emulation; physical phones, real cross-network media, live reverse proxy and production load remain unverified. Publication/CI of newer source must be verified by exact commit.
 
 ## Prior immutable quality checkpoint
 
@@ -45,3 +47,5 @@ The earlier quality checkpoint and v0.3 hierarchy evidence remain unchanged. The
 - Local original wardrobe and room-scoped file access do not imply upstream entitlement or all area-tag file semantics
 
 See `CUSTOM-IMAGES.md`, `IMAGE-LIBRARY-CONTRACT.md`, `ACTION-AUTHORING.md`, `server/PERSONAL-AREAS.md`, `server/BOTS.md`, `BRAND-PORT.md` and `DEV-PREVIEW-OPERATOR.md` for implemented contracts and limitations. No deployment has occurred.
+
+The focused Silent freshness correction adds 39 controlled regressions (396 aggregate tests), immediate deny-only committed geometry, bounded 8-second policy GETs and current-ownership checks around delayed transport work. Five media browser suites and build/startup/container checks pass locally. Full exact-revision remote CI remains pending; external packets and physical devices remain unverified.
