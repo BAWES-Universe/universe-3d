@@ -7,9 +7,12 @@
     "build": "node scripts/build.mjs",
     "start": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser.mjs",
+    "test:browser": "node scripts/test-browser.mjs",
     "check": "node scripts/check-source.mjs",
-    "verify": "node scripts/verify-package.mjs"
+    "verify": "node scripts/verify-package.mjs",
+    "test:browser:modules": "node scripts/test-browser.mjs modules",
+    "record:walkthrough": "node tests/quality-walkthrough.mjs",
+    "measure:server": "node scripts/measure-server.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "9.28.0"

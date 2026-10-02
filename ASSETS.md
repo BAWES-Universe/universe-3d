@@ -13,23 +13,12 @@ This repository does not apply a new blanket license to third-party assets or BA
 
 Dependency versions and their published licenses are recorded in `package-lock.json`. Dependencies are installed from npm and not vendored here.
 
-## Excluded legacy Woka sprite sheets
+## Original native 3D character and environment artwork
 
-The six legacy Woka images are Pipoya artwork. The [publisher's terms](https://pipoya.itch.io/pipoya-free-rpg-character-sprites-32x32), checked on 2026-10-02, permit use in games but restrict asset redistribution. No separate permission to publish raw PNGs in this repository has been established, so they are excluded from Git and ignored by `.gitignore`. They are not embedded in a committed build or test screenshot.
+The current renderer, onboarding, People portraits and character creator use original procedural 3D geometry, materials and animation in `src/avatar-rig.js`, `src/avatar-creator.js`, `src/environment-materials.js` and `src/scene-layout.js`. No legacy Woka sprite download is needed. Appearance definitions are in `src/avatar-spec.js`; this free original catalog does not claim to reproduce or transfer upstream paid/custom-avatar entitlements.
 
-The v0.3 renderer and picker still refer to these optional local files. Without them, source compilation and the local server work, but avatar artwork is blank or untextured. This checkout is therefore an incomplete visual checkpoint. A separately developed native-3D-avatar implementation is intended to remove this dependency; that work is not present in this version.
+The former Pipoya sprite PNGs are excluded from this repository and are no longer requested by the runtime. Prior upstream inclusion established provenance, not redistribution permission. No Core Keeper, Habbo or third-party game textures or character meshes are copied.
 
-For a private local review, obtain the sprites directly from the publisher under applicable terms. Do not commit or redistribute them. The existing legacy file mapping is:
+- `public/assets/bawes-universe-logo.png`: the complete, unmodified BAWES Universe logo from `BAWES-Universe/workadventure-universe-admin`, `public/assets/logo-300x150.png`, commit `c2053a56fa0cd89001cdb1b83c469281a672a9ef`, blob `b129b96e0d9c618fa96cf15a237d3f59803f27a8` (byte identity verified in the supplied design audit). SHA-256 `5e5b3f65d80bd38972cc56f94032848454784d76cb8be5cb31fe4b86d4242302`. Rendered at its original 2:1 aspect ratio. Brand rights remain with the owner.
 
-| Local filename | Publisher pack filename |
-| --- | --- |
-| `public/assets/woka-0.png` | `Male 01-1.png` |
-| `public/assets/woka-1.png` | `Female 01-1.png` |
-| `public/assets/woka-2.png` | `Male 09-1.png` |
-| `public/assets/woka-3.png` | `Female 09-1.png` |
-| `public/assets/woka-4.png` | `Teacher male 02.png` |
-| `public/assets/woka-5.png` | `Teacher fmale 02.png` |
-
-The legacy files were matched by Git blob identity to `play/public/resources/characters/pipoya/` in `BAWES-Universe/workadventure-universe` at commit `bae18306bdfa63e58cd4124b1a3b5b290b61c286`. Their presence upstream is provenance, not independent redistribution permission.
-
-Rebuild after adding any authorized local-only visual assets. Do not publish screenshots or builds containing excluded assets without establishing the necessary distribution rights.
+Typography keeps role-specific source distinctions: Space Grotesk headings, native-game Roboto UI and Press Start 2P name labels. The website's Inter role is not presented as the legacy game UI font. Ink panels follow the audited proposed `#14121E`/violet roles; this standalone implementation does not claim those proposals were deployed upstream.

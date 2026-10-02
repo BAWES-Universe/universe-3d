@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { createGameServer } from '../server/app.mjs';
 const require = createRequire(import.meta.url);
-
 const { chromium } = require('playwright-core');
 const pack = (await import(require.resolve('@sparticuz/chromium'))).default;
 const dir = await mkdtemp(join(tmpdir(), 'universe-social-live-'));

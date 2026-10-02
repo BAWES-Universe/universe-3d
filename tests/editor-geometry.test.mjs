@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {emptyScene,clone} from '../src/worlds.js';
+import {snapPoint,validatePlacement,footprint} from '../src/editor-geometry.js';
+const check=(scene,item,opts)=>validatePlacement(scene,item,opts);
+test('editor grid snapping is stable, finite and supports half metres',()=>{assert.deepEqual(snapPoint({x:1.26,z:-2.24},.5),{x:1.5,z:-2});assert.deepEqual(snapPoint({x:1.26,z:-2.24},1),{x:1,z:-2});assert.equal(snapPoint({x:NaN,z:1}),null);});
+test('editor bounds use rotated actual dimensions, not item centers',()=>{const scene=emptyScene();assert.deepEqual(footprint({type:'wall',x:0,z:0,width:8,rotation:90}),{x:0,z:0,width:.3,depth:8});assert.equal(check(scene,{type:'table',x:15,z:0}).valid,false);assert.equal(check(scene,{type:'table',x:14,z:0}).valid,true);assert.equal(check(scene,{type:'wall',x:0,z:12,width:8,rotation:90}).valid,false);});
+test('solid overlap is rejected; moving a selection excludes its own old footprint',()=>{const scene=emptyScene();scene.objects.push({id:'table',type:'table',name:'Table',x:0,z:0});assert.match(check(scene,{type:'chair',x:0,z:0}).reason,/Overlaps Table/);assert.equal(check(scene,{id:'table',type:'table',x:0,z:0},{excludeId:'table'}).valid,true);assert.equal(check(scene,{type:'chair',x:3,z:0}).valid,true);});
+test('rugs and areas can overlap furniture, with their own bounds checked',()=>{const scene=emptyScene();scene.objects.push({id:'table',type:'table',x:0,z:0});assert.equal(check(scene,{type:'rug',x:0,z:0}).valid,true);assert.equal(check(scene,{type:'area',x:0,z:0,width:4,depth:4}).valid,true);assert.equal(check(scene,{type:'area',x:15,z:0,width:4,depth:4}).valid,false);});
+test('arrival point and current player cannot be blocked by furniture',()=>{const scene=emptyScene();assert.match(check(scene,{type:'wall',x:0,z:7}).reason,/arrival/);assert.match(check(scene,{type:'chair',x:3,z:2},{position:{x:3,z:2}}).reason,/standing/);});
+test('final enclosure wall cannot trap arrival even while leaving its footprint clear',()=>{const scene=emptyScene();scene.spawn={x:0,z:0};scene.objects=[{id:'left',type:'wall',x:-1.5,z:0,width:3,rotation:90},{id:'right',type:'wall',x:1.5,z:0,width:3,rotation:90},{id:'top',type:'wall',x:0,z:-1.5,width:2.6}];const before=clone(scene);const result=check(scene,{type:'wall',x:0,z:1.5,width:2.6});assert.equal(result.valid,false);assert.match(result.reason,/walking route/);assert.deepEqual(scene,before);});
+
+test('walls can meet edge-to-edge on the grid without artificial gaps',()=>{const scene=emptyScene();scene.objects=[{id:'a',type:'wall',x:0,z:0}];assert.equal(check(scene,{type:'wall',x:3,z:0}).valid,true);assert.equal(check(scene,{type:'wall',x:2.5,z:0}).valid,false);});

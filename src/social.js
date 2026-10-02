@@ -25,11 +25,10 @@ function el(tag, attrs = {}, ...children) {
 }
 function button(label, fn, attrs = {}) { return el('button', { type: 'button', class: 'button social-btn', ...attrs, onclick: fn }, label); }
 function messageError(error) { return error?.message || 'Something went wrong. Please try again.'; }
-function avatar(user, large = false) {
-  const index = Math.max(0, Math.min(5, Math.trunc(Number(user?.woka) || 0)));
-  const sprite = el('span', { class: 'social-avatar-sprite' });
-  sprite.style.backgroundImage = `url("/assets/woka-${index}.png")`;
-  return el('span', { class: `social-avatar${large ? ' social-avatar-large' : ''}`, 'aria-hidden': 'true' }, sprite);
+function makeAvatar(user, large=false,portrait=null){
+ const node=el('span',{class:`social-avatar${large?' social-avatar-large':''}`,'aria-hidden':'true'}),initials=el('span',{class:'social-avatar-initials',text:(user?.name||'U').slice(0,2)});node.append(initials);
+ if(portrait)Promise.resolve(portrait(user)).then(url=>{const img=el('img',{class:'social-avatar-portrait',src:url,alt:''});node.replaceChildren(img);}).catch(()=>{});
+ return node;
 }
 function statusDot(status = 'online') { return el('span', { class: 'social-status-dot', 'data-status': status, title: STATUS_LABELS[status] || status }); }
 function field(label, input, hint) { return el('label', { class: 'social-field' }, el('span', { text: label }), input, hint && el('small', { text: hint })); }
@@ -43,8 +42,9 @@ function timeLabel(date) {
 function normalizeList(result, key) { return Array.isArray(result?.[key]) ? result[key] : Array.isArray(result) ? result : []; }
 function focusEnd(node) { node?.focus(); if (node && typeof node.setSelectionRange === 'function') node.setSelectionRange(node.value.length, node.value.length); }
 
-export function mountSocial({ root, api, getState, onNavigate = () => {}, onExplore = null, onManage = null, toast = () => {} }) {
+export function mountSocial({ root, api, getState, onNavigate = () => {}, onExplore = null, onManage = null, onAvatar = null, portrait = null, toast = () => {} }) {
   if (!root || typeof api !== 'function' || typeof getState !== 'function') throw new Error('mountSocial needs root, api and getState');
+  const avatar=(person,large=false)=>makeAvatar(person,large,portrait);
   let destroyed = false;
   let activeTab = 'chat';
   let mountedKey = '';
@@ -216,6 +216,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     } else if (activeTab === 'chat' && chatMode !== 'inbox') renderTimeline();
     else if (activeTab === 'people') renderPeople();
     else if (activeTab === 'explore' && !createMode) renderWorlds();
+    else if(activeTab==='settings'&&profileAvatar){const key=JSON.stringify(user().appearance??user().woka);if(profileAvatar.dataset.appearance!==key){profileAvatar.dataset.appearance=key;profileAvatar.firstChild.replaceWith(avatar(user(),true));profileAvatar.children[1].firstChild.textContent=user().name;}}
   }
 
   function upsertMessage(key, message) {
@@ -630,14 +631,14 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       await run('profile', async () => {
         save.disabled = true; clearNotice();
         try {
-          await saveProfile({ name: value, woka: profileSelection, status: availability.value });
+          await saveProfile({ name: value, ...(onAvatar?{}:{woka:profileSelection}), status: availability.value });
           profileAvatar.children[1].firstChild.textContent = user().name;
-          noticeNode.replaceChildren(notice('Profile saved. Everyone in the room sees your updated Woka.'));
+          noticeNode.replaceChildren(notice('Profile saved. Everyone in the room sees your updated character.'));
           report('Profile saved');
         } finally { save.disabled = false; }
       });
     }, { class: 'button social-btn social-btn-primary' });
-    profileForm = el('form', { class: 'social-scroll social-stack', onsubmit: (event) => { event.preventDefault(); save.click(); } }, profileAvatar, noticeNode, field('Display name', name), field('Availability', availability), el('h3', { class: 'social-section-title', text: 'Choose your Woka' }), grid, save,
+    profileForm = el('form', { class: 'social-scroll social-stack', onsubmit: (event) => { event.preventDefault(); save.click(); } }, profileAvatar, noticeNode, field('Display name', name), field('Availability', availability), el('h3', { class: 'social-section-title', text: 'Your 3D character' }), onAvatar?button('Edit your 3D character',()=>onAvatar(),{class:'button social-btn social-btn-primary'}):grid, save,
       el('div', { class: 'social-notice' }, 'Use WASD or arrow keys to move. Use the camera controls to zoom and rotate. Your room conversations and profile are saved on this server.'));
     if (!self.account) {
       const username = input({ minlength: '3', maxlength: '32', autocomplete: 'username', 'aria-label': 'Account username', placeholder: 'Choose a username' });

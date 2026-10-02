@@ -8,6 +8,8 @@ import * as v from './validation.mjs';
 import { createMediaPolicy } from './media.mjs';
 import { createQuestService } from './quests.mjs';
 import { createRoomFileService } from './files.mjs';
+import {validateAppearance} from '../src/avatar-spec.js';
+import { createExpressionService } from './expressions.mjs';
 import { createHierarchyService } from './hierarchy.mjs';
 
 const passwordHash = promisify(scrypt);
@@ -61,7 +63,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     const old = store.get('SELECT current_room_id FROM sessions WHERE token_hash=?',token)?.current_room_id;
     store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?', token);
     if (old && !store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND token_hash!=? AND expires_at>?',userId,old,token,now())) presence.delete(`${old}:${userId}`);
-    quests.disconnected(userId,old); media.leave(userId,old); broadcastPresence(old);
+    if(!presence.has(`${old}:${userId}`))expressions.clear(old,userId);quests.disconnected(userId,old); media.leave(userId,old); broadcastPresence(old);
   }
   function cookie(token, req, clear = false) { return `${COOKIE}=${clear ? '' : token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${clear ? 0 : SESSION_MS / 1000}${req.socket.encrypted ? '; Secure' : ''}`; }
   function createSession(userId,req,res) {
@@ -117,6 +119,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   }
   const media=createMediaPolicy({store,presence,emitUser:emitMediaUser,now});
   const quests=createQuestService({store,presence,media,emitUser,now,enabled:questsEnabled});
+  const expressions=createExpressionService({store,presence,emitRoom,now,limit});
   const files=createRoomFileService({store,now,send,session});
   function policyChanged(reason,force={}) {
     const affected=new Set(),revoked=new Set();
@@ -125,7 +128,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       const forced=force.userId===s.user_id&&force.worldId===row?.world_id;
       if(!row||!store.canSeeRoom(row,s.user_id)||forced){
         store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',s.token_hash);sessionRoles.delete(s.token_hash);presence.delete(`${roomId}:${s.user_id}`);affected.add(roomId);
-        const key=`${roomId}:${s.user_id}`;if(!revoked.has(key)){revoked.add(key);quests.disconnected(s.user_id,roomId);emitUser(s.user_id,'access-revoked',{roomId,reason,recoverDraft:true});emitUser(s.user_id,'media-policy',{selfId:s.user_id,roomId:null,enabled:false,context:{kind:'none',label:'Access ended',canPublish:false,reason:'Room access changed'},peers:[],iceServers:[]});}
+        const key=`${roomId}:${s.user_id}`;if(!revoked.has(key)){revoked.add(key);quests.disconnected(s.user_id,roomId);expressions.clear(roomId,s.user_id);emitUser(s.user_id,'access-revoked',{roomId,reason,recoverDraft:true});emitUser(s.user_id,'media-policy',{selfId:s.user_id,roomId:null,enabled:false,context:{kind:'none',label:'Access ended',canPublish:false,reason:'Room access changed'},peers:[],iceServers:[]});}
       }else{
         const oldRole=sessionRoles.get(s.token_hash);sessionRoles.set(s.token_hash,role);const room=store.room(row,s.user_id);
         emitUser(s.user_id,'role',{roomId,role,room,capabilities:room.capabilities,recoverDraft:EDIT.includes(oldRole)&&!EDIT.includes(role)});affected.add(roomId);
@@ -156,7 +159,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         limit(`guest:${req.socket.remoteAddress}`,60);
         const b=await body(req); const existing=session(req,false);
         if(existing) return send(res,200,sessionState(existing));
-        const user=store.createUser(v.text(b.name ?? 'Explorer','name',40),v.woka(b.woka ?? {body:'#9c7dff',hair:'#25243b',outfit:'#9c7dff'}));
+        const user=store.createUser(v.text(b.name ?? 'Explorer','name',40),b.appearance!==undefined?JSON.stringify(validateAppearance(b.appearance)):v.woka(b.woka ?? 0));
         return send(res,201,sessionState(createSession(user.id,req,res)));
       }
       if(path==='/api/login'&&method==='POST') {
@@ -181,7 +184,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       if(path==='/api/session'&&method==='GET') return send(res,200,sessionState(s));
       if((path==='/api/session'||path==='/api/me')&&method==='PATCH') {
         const b=await body(req), user=store.user(userId);
-        const name=b.name===undefined?user.name:v.text(b.name,'name',40), woka=b.woka===undefined?JSON.stringify(user.woka):v.woka(b.woka),status=b.status===undefined?user.status:v.oneOf(b.status,STATUS,'status');
+        const name=b.name===undefined?user.name:v.text(b.name,'name',40), woka=b.appearance!==undefined?JSON.stringify(validateAppearance(b.appearance)):b.woka===undefined?JSON.stringify(user.woka):v.woka(b.woka),status=b.status===undefined?user.status:v.oneOf(b.status,STATUS,'status');
         store.run('UPDATE users SET name=?,woka=?,status=? WHERE id=?',name,woka,status,userId);
         for(const p of presence.values()) if(p.userId===userId){Object.assign(p,store.user(userId));broadcastPresence(p.roomId);emitRoom(p.roomId,'members',{roomId:p.roomId,members:store.members(p.roomId)});}
         return send(res,200,{user:store.user(userId)});
@@ -199,13 +202,15 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       }
       if(path==='/api/logout'&&method==='POST') { leave(s.token_hash,userId); store.run('DELETE FROM sessions WHERE token_hash=?',s.token_hash); for(const c of connections.get(s.token_hash)||[])c.res.end();connections.delete(s.token_hash); return send(res,200,{ok:true},{'Set-Cookie':cookie('',req,true)}); }
       let match;
-      match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)(?:\/(join|leave|scene|messages|emote|moderate|invites))?$/);
+      match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)(?:\/(join|leave|scene|messages|emote|moderate|invites|expression|expressions))?$/);
       if(match) {
         const roomId=match[1],action=match[2];
         if(action==='join'&&method==='POST') return send(res,200,join(roomId,s));
         const auth=store.authorize(roomId,userId);
         if(!action&&method==='GET') return send(res,200,snapshot(roomId,userId));
         if(action==='leave'&&method==='POST'){leave(s.token_hash,userId);return send(res,200,{ok:true});}
+        if(action==='expression'&&method==='POST'){const b=await body(req),active=session(req);const result=expressions.post(roomId,userId,active.current_room_id,b);return send(res,result.duplicate?200:201,result);}
+        if(action==='expressions'&&method==='GET')return send(res,200,expressions.list(roomId,userId,session(req).current_room_id));
         if(action==='scene'&&method==='PUT') {
           const b=await body(req);v.integer(b.revision,'revision');const encoded=v.scene(b.scene);
           // Re-check ACL after reading the body and inside the same transaction as CAS.
@@ -227,7 +232,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
           store.run('INSERT OR IGNORE INTO members(room_id,user_id,role,granted) VALUES(?,?,?,0)',roomId,targetId,'member');
           if(actionName==='mute'||actionName==='unmute'){const minutes=b.minutes===undefined?10:v.integer(b.minutes,'minutes',1,1440);store.run('UPDATE members SET muted_until=? WHERE room_id=? AND user_id=?',actionName==='mute'?now()+minutes*60000:0,roomId,targetId);}
           if(actionName==='ban'||actionName==='unban')store.run('UPDATE members SET banned=? WHERE room_id=? AND user_id=?',+(actionName==='ban'),roomId,targetId);
-          if(actionName==='kick'||actionName==='ban'){emitUser(targetId,'moderation',{roomId,action:actionName,userId:targetId,actorId:userId});store.run('UPDATE sessions SET current_room_id=NULL WHERE current_room_id=? AND user_id=?',roomId,targetId);presence.delete(`${roomId}:${targetId}`);media.leave(targetId,roomId);emitUser(targetId,'media-policy',{selfId:targetId,roomId:null,enabled:false,context:{kind:'none',canPublish:false},peers:[],iceServers:[]});broadcastPresence(roomId);}
+          if(actionName==='kick'||actionName==='ban'){emitUser(targetId,'moderation',{roomId,action:actionName,userId:targetId,actorId:userId});store.run('UPDATE sessions SET current_room_id=NULL WHERE current_room_id=? AND user_id=?',roomId,targetId);presence.delete(`${roomId}:${targetId}`);expressions.clear(roomId,targetId);media.leave(targetId,roomId);emitUser(targetId,'media-policy',{selfId:targetId,roomId:null,enabled:false,context:{kind:'none',canPublish:false},peers:[],iceServers:[]});broadcastPresence(roomId);}
           emitRoom(roomId,'members',{roomId,members:store.members(roomId)});return send(res,200,{ok:true,members:store.members(roomId)});
         }
       }
@@ -258,9 +263,9 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       }
       if(path==='/api/presence'&&method==='POST') {
         const b=await body(req),roomId=v.id(b.roomId);store.authorize(roomId,userId);if(s.current_room_id!==roomId)v.fail(403,'JOIN_REQUIRED');
-        const fields={};for(const k of ['x','z'])if(b[k]!==undefined)fields[k]=v.finite(b[k],k);if(b.direction!==undefined)fields.direction=v.integer(b.direction,'direction',0,3);if(b.moving!==undefined)fields.moving=v.boolean(b.moving,'moving');if(b.rotation!==undefined)fields.rotation=v.finite(b.rotation,'rotation');if(b.status!==undefined)fields.status=v.oneOf(b.status,STATUS,'status');if(b.emote!==undefined)fields.emote=b.emote===null||b.emote===''?null:v.text(b.emote,'emote',32);
+        const fields={};for(const k of ['x','z'])if(b[k]!==undefined)fields[k]=v.finite(b[k],k);if(b.direction!==undefined)fields.direction=v.integer(b.direction,'direction',0,3);if(b.moving!==undefined)fields.moving=v.boolean(b.moving,'moving');if(b.running!==undefined)fields.running=v.boolean(b.running,'running');if(b.velocity!==undefined){v.record(b.velocity,'velocity');fields.velocity={x:v.finite(b.velocity.x,'velocity.x',-32,32),z:v.finite(b.velocity.z,'velocity.z',-32,32)};}if(b.rotation!==undefined)fields.rotation=v.finite(b.rotation,'rotation');if(b.status!==undefined)fields.status=v.oneOf(b.status,STATUS,'status');if(b.emote!==undefined)fields.emote=b.emote===null||b.emote===''?null:v.text(b.emote,'emote',32);
         const bounds=store.room(roomId,userId).scene.bounds;if(bounds){for(const [axis,dim]of[['x','width'],['z','depth']])if(fields[axis]!==undefined&&Number.isFinite(bounds[dim])&&Math.abs(fields[axis])>bounds[dim]/2+1)v.fail(400,'OUT_OF_BOUNDS','Position is outside the room');}
-        const previous=presence.get(`${roomId}:${userId}`);putPresence(userId,roomId,fields);quests.observeMovement(userId,roomId,previous,presence.get(`${roomId}:${userId}`));if(fields.emote&&fields.emote!==previous?.emote)quests.observeWave(userId,roomId,fields.emote);return send(res,200,{ok:true,presence:presence.get(`${roomId}:${userId}`)});
+        const previous=presence.get(`${roomId}:${userId}`);putPresence(userId,roomId,fields);expressions.movement(roomId,userId,previous,presence.get(`${roomId}:${userId}`));quests.observeMovement(userId,roomId,previous,presence.get(`${roomId}:${userId}`));if(fields.emote&&fields.emote!==previous?.emote)quests.observeWave(userId,roomId,fields.emote);return send(res,200,{ok:true,presence:presence.get(`${roomId}:${userId}`)});
       }
       if(path==='/api/media'&&method==='GET')return send(res,200,media.policy(userId,s.current_room_id));
       if(path==='/api/media/state'&&method==='POST'){const b=await body(req);const policy=media.state(userId,session(req).current_room_id,b.enabled);quests.reconcileRoom(s.current_room_id);return send(res,200,policy);}
@@ -276,7 +281,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     } catch(e) { if(e.status)send(res,e.status,{error:e.code,code:e.code,message:e.message,...e.details});else{console.error('Request failed:',e);send(res,500,{error:'SERVER_ERROR',code:'SERVER_ERROR',message:'The server could not complete the request'});} }
   });
   const heartbeat=setInterval(()=>{
-    if(closed)return;
+    if(closed)return;expressions.prune();
     for(const [token,clients] of connections){if(!store.get('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?',token,now())){for(const client of clients)client.res.end();connections.delete(token);}else for(const client of clients)if(!client.res.destroyed)client.res.write(': heartbeat\n\n');}
     const changed=new Set();for(const[key,p]of presence)if(now()-p.lastSeen>60000){presence.delete(key);changed.add(p.roomId);}for(const room of changed)broadcastPresence(room);
     for(const[key,bucket]of rates)if(now()-bucket.start>120000)rates.delete(key);

@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import {normalizeAppearance} from '../src/avatar-spec.js';
 import {migrateHierarchy,hierarchyMethods} from './hierarchy-store.mjs';
 
 export class Store {
@@ -42,7 +43,7 @@ export class Store {
   get(sql, ...args) { return this.db.prepare(sql).get(...args); }
   all(sql, ...args) { return this.db.prepare(sql).all(...args); }
   transaction(fn) { this.db.exec('BEGIN IMMEDIATE'); try { const result = fn(); this.db.exec('COMMIT'); return result; } catch (e) { this.db.exec('ROLLBACK'); throw e; } }
-  user(id) { const row = this.get('SELECT u.*,a.username FROM users u LEFT JOIN accounts a ON a.user_id=u.id WHERE u.id=?', id); return row && { id: row.id, name: row.name, woka: JSON.parse(row.woka), status: row.status, account: !!row.username, username: row.username || null }; }
+  user(id) { const row = this.get('SELECT u.*,a.username FROM users u LEFT JOIN accounts a ON a.user_id=u.id WHERE u.id=?', id); return row && { id: row.id, name: row.name, woka: JSON.parse(row.woka), appearance: normalizeAppearance(JSON.parse(row.woka)), status: row.status, account: !!row.username, username: row.username || null }; }
   createUser(name, woka) {
     const userId = randomUUID();
     this.transaction(() => {

@@ -3,7 +3,6 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-
 const { chromium } = require('playwright-core');
 const chromiumPack = (await import(require.resolve('@sparticuz/chromium'))).default;
 

@@ -1,49 +1,36 @@
-# Development checkpoint v0.3 · 2026-10-02
+# Current quality checkpoint · 2026-10-02
 
-This is the status of the earlier integrated local checkpoint, before public-source asset filtering. It is not a polished release. The public source omits restricted legacy sprite images; source publication checks are separately listed in REPOSITORY-CHECKS.md. Camera-relative sprite facing and overall movement, editor and visual quality still need improvement. Native 3D avatars and their persistent builder are under development and are not included here.
+This branch addresses firsthand play feedback on movement, building, camera, expression and character quality. Full source parity remains a larger unfinished goal; passing tests are not a substitute for a satisfying experience or a whole-contract certification.
 
-## Previously verified in the integrated local app
+## Integrated changes
 
-- Browser onboarding, independently authenticated participants and source-native animated Wokas
-- Keyboard movement, solid collisions, full click-to-walk paths, touch joystick, camera zoom/rotation and room portals
-- Live room presence, persistent room chat, message edits/deletion/reactions, local DMs, profile/status and moderation/role checks
-- In-game object placement/properties/search; move/rotate/duplicate/delete; undo/redo; versioned server saves, reload recovery and explicit conflict handling
-- Room/world creation and navigation; private-room invite admission
-- Functional messages, URLs, protected uploaded documents; several area actions at once; opt-in local audio and exit cleanup
-- Owner guest upgraded to a local account, explicit logout, and sign-in recovery
-- Optional authored quests with explicit acceptance; actual named-area entry, committed authorized building, reciprocal proximity waves; private persistent stamps
-- Forced-negative WebGL fallback is browser-tested: chat works, unavailable building is disabled, and no invisible avatar movement occurs
+- Camera-relative accelerated movement, normalized diagonals and source-equivalent manual Shift2.5×; fixed-step collision avoids frame-rate-dependent slowdown
+- Freely orbitable/tiltable/zoomable/pannable follow camera with keyboard, pointer and separated multitouch gestures
+- Direct snapped placement ghost, valid/blocked footprint, pointer select/drag, visible rotate, erase/duplicate, undo/redo and keyboard manipulation
+- Original procedural textured environment, shadows, coherent stone/wood/fabric/foliage and HUD-aware world labels
+- Actual native3D body/clothing/accessory creator, articulated idle/walk/fast-walk, world-facing orientation, durable validated appearance and native portrait updates
+- Source Enter/Ctrl+Enter Say/Think behavior, ephemeral world bubbles/reactions, direct section shortcuts and searchable Cmd/CtrlK actions/people/places
+- Exact unmodified full BAWES Universe logo, preserved2:1 aspect and separate tagline
 
-## v0.3 ownership and creation additions
+## Current verification
 
-Stable Universe → World → Room hierarchy; private ancestor checks; explicit world memberships/tags; targeted registered-account invitations and accept/decline/cancel/expiry; reversible archive/restore; visibility-filtered stars; live revocation with draft export; conservative legacy-grant review. See V03-NOTES.md and server/HIERARCHY.md.
+On the frozen application source, syntax, build, package startup and127 unit/API/persistence tests pass. The serial core browser run passes its five full-shell suites (fallback, camera, direct building, native appearance and Express), followed by the final320px creator/onboarding regression. An independent source-hashed review passes ten focused actual-input scenarios. The45.52-second walkthrough records actual keyboard/pointer controls with no injected scene changes and no page exceptions. The final layout-only creator trim is separately covered by the320px touch Save test. These suites overlap; their counts are not feature totals or full-parity percentages.
 
-## Earlier integrated-checkpoint automated evidence
+Browser coverage uses Chromium with software WebGL. No physical iPhone/Android GPU, real multi-network media or high-concurrency production capacity has been certified. Narrow fixture tests, native browser tests and actual authenticated full-shell tests are different evidence and are labeled accordingly.
 
-- `npm test`: **76/76** pure, authenticated HTTP, persistence and lifecycle tests pass
-- `tests/browser.mjs`: **14/14** integrated desktop/mobile-emulation checks pass
-- `tests/advanced.browser.mjs`: **7/7** multiple-action, audio, account, conflict and full path/portal checks pass
-- `tests/social.browser.mjs`: **16/16** focused DOM/async behavior checks pass
-- `tests/social.live.mjs`: **7/7** real local-backend social checks pass
-- `tests/quests.browser.mjs`: **12/12** actual quest browser checks pass
-- Native-media negative-capture probe and authenticated two-client SDP/cleanup probe pass their stated checks, while both report **zero ICE candidates**
-- `tests/places.live.mjs`: **15/15** real-backend Places UI groups pass
-- `tests/renderer.browser.mjs`: **4/4** batched-geometry picking/count checks pass
-- `tests/fallback.browser.mjs`: **3/3** forced-unavailable-WebGL checks pass
+Core checks are reproducible with `npm run test:browser`; separate module/media lifecycle probes use `npm run test:browser:modules`. CI configuration runs the same local checks but its remote status is unknown until the exact commit executes. No current claim is made that old historical scripts automatically pass the redesigned UI.
 
-These suites overlap. Their counts are test counts, not feature counts or parity percentages. Mock-media unit tests do not prove real media packets.
+## Prior checkpoint
 
-## Important limits
+The immutable v0.3 checkpoint and `V03-STATUS.md` retain the earlier hierarchy/backend evidence. Its original visual-quality claims do not certify this redesigned client. The real service behavior, room/world ownership and restrictive migration policies remain part of the implementation and need regression coverage alongside UI changes.
 
-- **No full source-parity certification.** The separate inventory covers 289 overlapping contract groups; most remain partial or missing
-- No Matrix/E2EE/federation/history migration, production SSO, LiveKit/SFU/TURN, third-party integrations, live AI providers/MCP bots, full avatar entitlement catalog, generated-world streaming, or complete admin/operations stack
-- No physical iOS/Android performance, successful end-to-end media packet flow, external-network transport, multi-instance scaling or production security audit
-- Direct WebRTC exposes genuine capture/signaling/cleanup/failure states. It does not show fake connected calls
-- File rights are room-scoped; no area-tag protected documents or inline viewer. Attachment downloads refuse active formats
-- Quest Meet uses opted-in proximity waves and is a standalone partial equivalent; owner authoring/partner receipts/full guest merging are not implemented
-- Presence coordinates are client-reported within bounds. Collision is client gameplay, not server anti-cheat physics
-- First visitor owns fresh seed world. Local guest ownership needs account upgrade before clearing cookies. No password recovery
+## Open acceptance gates
 
-## Later implementation tranche
+- Complete source parity remains unfinished: Matrix, SSO, external providers, bots/AI/MCP, owned-avatar entitlement catalogs, full quest programs and parts of source admin/workflows
+- Successful real AV packets, SFU/TURN/broadcast adapters and physical-device/network tests
+- Hosting threat review, TLS/origin/cookie configuration, operational quotas/backups/restore and operator-approved isolated deployment
+- Expandable persistent chunks, composite asset workshop/textures, terrain authoring and optional creator-made social game logic remain planned directions, not delivered controls
+- Character appearance is server-validated; player physics remains client-reported with bounds checking, not hardened server anti-cheat
+- The current free original wardrobe does not migrate upstream paid/custom asset ownership
 
-After the current visual, interaction and native-avatar work: resident/bot creation, private configuration, route authoring and real server-owned movement/lifecycle: BOT-01..07, BOT-09/11/13. Bots without an authorized AI provider stay silent; no canned answers or fake tool results will substitute for integration. Hosting adaptation and external AI/media providers remain separate live-integration gates.
+The next implementation decision should follow the user's play review of this quality checkpoint and the remaining source-backed parity priorities. No new breadth tranche is being represented as complete because a panel exists.

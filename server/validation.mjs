@@ -1,3 +1,4 @@
+import {validateAppearance} from '../src/avatar-spec.js';
 export class HttpError extends Error {
   constructor(status, code, message = code, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
 }
@@ -89,6 +90,7 @@ export function scene(value) {
   return safeJson(value);
 }
 export function woka(value) {
+  if(value&&typeof value==='object'&&['version','catalog','hairStyle','topStyle'].some(key=>Object.hasOwn(value,key)))return JSON.stringify(validateAppearance(value));
   if (typeof value === 'number') return JSON.stringify(integer(value, 'woka', 0, 31));
   if (typeof value === 'string') return JSON.stringify(text(value, 'woka', 80));
   record(value, 'woka');
