@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ terrain:['terrain-editor.browser.mjs','terrain-renderer.browser.mjs','terrain.full.mjs','terrain-keyboard.full.mjs'],
  nearby:['proximity-text-client.browser.mjs','proximity-typing-client.browser.mjs','proximity-text.full.mjs','proximity-typing.full.mjs'],
  hud:['hud-availability.browser.mjs','hud-medium-header.browser.mjs','content-history.full.mjs'],
  presentation:['creator-render.actual-game.mjs'],
@@ -13,7 +14,7 @@ const groups={
  images:['image-library-shell.browser.mjs','editor-image.browser.mjs','image-library.full.mjs','image-lifecycle.full.mjs'],
  authoring:['tranche-smoke.browser.mjs','tranche-actions.browser.mjs','tranche-personal.browser.mjs','tranche-bots.browser.mjs']
 };
-const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media, framing, residents, presentation, hud or nearby');
+const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media, framing, residents, presentation, hud, nearby or terrain');
 await mkdir('evidence',{recursive:true});const results=[];
 for(const file of groups[group]){
  console.log('\n=== '+file+' ===');const start=Date.now();

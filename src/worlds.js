@@ -1,6 +1,7 @@
 import {SILENT_MEDIA_MESSAGE} from './media-policy-copy.js';
 import {IMAGE_PIXELS_PER_METRE} from './image-asset-schema.js';
 import {cloneWithImageContext,imageGeometry,resolvedImage} from './image-asset-context.js';
+import {terrainBlocks} from './terrain.js';
 // Original standalone room layouts; source-native Woka identity is rendered as legacy sprites.
 export const CATALOG = {
  table:{name:'Community table',icon:'▤',width:2.4,depth:1.3,color:'#b88855',solid:true},
@@ -47,7 +48,7 @@ export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedIma
 export function collisionBox(o,scene){if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);if(Math.round((o.rotation||0)/90)%2)[width,depth]=[depth,width];return {x:o.x,z:o.z,width,depth};}
 export function contains(area,x,z,padding=0){return Math.abs(x-area.x)<=area.width/2+padding&&Math.abs(z-area.z)<=area.depth/2+padding;}
 export function collisionBoxes(scene,object){if(object.type==='image')return imageGeometry(scene,object).collisionCells;return CATALOG[object.type]?.solid?[collisionBox(object,scene)]:[];}
-export function canStand(scene,x,z,r=.3){if(Math.abs(x)>scene.bounds.width/2-r||Math.abs(z)>scene.bounds.depth/2-r)return false;for(const object of scene.objects){try{if(object.type==='image'&&!contains(imageGeometry(scene,object).editBounds,x,z,r))continue;if(collisionBoxes(scene,object).some(box=>contains(box,x,z,r)))return false;}catch{return false;}}return true;}
+export function canStand(scene,x,z,r=.3){if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(r)||r<0||Math.abs(x)>scene.bounds.width/2-r||Math.abs(z)>scene.bounds.depth/2-r)return false;try{if(terrainBlocks(scene,x,z,r))return false;}catch{return false;}for(const object of scene.objects){try{if(object.type==='image'&&!contains(imageGeometry(scene,object).editBounds,x,z,r))continue;if(collisionBoxes(scene,object).some(box=>contains(box,x,z,r)))return false;}catch{return false;}}return true;}
 export function movePlayer(scene,p,dx,dz){let {x,z}=p;const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.15));for(let i=0;i<steps;i++){if(canStand(scene,x+dx/steps,z))x+=dx/steps;if(canStand(scene,x,z+dz/steps))z+=dz/steps;}return {x,z};}
 export function nearestWalkable(scene,p){if(canStand(scene,p.x,p.z))return p;for(let r=.5;r<20;r+=.5)for(let a=0;a<Math.PI*2;a+=Math.PI/8){let q={x:p.x+Math.cos(a)*r,z:p.z+Math.sin(a)*r};if(canStand(scene,q.x,q.z))return q;}return scene.spawn;}
 // Bounded A* for click movement, sharing the same solid-object predicate as keyboard movement.

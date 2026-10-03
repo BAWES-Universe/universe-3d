@@ -1006,3 +1006,81 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
     overflow-wrap: anywhere;
   }
 }
+
+/* Ground tools share the workbench's quiet, rounded palette. */
+.builder-terrain {
+  position: absolute;
+  left: 50%;
+  bottom: 177px;
+  transform: translateX(-50%);
+  width: 510px;
+  max-width: calc(100% - 40px);
+  padding: 10px 12px 12px;
+  border-radius: 17px;
+  background: var(--u-surface-raised);
+  box-shadow: var(--u-shadow-raised);
+  backdrop-filter: var(--u-backdrop);
+}
+.terrain-materials { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 6px; }
+.terrain-materials button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 65px;
+  padding: 8px 5px;
+  border: 1px solid var(--u-secondary-border);
+  border-radius: 11px;
+  background: var(--u-secondary);
+  font-size: 11px;
+  color: var(--u-text-soft);
+}
+.terrain-swatch { width: 27px; height: 15px; border-radius: 4px; border: 1px solid #ffffff35; background: #9a9ea7; }
+[data-material=grass] .terrain-swatch { background: #6e9271; }
+[data-material=soil] .terrain-swatch { background: #9a7056; }
+[data-material=stone] .terrain-swatch { background: #9a9ea7; }
+[data-material=wood] .terrain-swatch { background: #ba9363; }
+[data-material=water] .terrain-swatch { background: #58a9c0; }
+.terrain-materials button.active, .terrain-actions button.active { background: var(--u-selected); border-color: var(--u-selected-border); color: #fff; }
+.terrain-actions { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
+.terrain-actions button { min-height: 40px; padding: 8px 12px; font-size: 11px; }
+.terrain-blocking { display: flex; align-items: center; gap: 7px; min-height: 40px; margin-left: auto; font-size: 11px; cursor: pointer; color: var(--u-text-soft); }
+.terrain-blocking input { width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--u-primary); }
+.terrain-blocking:has(input:disabled) { opacity: .5; }
+.terrain-note { min-height: 14px; margin: 9px 0 0; font-size: 10px; line-height: 1.5; color: var(--u-text-muted); }
+.builder-terrain:not([hidden]) ~ .builder-hint { bottom: 397px; }
+@media (min-width: 1100px) { .builder-terrain { left: calc(50% - 25px); } }
+@media (min-width: 701px) and (max-width: 1050px) {
+  .builder-toolbelt { flex-wrap: wrap; justify-content: center; width: max-content; border-radius: 20px; }
+  .builder-tray, .builder-terrain { bottom: 238px; }
+  .builder-hint { bottom: 234px; }
+  .builder-tray:not([hidden]) ~ .builder-hint { bottom: 468px; }
+  .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 458px; }
+}
+@media (max-width: 700px) {
+  .builder-toolbelt { grid-template-columns: repeat(7,minmax(0,1fr)); }
+  .builder-toolbelt .small-btn { white-space: normal; min-width: 0; line-height: 1.25; padding: 5px 2px; font-size: 9px; }
+  .builder-toolbelt .primary { grid-column: span 2; }
+  .builder-terrain { left: 10px; right: 10px; bottom: 205px; transform: none; width: auto; max-width: none; padding: 8px 9px 10px; border-radius: 14px; }
+  .terrain-materials { gap: 5px; }
+  .terrain-materials button { min-height: 58px; font-size: 10px; }
+  .terrain-actions { gap: 5px; }
+  .terrain-actions button { padding: 7px 9px; font-size: 10px; }
+  .terrain-blocking { gap: 5px; font-size: 10px; min-height: 48px; }
+  .terrain-note { font-size: 9px; }
+  .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 420px; }
+}
+@media (max-width: 379px) {
+  .builder-toolbelt { grid-template-columns: repeat(6,minmax(0,1fr)); }
+  .builder-toolbelt .primary { grid-column: span 6; }
+  .builder-tray, .builder-terrain { bottom: 258px; }
+  .builder-hint { bottom: 267px; }
+  .builder-tray:not([hidden]) ~ .builder-hint { bottom: 472px; }
+  .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 473px; }
+  .terrain-actions { flex-wrap: wrap; }
+  .terrain-blocking { margin-left: 3px; }
+}
+@media (max-height: 650px) and (min-width: 1051px) { .builder-terrain { bottom: 161px; } .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 381px; } }
+@media (max-height: 520px) { .builder-terrain { max-height: calc(100dvh - 255px); overflow: auto; } .builder-terrain:not([hidden]) ~ .builder-hint { display: none; } }

@@ -1,6 +1,8 @@
 import {screenDirection} from './motion.js';
 import {CATALOG,collisionBox,collisionBoxes,contains,canStand} from './worlds.js';
 
+import {applyTerrainRect,validateTerrain,terrainCollisionBoxes} from './terrain.js';
+
 import {inheritImageDefinitions} from './image-asset-context.js';
 
 export function snapPoint(point,step=1){
@@ -31,6 +33,7 @@ export function validatePlacement(scene,item,{excludeId=item.id,position=null}={
  const cells=collisionBoxes(scene,item);if(!cells.length)return {valid:true,reason:item.type==='rug'?'Rugs can go underneath furniture':'Ready to place'};
  let collision;try{collision=scene.objects.find(o=>o.id!==excludeId&&collisionBoxes(scene,o).some(other=>cells.some(cell=>overlaps(cell,other))));}catch{return {valid:false,reason:'Resolve every image version before editing this scene'};}
  if(collision)return {valid:false,reason:'Overlaps '+(collision.name||CATALOG[collision.type]?.name||'another item')};
+ if(terrainCollisionBoxes(scene.terrain).some(other=>cells.some(cell=>overlaps(cell,other))))return {valid:false,reason:'Keep solid items off blocked terrain'};
  if(scene.spawn&&cells.some(cell=>contains(cell,scene.spawn.x,scene.spawn.z,.75)))return {valid:false,reason:'Leave a clear space around the arrival point'};
  if(position&&cells.some(cell=>contains(cell,position.x,position.z,.4)))return {valid:false,reason:'Move this away from where you’re standing'};
  if(scene.spawn&&Math.abs(box.x-scene.spawn.x)<box.width/2+3&&Math.abs(box.z-scene.spawn.z)<box.depth/2+3){
@@ -41,3 +44,23 @@ export function validatePlacement(scene,item,{excludeId=item.id,position=null}={
 }
 
 export function screenGridStep(key,angle,step=1){const dir=screenDirection({x:key==='arrowright'?1:key==='arrowleft'?-1:0,z:key==='arrowdown'?1:key==='arrowup'?-1:0},angle);return{x:Math.round(dir.x)*step,z:Math.round(dir.z)*step};}
+
+// A stroke is a pure preview until the editor commits its resulting terrain once.
+export function validateTerrainEdit(scene,rect,options,{position=null}={}){
+ if(!scene?.bounds)return {valid:false,reason:'Open a room to start building'};
+ let terrain;try{terrain=applyTerrainRect(scene.terrain,rect,options);validateTerrain(terrain,scene.bounds);}catch(error){return {valid:false,reason:error.message||'This terrain stroke is outside the room or cell budget'};}
+ const previous=new Set((scene.terrain?.cells||[]).filter(cell=>cell[3]).map(cell=>cell[0]+','+cell[1]));
+ const blockers=terrainCollisionBoxes(terrain).filter(box=>!previous.has((box.x-.5)+','+(box.z-.5)));
+ if(scene.spawn&&blockers.some(box=>contains(box,scene.spawn.x,scene.spawn.z,.75)))return {valid:false,reason:'Leave a clear space around the arrival point'};
+ if(position&&blockers.some(box=>contains(box,position.x,position.z,.4)))return {valid:false,reason:'Move this away from where you’re standing'};
+ const next=inheritImageDefinitions(scene,{...scene,terrain});
+ if(blockers.length&&canLeaveArrival(scene)&&!canLeaveArrival(next))return {valid:false,reason:'Leave a walking route out of the arrival point'};
+ return {valid:true,reason:options.erase?'Restore the original ground':options.blocked?'Blocks walking':'Walkable terrain',terrain};
+}
+
+// Draw walls with the same object geometry, IDs, transforms and undo as furniture.
+export function wallFromStroke(from,to,rotation=0){
+ const start=snapPoint(from),end=snapPoint(to);if(!start||!end)return null;
+ const dx=end.x-start.x,dz=end.z-start.z,vertical=Math.abs(dz)>Math.abs(dx)||(dx===0&&dz===0&&rotation%180===90);
+ return {type:'wall',name:'Wall',x:vertical?start.x:(start.x+end.x)/2,z:vertical?(start.z+end.z)/2:start.z,width:Math.max(1,Math.abs(vertical?dz:dx)),depth:.3,rotation:vertical?90:0};
+}

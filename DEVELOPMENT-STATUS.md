@@ -1,6 +1,18 @@
-# Development status · 2026-10-03 01:36 UTC
+# Development status · 2026-10-03 02:15 UTC
 
-## Current increment: ephemeral human Nearby typing
+## Current increment: native terrain workbench
+
+Build now paints snapped rectangles of grass, soil, stone, wood or water. Appearance and blocking are explicit; water starts blocked, with no swimming. Restore base removes authored cells and restores the original paving/ground/planting. A straight wall stroke creates an ordinary wall that remains selectable, movable and rotatable. Pointer previews do not mutate the scene; one completed stroke is one undo transaction. Keyboard sizing, native focus/activation and touch/camera cancellation use the same editor path.
+
+The sparse versioned ground layer fits the existing room scene/CAS save, with a 4,096-cell budget and existing scene JSON limits. Full room editors can paint; scoped personal-space grants remain object-only. New terrain and changed wall blockers reject occupied positions and protect arrival without moving people. Player movement/click paths and resident navigation share the cells. A rejected occupancy save now displays its actual cause while keeping the retryable draft; a genuine revision conflict retains normal recovery. Build Enter is consumed before Express keyup handling.
+
+Authored patches replace affected baked scenery cleanly. Water animates a shared procedural texture; the 4,096-cell renderer fixture uses five terrain surface batches. Erasing restores the legacy composition, and worlds without terrain retain the original path. This is a requested native 3D extension informed by pinned source layer/collision contracts. It does not implement Tiled import, elevation, swimming, streamed chunks, uploaded terrain textures or the primitive workshop. Water currently reads as a flat animated painted surface; shoreline transitions, depth and rounded edges remain visual improvements for a later increment. See `TERRAIN-WORKBENCH.md` and `docs/terrain-contract.md`.
+
+Final local aggregate passes 1,096 CPU/API tests with the same historical skip; all 249 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. Final browser verification passes 14 native editor cases, 9 renderer cases, 7 actual two-client/desktop/touch scenarios, 3 native full-shell Enter lifecycle checks and all 5 existing Express full-shell cases, with no page exceptions. The final main bundle is `e689c2fed2f185b13473ff3ee05a151015ff2f5077d5e8e2db6e96b4365d4c2d`; CSS is `9d41f047b3c38bfef73d0fca935d57e05ba794c8bfddc8f582e1923515f84b00`. Headless software-WebGL, fixture query/draw counts and emulated touch do not establish physical-device performance or production capacity.
+
+Baseline `b733ab2c532e31e7eb99f315eebd8b5b9b32aa62` passed all ten exact-head CI jobs. Terrain publication and its exact-head CI remain pending; no deployment, live configuration or credential changes were made.
+
+## Prior increment: ephemeral human Nearby typing
 
 Optional Nearby text now shows live human typing in the current ordinary bubble. Fresh input or IME activity starts a bounded per-stream lease; focus, restored drafts, reopening or reconnecting do not. No draft body, history row, unread count, replay or text receipt is created. Mic consent remains independent. Room-muted members can still receive typing, while their own outgoing typing stops. Personal blocking, bot/script typing and named-meeting typing remain separate gaps.
 
@@ -8,7 +20,7 @@ The server validates the current source and each captured recipient at delivery,
 
 Final local aggregate: 1,059 CPU/API passes and the same one historical skip; all 238 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. The final combined Nearby browser run passes all 27 native fixture cases and 13 actual-shell scenarios. It includes two clients with opposite 60-second device clock offsets, native keyboard/IME and doubled-text touch layouts, late text acknowledgement, room travel, and a real 12-second lost-stop expiry. The server suite also verifies muted-recipient start/renew/stop and sender-mute cleanup. All browser runs report no page exceptions. The final bundle hashes are main `b08e2a671b0399f05eeef89c6524efe9b496f2bd0d80df111273d5d1f7aae312`, CSS `cd4b8a966c37a65e3b9419ceb7cd25e89efb9ac109bf4c19d1da1e2361bd4f53`. No physical-device, successful AV packet or whole-source-contract certification follows from these checks.
 
-Baseline `71800a575aec7113c3de3de9c3f4003cf8d1c72c` passed all ten exact-head CI jobs. This typing increment is local; publication and its exact-head CI are pending. Optional membership/text stay off until explicitly configured, and no live host, environment or credential changed.
+Baseline `71800a575aec7113c3de3de9c3f4003cf8d1c72c` passed all ten exact-head CI jobs. Typing was published as `b733ab2c532e31e7eb99f315eebd8b5b9b32aa62` and passed all ten exact-head CI jobs. Optional membership/text stay off until explicitly configured, and no live host, environment or credential changed.
 
 ## Prior increment: bounded Nearby context refresh cost
 
@@ -45,7 +57,7 @@ The durable baseline `f2f9b080ed778a105a87f15490aa439038b6f4bf` passed all nine 
 ## Implemented and locally exercised
 
 - Native 3D character creation and saved appearance, camera-relative movement, Shift2.5×, orbit/pan/zoom/follow, keyboard and touch controls
-- Direct snapped building with preview, selection, drag, rotation, undo, persisted scenes and scoped permissions
+- Direct snapped building with preview, selection, drag, rotation, undo, persisted scenes and scoped permissions; sparse floor/water painting, restore-base and ordinary wall strokes
 - Universe/world/room hierarchy, invitations and revocation; local room text/DMs and ephemeral Express
 - Functional item/area actions, audio resource lifecycle, HTTPS content panels, protected documents and authored quest slices
 - Atomic personal-space claim/transfer/assignment and full old/new object footprint authorization
@@ -63,15 +75,15 @@ Tests exercise explicit boundaries and failure cases. Counts overlap and do not 
 - Issued TURN credentials are bearer credentials until relay expiry. Local revocation stops issuance/client use; it does not invalidate previously issued credentials at the relay
 - One active media tab per account is supported. The existing recipient/signaling graph is account-based even though new credential issuance is session-bound
 - Real device capture, physical-phone performance, network handover, operator-run Docker/proxy/TLS, backups and production capacity remain unverified
-- Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, image pixel/geometry version editing, permanent definition deletion and collection import, persistent chunks, reusable primitive workshop, terrain and creator games remain partial or missing
+- Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, image pixel/geometry version editing, permanent definition deletion and collection import, persistent chunks, reusable primitive workshop, terrain elevation/custom materials and creator games remain partial or missing
 
 The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. Source publication does not change the deployed revision or configure a relay.
 
 ## Next
 
-1. Publish this bounded typing increment and verify its exact-head CI
+1. Publish the native terrain workbench and verify its exact-head CI
 2. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
 3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
-4. Return to larger world-creation and social-play parity gaps, beginning with a bounded terrain-authoring design
+4. Continue larger world-creation and social-play parity gaps and port the next verified source control changes
 
 The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.

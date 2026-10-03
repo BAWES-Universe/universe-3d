@@ -17,13 +17,15 @@
 
 # Standalone implementation status · 2026-10-03
 
-The current v0.6.10 increment adds bounded ephemeral human typing to optional Nearby text. All-member proximity and Nearby text use explicit, strictly validated process configuration. Both remain off by default. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+The current v0.7.0 increment adds native floor/water painting and ordinary wall drawing with transactional scene authority. Bounded ephemeral human typing remains available in optional Nearby text. All-member proximity and Nearby text use explicit, strictly validated process configuration. Both remain off by default. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Latest verification
 
 `DEVELOPMENT-STATUS.md` records the latest exact source and local checks. Earlier numbers below are historical evidence tied to their stated revision, not certification of the current tree. Native ICE configuration and changed SDP restart credentials prove transport setup only; relay allocation, working connections and successful AV packets still require operator-run acceptance. The standard process entry point still uses the legacy cap-four/opted-in media graph. An explicit server-factory configuration implements all-member proximity and scoped P2P lifecycle; executable SFU handoff remains missing.
 
 ## Integrated now
+
+- Native sparse terrain rectangles, repaint/restore-base, explicit blocking, ordinary wall strokes, keyboard/touch previews, atomic undo and durable scene saves; current room bounds remain, with no imported-Tiled or persistent-chunk certification
 
 - Opt-in plain Nearby text with current all-member bubble recipients, server-bound identity/3D appearance, stream freshness, bounded receipt reconciliation and tab-only received history/drafts; ephemeral human typing with per-stream sequence/lease and native composer lifecycle; source attachments, rich text, bot typing and named-meeting text remain separate gaps
 
@@ -65,7 +67,7 @@ The earlier quality checkpoint and v0.3 hierarchy evidence remain unchanged. The
 - Successful real AV packets, existing LiveKit/TURN/broadcast adapter, physical devices and network handover
 - Operator-run Docker/TLS/proxy, resource and disk quotas, consistent backup/restore and isolated deployment
 - Matrix/E2EE/federation, SSO, external integrations, upstream owned-avatar catalogs and full quest programs
-- Image version/depth editing/replacement, irreversible deletion, collection import, expandable persistent room chunks, reusable composite asset workshop, terrain tools and creator-made social game logic
+- Image version/depth editing/replacement, irreversible deletion, collection import, expandable persistent room chunks, reusable composite asset workshop, terrain elevation/custom materials and creator-made social game logic
 - Positions remain bounded client reports, not authoritative physics or hardened anti-cheat
 - Local original wardrobe and room-scoped file access do not imply upstream entitlement or all area-tag file semantics
 

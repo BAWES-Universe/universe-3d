@@ -1,6 +1,7 @@
 /** Native-3D ground-plane navigation. Original local implementation; no provider. */
 import {CATALOG,contains,collisionBoxes} from '../src/worlds.js';
 import {objectFootprint} from '../src/personal-area-policy.js';
+import {terrainCollisionBoxes} from '../src/terrain.js';
 export const BOT_BODY_RADIUS = .34;
 export const distance = (a,b) => Math.hypot(a.x-b.x,a.z-b.z);
 export function navigationPolicy(scene, config, {returnFrom = null} = {}) {
@@ -8,7 +9,7 @@ export function navigationPolicy(scene, config, {returnFrom = null} = {}) {
   // residents. Explicit restricted areas are an additional deny-only policy.
   const restricted = new Set(config.restrictedAreaIds ?? []);
   const zones = (scene.areas ?? []).filter(a => restricted.has(a.id) || a.personalArea || (a.allowedTags?.length));
-  const colliders=(scene.objects??[]).flatMap(o=>o.type==='image'?collisionBoxes(scene,o):CATALOG[o.type]?.solid?[objectFootprint(o)]:[]);
+  const colliders=[...(scene.objects??[]).flatMap(o=>o.type==='image'?collisionBoxes(scene,o):CATALOG[o.type]?.solid?[objectFootprint(o)]:[]),...terrainCollisionBoxes(scene.terrain)];
   // Coarse broad phase avoids rescanning all furniture for each swept sample.
   const buckets=new Map(),large=[],cell=4,key=(x,z)=>`${x},${z}`;
   for(const box of colliders){

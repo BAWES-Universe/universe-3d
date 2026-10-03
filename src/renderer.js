@@ -7,6 +7,7 @@ import {FreeCamera} from '@babylonjs/core/Cameras/freeCamera.js';
 import {Vector3,Vector4,Matrix} from '@babylonjs/core/Maths/math.vector.js';
 import {Color3,Color4} from '@babylonjs/core/Maths/math.color.js';
 import {Mesh} from '@babylonjs/core/Meshes/mesh.js';
+import {VertexData} from '@babylonjs/core/Meshes/mesh.vertexData.js';
 import {TransformNode} from '@babylonjs/core/Meshes/transformNode.js';
 import {CreateBox} from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import {CreatePlane} from '@babylonjs/core/Meshes/Builders/planeBuilder.js';
@@ -31,6 +32,7 @@ import {frameInFreeArea,createFramingTransition,projectionShift} from './viewpor
 import {measurePanelOcclusion} from './panel-occlusion.js';
 import {createEnvironmentMaterials} from './environment-materials.js';
 import {buildEnvironment} from './scene-layout.js';
+import {TERRAIN_SURFACES,terrainSurfaceGroups,terrainSurfaceGeometry,terrainGhostLines} from './terrain-render.js';
 import {labelFits,WORLD_LABEL_OCCLUDERS} from './label-layout.js';
 const hex=h=>Color3.FromHexString(h);
 
@@ -63,6 +65,13 @@ export async function createRenderer(canvas,labels){
  function sphere(name,x,y,z,r,color,parent,sy=1,opts={}){const m=CreateSphere(name,{diameter:r*2,segments:opts.segments||4},scene);m.position.set(x,y,z);m.scaling.y=sy;return finish(m,color,parent,opts);}
  function ground(name,x,y,z,w,d,kind,tint,parent,pickable=false){const m=CreateGround(name,{width:w,height:d,subdivisions:1},scene);m.position.set(x,y,z);const u=m.getVerticesData('uv'),v=m.getVerticesData('position');for(let i=0;i<u.length/2;i++){u[i*2]=(v[i*3]+x)/2;u[i*2+1]=(v[i*3+2]+z)/2;}m.setVerticesData('uv',u);finish(m,tint,parent,{surface:kind,pickable});return m;}
 
+ function addTerrain(terrain,parent){
+  for(const {material:kind,rectangles}of terrainSurfaceGroups(terrain)){
+   const surface=TERRAIN_SURFACES[kind],mesh=new Mesh('authored-terrain-'+kind,scene),data=new VertexData();
+   Object.assign(data,terrainSurfaceGeometry(rectangles,surface.height));data.applyToMesh(mesh);
+   finish(mesh,surface.tint,parent,{surface:kind,pickable:false});mesh.metadata={type:'terrain',material:kind};
+  }
+ }
  function label(id,text,kind='world'){const el=document.createElement('div');el.className='world-label '+kind;el.dataset.entity=id;el.textContent=text;labels.append(el);return el;}
  function signMaterial(title,body,kind='notice'){
   const key=kind+title+body;if(signMaterials.has(key))return signMaterials.get(key);
@@ -129,7 +138,7 @@ export async function createRenderer(canvas,labels){
  }
  function sync(newWorld){
   if(!newWorld)return;world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
-  const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,material});floor.metadata={type:'ground'};
+  const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,material});floor.metadata={type:'ground'};addTerrain(world.terrain,root);
   for(const o of world.objects)if(o.type!=='image')addObject(o);syncImages();
   if(build)for(const a of world.areas){const col={silent:'#67bdae',meeting:'#b09add',stage:'#e0bd77',audience:'#bc9bca',welcome:'#9eccab',teleport:'#c3a8fa'}[a.action]||'#aa9cc2';box(a.id,a.x,.083,a.z,a.width,.015,a.depth,col,root,{alpha:.15,pickable:false,metadata:{id:a.id,type:'area'}});worldLabels.push({el:label(a.id,a.name,'area-label'),position:new Vector3(a.x,.5,a.z)});}
   // Merge by material, pickability and shadow behavior, preserving exact face ranges.
@@ -198,7 +207,7 @@ export async function createRenderer(canvas,labels){
   // Restore before measuring label rects (hidden elements have zero bounds).
   // The following layout + world draw complete in this same task before paint.
   restoreLabels();
-  tick+=dt;frameTimes.push(actualDt*1000);if(frameTimes.length>300)frameTimes.shift();const s=rig.step(dt);updateCamera();updateFraming(actualDt);updateCamera();
+  tick+=dt;surfaces.tick(tick);frameTimes.push(actualDt*1000);if(frameTimes.length>300)frameTimes.shift();const s=rig.step(dt);updateCamera();updateFraming(actualDt);updateCamera();
   for(const a of avatars.values()){
    const p=a.p,rate=p.self||frame.resumed?1:1-Math.exp(-dt*20);a.x+=(p.x-a.x)*rate;a.z+=(p.z-a.z)*rate;
    const motion=resolveAvatarMotion(p);
@@ -222,18 +231,22 @@ export async function createRenderer(canvas,labels){
   const point=Number.isFinite(distance)&&distance>=0?{x:ray.origin.x+ray.direction.x*distance,z:ray.origin.z+ray.direction.z*distance}:null;
   return {id:metadata?.id,type:metadata?.type,point};
  }
- function outline(o,color,height=.11,parent=null){if(o.type==='image'){const geometry=imageGeometry(world,cleanImage(o)),points=geometry.editBounds.corners.map(p=>new Vector3(p.x,height,p.z));points.push(points[0].clone());const line=CreateLines('image-footprint',{points},scene);line.color=hex(color);line.isPickable=false;line.parent=parent;return line;}const {width,depth}=o.type==='area'?o:dimensions(o,world);const angle=-(o.rotation||0)*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);const points=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(([x,z])=>{const px=x*(width/2+.055),pz=z*(depth/2+.055);return new Vector3((parent?0:o.x)+px*cs+pz*sn,height,(parent?0:o.z)-px*sn+pz*cs);});const n=CreateLines('footprint',{points},scene);n.color=hex(color);n.isPickable=false;n.parent=parent;return n;}
+ function outline(o,color,height=.11,parent=null){if(o.type==='image'){const geometry=imageGeometry(world,cleanImage(o)),points=geometry.editBounds.corners.map(p=>new Vector3(p.x,height,p.z));points.push(points[0].clone());const line=CreateLines('image-footprint',{points},scene);line.color=hex(color);line.isPickable=false;line.parent=parent;return line;}const {width,depth}=o.type==='area'||o.type==='terrain'?o:dimensions(o,world);const angle=-(o.rotation||0)*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);const points=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(([x,z])=>{const padding=o.type==='terrain'?0:.055,px=x*(width/2+padding),pz=z*(depth/2+padding);return new Vector3((parent?0:o.x)+px*cs+pz*sn,height,(parent?0:o.z)-px*sn+pz*cs);});const n=CreateLines('footprint',{points},scene);n.color=hex(color);n.isPickable=false;n.parent=parent;return n;}
  function select(id){selection?.dispose();selection=null;const o=world?.objects.find(o=>o.id===id)||world?.areas.find(o=>o.id===id);if(o)try{selection=outline({...o,type:o.type||'area'},'#ffe29b');}catch{notifyImageStates();}}
  function setGhost(value){
   if(!value){ghostImage?.dispose();ghostImage=null;ghost?.dispose();ghost=null;ghostKey=null;return;}
   const {x,z,...style}=value,key=JSON.stringify(style);if(ghost&&key===ghostKey){ghost.position.set(x,0,z);if(value.type==='image')updateImageGhost(value);return;}
-  ghostImage?.dispose();ghostImage=null;ghost?.dispose();const valid=value.valid!==false,col=valid?'#73edaa':'#ff687c';ghost=new TransformNode('build-preview',scene);ghost.position.set(x,0,z);ghostKey=key;
-  const mat=material(col,true,.32);mat.disableLighting=true;mat.emissiveColor=hex(col);
-  if(value.type==='area')box('area-preview',0,.13,0,value.width||4,.08,value.depth||3,col,ghost,{alpha:.23,pickable:false});
+  ghostImage?.dispose();ghostImage=null;ghost?.dispose();const valid=value.valid!==false,col=!valid?'#ff687c':value.type==='terrain'?(value.erase?'#b7dfef':value.blocked?'#edc77c':'#73d8ac'):'#73edaa';ghost=new TransformNode('build-preview',scene);ghost.position.set(x,0,z);ghostKey=key;
+  const mat=material(col,true,value.type==='terrain'?.3:.32);mat.disableLighting=true;mat.emissiveColor=hex(col);
+  if(value.type==='terrain'){
+   const fill=CreateGround('terrain-preview-fill',{width:value.width,height:value.depth},scene);fill.position.y=.104;fill.parent=ghost;fill.material=mat;fill.isPickable=false;fill.receiveShadows=false;
+   const lines=CreateLineSystem('terrain-preview-cells',{lines:terrainGhostLines(value.width,value.depth).map(line=>line.map(point=>new Vector3(...point)))},scene);lines.parent=ghost;lines.color=hex(col);lines.alpha=.65;lines.isPickable=false;
+  }
+  else if(value.type==='area')box('area-preview',0,.13,0,value.width||4,.08,value.depth||3,col,ghost,{alpha:.23,pickable:false});
   else if(value.type==='image')updateImageGhost(value);
   else{const object=addObject({...value,id:'ghost-preview',x:0,z:0},{preview:true});object.parent=ghost;for(const mesh of object.getChildMeshes()){mesh.material=mat;mesh.isPickable=false;mesh.receiveShadows=false;}}
   const shape=outline({...value,x:0,z:0},col,.16);shape.parent=ghost;
-  const dims=value.type==='area'?value:dimensions(value,world),frame=new TransformNode('ghost-frame',scene);frame.parent=ghost;frame.rotation.y=-(value.rotation||0)*Math.PI/180;
+  const dims=value.type==='area'||value.type==='terrain'?value:dimensions(value,world),frame=new TransformNode('ghost-frame',scene);frame.parent=ghost;frame.rotation.y=-(value.rotation||0)*Math.PI/180;
   for(const side of [-1,1]){box('preview-edge',0,.105,side*dims.depth/2,dims.width+.06,.035,.055,col,frame,{glow:true,pickable:false});box('preview-edge',side*dims.width/2,.105,0,.055,.035,dims.depth+.06,col,frame,{glow:true,pickable:false});}
  }
  function updateImageGhost(value){const entry=resolvedImage(world,value);if(!entry)return;const input={resolved:entry,instance:cleanImage(value,'image-preview'),context:imageContext},style=()=>{if(!ghostImage)return;const mesh=ghostImage.node.imageParts.mesh;mesh.isPickable=false;mesh.metadata={...mesh.metadata,type:'image-ghost'};mesh.material.diffuseColor=hex(value.valid===false?'#ff9c9c':'#adf4c9');};if(ghostImage){ghostImage.update(input);style();}else{ghostImage=createBabylonImageObjectView({scene,texturePool:imagePool,...input,onState:style});style();ghostImage.ready.then(style);}}

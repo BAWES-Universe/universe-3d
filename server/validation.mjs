@@ -2,6 +2,7 @@ import {validateAppearance} from '../src/avatar-spec.js';
 import {safeActionUrl,validateActions} from '../src/action-schema.js';
 import {validateImageInstance,canRenderImageReference} from '../src/image-asset-schema.js';
 import {imagePlacementInside} from '../src/image-asset-geometry.js';
+import {validateTerrain,terrainBlocks} from '../src/terrain.js';
 export class HttpError extends Error {
   constructor(status, code, message = code, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
 }
@@ -59,6 +60,8 @@ export function scene(value,imageDefinitions={}) {
   record(value.bounds, 'scene.bounds');
   finite(value.bounds.width, 'bounds.width', 8, 200); finite(value.bounds.depth, 'bounds.depth', 8, 200);
   record(value.spawn, 'scene.spawn'); finite(value.spawn.x, 'spawn.x', -value.bounds.width/2, value.bounds.width/2); finite(value.spawn.z, 'spawn.z', -value.bounds.depth/2, value.bounds.depth/2);
+  try{validateTerrain(value.terrain,value.bounds);}catch(error){fail(400,error.code??'INVALID_TERRAIN',error.message);}
+  if(terrainBlocks(value,value.spawn.x,value.spawn.z,.75))fail(400,'TERRAIN_BLOCKS_ARRIVAL','Leave clear space around the arrival point');
   if (value.theme !== undefined) text(value.theme, 'theme', 40);
   const types = ['table','chair','sofa','plant','tree','wall','lamp','screen','podium','portal','rug','board','bench','rock','image'];
   const seen = new Set();
@@ -80,7 +83,7 @@ export function scene(value,imageDefinitions={}) {
     if(object.target !== undefined && object.target !== '') id(object.target, 'portal target');
     if (seen.has(object.id)) fail(400, 'INVALID_SCENE', 'Object IDs must be unique'); seen.add(object.id);
     for (const key of ['x','y','z','rotation','rotationY']) if (object[key] !== undefined) finite(object[key], key);
-    for (const key of ['width','height','depth','scale']) if (typeof object[key] === 'number') finite(object[key], key, 0.01, 500);
+    for (const key of ['width','height','depth','scale']) if (object[key] !== undefined) finite(object[key], key, 0.01, 500);
   }
   if (value.areas !== undefined && (!Array.isArray(value.areas) || value.areas.length > 100)) fail(400, 'INVALID_SCENE', 'scene.areas must contain at most 100 areas');
   const areaIds = new Set();

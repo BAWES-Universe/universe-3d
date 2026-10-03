@@ -1,7 +1,28 @@
+import {createTerrainMask,subtractTerrainRect,terrainOverlapsRect} from './terrain-render.js';
 // Low terrain detail is deliberately walk-through. Tall, solid props are authored
 // in worlds.js so the rendered furniture and server collision always agree.
 export function buildEnvironment(world,root,{box,cylinder,sphere,ground,material,line}){
  const {width:w,depth:d}=world.bounds,theme=world.theme||'garden';
+ if(world.terrain?.cells?.length){
+  const mask=createTerrainMask(world.terrain),raw={box,cylinder,sphere,ground};
+  ground=(name,x,y,z,width,depth,...rest)=>{
+   // Preserve a single shared ground reference while all visible base surfaces
+   // are actually cut away. Picking uses the renderer's mathematical ground ray.
+   let reference=null;if(name==='walkable-ground'){reference=raw.ground(name,x,y,z,width,depth,...rest);reference.isVisible=false;}
+   const pieces=subtractTerrainRect(mask,{x,z,width,depth});
+   for(const [i,p]of pieces.entries()){const mesh=raw.ground(name+'-cut-'+i,p.x,y,p.z,p.width,p.depth,...rest.slice(0,3),false);if(!reference)reference=mesh;}
+   return reference;
+  };
+  box=(name,x,y,z,width,height,depth,...rest)=>{
+   if(y+height/2<=0)return raw.box(name,x,y,z,width,height,depth,...rest);
+   const pieces=subtractTerrainRect(mask,{x,z,width,depth});let reference=null;
+   for(const [i,p]of pieces.entries()){const mesh=raw.box(name+'-cut-'+i,p.x,y,p.z,p.width,height,p.depth,...rest);if(!reference)reference=mesh;}
+   return reference;
+  };
+  sphere=(name,x,y,z,r,...rest)=>terrainOverlapsRect(mask,{x,z,width:r*2,depth:r*2})?null:raw.sphere(name,x,y,z,r,...rest);
+  cylinder=(name,x,y,z,r,...rest)=>terrainOverlapsRect(mask,{x,z,width:r*2,depth:r*2})?null:raw.cylinder(name,x,y,z,r,...rest);
+ }
+
  const b=(name,x,y,z,bw,bh,bd,color,kind='stone')=>box(name,x,y,z,bw,bh,bd,color,root,{surface:kind,pickable:false});
  b('bedrock',0,-.63,0,w+.5,1.05,d+.5,'#545161','slate');
  b('sandstone-course',0,-.14,0,w+.27,.18,d+.27,'#bfc0ad');

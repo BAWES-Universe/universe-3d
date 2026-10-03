@@ -10,6 +10,7 @@ import {validateProximityMembershipConfig} from './proximity-authority.mjs';
 import {createMediaIce,readIceRelayConfig,readIceBody} from './media-ice.mjs';
 import {createProximityText,validateProximityTextConfig,readProximityTextBody} from './proximity-text.mjs';
 import {readProximityTypingBody} from './proximity-typing.mjs';
+import {validateTerrainSceneDelta} from './terrain.mjs';
 import { createQuestService } from './quests.mjs';
 import { createRoomFileService } from './files.mjs';
 import {validateAppearance} from '../src/avatar-spec.js';
@@ -263,6 +264,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
             const encoded=v.scene(b.scene,resolvedImages.next);validatePersonalScene(b.scene);
             store.validatePersonalObjectDelta(row,userId,before,b.scene,b.personalAreaRevisions,resolvedImages.before,resolvedImages.next);
             validateImageSceneDelta({store,presence,now,room:row,before,next:b.scene,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
+            validateTerrainSceneDelta({store,presence,residents:bots.snapshot(roomId),now,room:row,userId,before,next:b.scene,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
             store.syncPersonalAreas(roomId,before,b.scene);
             store.run('UPDATE rooms SET scene=?,revision=revision+1 WHERE id=? AND revision=?',encoded,roomId,b.revision);
             store.recordPersonalObjects(roomId,userId,before,b.scene,resolvedImages.next);
