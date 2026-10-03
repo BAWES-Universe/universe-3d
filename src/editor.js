@@ -6,7 +6,7 @@ import {attachRoomFile,listRoomFiles,FILE_ACCEPT} from './files.js';
 import {CATALOG,clone,canStand,contains} from './worlds.js';
 import {snapPoint,validatePlacement,screenGridStep,validateTerrainEdit,wallFromStroke} from './editor-geometry.js';
 import {TERRAIN_MATERIALS,MAX_TERRAIN_CELLS,terrainCell,terrainRect,validateTerrain} from './terrain.js';
-import {imageDefinitions,resolvedImage,bindImageDefinitions} from './image-asset-context.js';
+import {imageDefinitions,resolvedImage,bindImageDefinitions,mergeImageDefinitions} from './image-asset-context.js';
 import {validateAssetReference,validateImageInstance,IMAGE_PIXELS_PER_METRE,imageLibraryMetadata} from './image-asset-schema.js';
 import {ACTION_TYPES,MAX_ACTIONS,createAction,itemActions,materializeItemActions,actionName,validateActions,safeActionUrl} from './action-schema.js';
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
@@ -17,7 +17,7 @@ const typing=target=>!!target?.closest?.('input,textarea,select,[contenteditable
 
 export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,onGhost=()=>{},onModeChange=()=>{},getCameraAngle=()=>Math.PI/4,isBlocked=()=>false,editPolicy=()=>null,onManagePersonalArea=()=>{},onOpenImageLibrary=()=>{},getDestinationRooms=()=>destinationRoomsFromWorlds(getState().worlds,getState().universes),onTrySavedArrival=null}){
  const loadDestinationEntries=createDestinationEntryLoader({api});let destinationPickers=[],tryingArrival=false;
- let tool='select',selected=null,history=[],future=[],dirty=false,saving=false,base=null,roomId=null,conflictRoom=null;
+ let tool='select',selected=null,history=[],future=[],dirty=false,saving=false,base=null,roomId=null,actorId,admission=null,conflictRoom=null,pendingSave=null;
  let enabled=false,gesture=null,preview=null,lastHit=null,rotation=0,snap=1,imageSnap=false,imageAsset=null,copyTemplate=null,roomSettings=false,trayOpen=true;
  let compact=false,shortLayout=false,moreOpen=false;
  let terrainOpen=false,terrainMaterial='stone',terrainBlocked=false,terrainSize={width:1,depth:1},terrainValidation=null;
@@ -93,16 +93,31 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  // Image definitions are a room-scoped read projection, never part of scene JSON.
  function bindServerRoom(room){if(room?.scene)bindImageDefinitions(room.scene,room.imageDefinitions||{},room.id);return room;}
  function bindDraft(room,scene,{preserve=true}={}){
-  if(!scene)return scene;
+  if(!scene||!room)return scene;
   const previous=preserve?Object.fromEntries(Object.entries(imageDefinitions(scene)).filter(([,entry])=>entry.definition.roomId===room.id)):{};
-  bindImageDefinitions(scene,{...previous,...(room.imageDefinitions||{})},room.id);for(const item of scene.objects||[])if(item.type==='image')item.assetRef=validateAssetReference(item.assetRef);return scene;
+  bindImageDefinitions(scene,mergeImageDefinitions(previous,room.imageDefinitions),room.id);for(const item of scene.objects||[])if(item.type==='image')item.assetRef=validateAssetReference(item.assetRef);return scene;
  }
  function acceptRoomMetadata(room){
-  const state=getState();
+  const state=getState();if(!state.room||state.room.id!==room.id)return;
   for(const k of ['personalAreas','capabilities','role'])if(room[k]!==undefined)state.room[k]=room[k];
-  const retained=Object.fromEntries(Object.entries({...state.room.imageDefinitions,...imageDefinitions(state.scene)}).filter(([,entry])=>entry?.definition?.roomId===room.id));
-  state.room.imageDefinitions={...retained,...(room.imageDefinitions||{})};
+  const retained=Object.fromEntries(Object.entries(mergeImageDefinitions(state.room.imageDefinitions,imageDefinitions(state.scene))).filter(([,entry])=>entry?.definition?.roomId===room.id));
+  state.room.imageDefinitions=mergeImageDefinitions(retained,room.imageDefinitions);
   bindDraft(state.room,state.scene);
+ }
+ // Scene revisions order committed geometry; live authority can change at the
+ // same revision. Keep those observations separate until the save settles.
+ const metadataKeys=['personalAreas','capabilities','role'];
+ const admissionIdentity=()=>{const state=getState();return [state.admissionId,state.admissionEpoch,state.admissionRevision];};
+ function roomMetadata(room){return Object.fromEntries(metadataKeys.filter(key=>room?.[key]!==undefined).map(key=>[key,clone(room[key])]));}
+ function newerScene(a,b){return b?.scene&&(!a?.scene||Number(b.revision)>Number(a.revision))?clone(b):a;}
+ function saveCurrent(operation=pendingSave){const state=getState();return !!operation&&operation.epoch===saveEpoch&&operation.roomEpoch===roomEpoch&&operation.roomId===roomId&&operation.roomId===state.room?.id&&operation.actorId===state.user?.id&&same(operation.admission,admissionIdentity());}
+ function retireSave(){pendingSave=null;saving=false;saveEpoch++;}
+ function saveInProgress(){if(pendingSave&&!saveCurrent())retireSave();return saving;}
+ function reconciledRoom(room,operation){
+  const state=getState(),metadata={...operation?.metadata};
+  // The shell can also update authority without dispatching a scene snapshot.
+  if(operation)for(const key of metadataKeys)if(Object.hasOwn(metadata,key)||!same(state.room[key],operation.initialMetadata[key]))metadata[key]=state.room[key];
+  return {...room,...metadata,imageDefinitions:mergeImageDefinitions(room.imageDefinitions,state.room.imageDefinitions,imageDefinitions(state.scene))};
  }
  function activeImage(){return gesture?.item||copyTemplate||(tool==='image'&&imageAsset?{type:'image',assetRef:imageAsset}:null)||itemById(selected);}
  function floatingImage(item){return item?.type==='image'&&resolvedImage(getScene(),item)?.version.floating===true;}
@@ -144,7 +159,7 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  }
  function ghostFor(item,kind='place',excludeId){const scene=getScene(),definitions=imageDefinitions(scene),position=getState().position,key=JSON.stringify([item.type,item.assetRef,item.x,item.z,item.width,item.depth,item.rotation,excludeId,position?.x,position?.z]);let validity;if(validationCache?.scene===scene&&validationCache.definitions===definitions&&validationCache.key===key)validity=validationCache.result;else{validity=validatePlacement(scene,item,{excludeId,position});validationCache={scene,definitions,key,result:validity};}const policyError=!roomPermission()&&policy().validateItem?.(item,excludeId?getScene().objects.find(o=>o.id===excludeId):null);if(policyError)validity={valid:false,reason:policyError};return {...item,type:item.type||'area',...validity,kind,snap:placementStep(item),...(excludeId?{sourceId:excludeId}:{})};}
  function refreshPreview(){if(!active()||saving){emitGhost(null);return;}if(strokeTool()&&!roomPermission()){cancelGesture();return;}if(terrainTool()){const rect=currentTerrainRect();emitGhost(rect?terrainGhost(rect):null);return;}if(tool==='wall-draw'){const item=wallCandidate();emitGhost(item?ghostFor(item,'place',null):null);return;}const item=candidateFor(lastHit?.point);emitGhost(item?ghostFor(item,copyTemplate?'duplicate':tool==='area'?'area':'place',null):null);}
- function attachRoom(){const state=getState();enabled=!root.hidden;const changedRoom=roomId!==state.room?.id;bindServerRoom(state.room);bindDraft(state.room,state.scene,{preserve:!changedRoom});if(changedRoom){roomEpoch++;saveEpoch++;saving=false;pointerControl=null;deferredInspector=false;roomId=state.room?.id;base=clone(state.scene);history=[];future=[];selected=null;dirty=false;tool='select';conflictRoom=null;saveError='';gesture=null;copyTemplate=null;imageAsset=null;imageSnap=false;roomSettings=false;moreOpen=false;terrainOpen=false;terrainSize={width:1,depth:1};terrainValidation=null;lastHit=null;inspectorKey='';emitGhost(null);}update();mode();}
+ function attachRoom(){const state=getState();enabled=!root.hidden;const changedRoom=roomId!==state.room?.id||actorId!==state.user?.id||!same(admission,admissionIdentity());if(!changedRoom&&saveCurrent()){Object.assign(pendingSave.metadata,roomMetadata(state.room));pendingSave.committed=newerScene(pendingSave.committed,state.room);}bindServerRoom(state.room);bindDraft(state.room,state.scene,{preserve:!changedRoom});if(changedRoom){roomEpoch++;retireSave();actorId=state.user?.id;admission=admissionIdentity();pointerControl=null;deferredInspector=false;roomId=state.room?.id;base=clone(state.scene);history=[];future=[];selected=null;dirty=false;tool='select';conflictRoom=null;saveError='';gesture=null;copyTemplate=null;imageAsset=null;imageSnap=false;roomSettings=false;moreOpen=false;terrainOpen=false;terrainSize={width:1,depth:1};terrainValidation=null;lastHit=null;inspectorKey='';emitGhost(null);}update();mode();}
  function setBuild(value){if(!value)flushFields();enabled=!!value;if(!value)cancelGesture();else update();mode();}
  function record(before,selection=selected){history.push({scene:before,selected:selection});if(history.length>80)history.shift();future=[];dirty=!same(getScene(),base);saveError='';onSelect(selected);update();}
  function mutate(fn,{validateId=null,inspect=true,previousSelection=selected}={}){
@@ -163,7 +178,7 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  }
  function renderSearch(){const query=search.value.trim().toLowerCase();results.replaceChildren();for(const b of catalog.querySelectorAll('button'))b.hidden=query&&!((CATALOG[b.dataset.tool].name+' '+b.dataset.tool).toLowerCase().includes(query));if(!query)return;const matches=[...(getScene()?.objects||[]),...(getScene()?.areas||[])].filter(o=>(o.name+' '+(o.type||'area')+' '+(o.text||'')).toLowerCase().includes(query)).slice(0,8);if(matches.length)results.append(el('small','','ALREADY IN THIS ROOM'));for(const item of matches)results.append(button(item.name,()=>{select(item.id);trayOpen=false;update({inspect:false});}));}
  function update({inspect=true}={}){
-  if(inspect&&!flushing)flushFields();
+  saveInProgress();if(inspect&&!flushing)flushFields();
   const canEdit=permission();if(strokeTool()&&!roomPermission()){cancelGesture();tool='select';terrainOpen=false;}dirty=!!base&&(!same(getScene(),base)||pendingFields());renderSearch();
   status.textContent=conflictRoom?'A newer room version needs your attention':saving?'Saving to this room…':saveError?'Save failed · your draft is safe':dirty?'Unsaved changes · save when ready':'All changes saved';
   status.classList.toggle('dirty',dirty);status.classList.toggle('error',!!saveError||!!conflictRoom);
@@ -391,24 +406,45 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  function remove(id=selected){if(!id||saving||!itemById(id))return false;cancelGesture();const prev=selected;selected=null;const ok=mutate(s=>{s.objects=s.objects.filter(o=>o.id!==id);s.areas=s.areas.filter(o=>o.id!==id);},{previousSelection:prev});if(!ok)selected=prev;onSelect(selected);update();return ok;}
  function undoScene(){if(!history.length||saving||!permission())return;const denied=changeError(getScene(),history.at(-1).scene);if(denied){toast(denied);return;}cancelGesture();future.push({scene:clone(getScene()),selected});const prev=history.pop();onScene(bindDraft(getState().room,clone(prev.scene)));selected=prev.selected&&itemById(prev.selected)?prev.selected:null;tool='select';copyTemplate=null;saveError='';onSelect(selected);update();mode();}
  function redoScene(){if(!future.length||saving||!permission())return;const denied=changeError(getScene(),future.at(-1).scene);if(denied){toast(denied);return;}cancelGesture();history.push({scene:clone(getScene()),selected});const next=future.pop();onScene(bindDraft(getState().room,clone(next.scene)));selected=next.selected&&itemById(next.selected)?next.selected:null;tool='select';copyTemplate=null;saveError='';onSelect(selected);update();mode();}
- function revert(){if(saving)return;cancelGesture();if(conflictRoom){bindServerRoom(conflictRoom);acceptRoomMetadata(conflictRoom);base=clone(conflictRoom.scene);getState().room.revision=conflictRoom.revision;getState().room.scene=clone(base);conflictRoom=null;}if(!base)return;onScene(bindDraft(getState().room,clone(base)));history=[];future=[];selected=null;dirty=false;saveError='';tool='select';copyTemplate=null;onSelect(null);update();mode();}
+ function revert(){if(saveInProgress()||getState().room?.id!==roomId||getState().user?.id!==actorId||!same(admission,admissionIdentity()))return;cancelGesture();if(conflictRoom){conflictRoom=reconciledRoom({...conflictRoom,...roomMetadata(getState().room)});bindServerRoom(conflictRoom);acceptRoomMetadata(conflictRoom);base=clone(conflictRoom.scene);getState().room.revision=conflictRoom.revision;getState().room.scene=clone(base);conflictRoom=null;}if(!base)return;onScene(bindDraft(getState().room,clone(base)));history=[];future=[];selected=null;dirty=false;saveError='';tool='select';copyTemplate=null;onSelect(null);update();mode();}
  async function saveScene(){
   flushFields();
-  if(saving||!dirty||!permission())return;const denied=changeError(base,getScene());if(denied){saveError=denied;toast(denied);update({inspect:false});return;}try{validateStarts(getScene());validateTerrain(getScene().terrain,getScene().bounds);for(const item of getScene().objects){if(item.type==='image'){validateImageInstance(item);if(!resolvedImage(getScene(),item))throw new Error('This image version is unavailable. Refresh Custom images before saving.');}if(item.actions!==undefined)validateActions(item.actions,{scope:'item'});}for(const area of getScene().areas||[])if(area.actions!==undefined)validateActions(area.actions);}catch(error){saveError=error.message;toast(error.message);update({inspect:false});return;}cancelGesture();const savingRoom=roomId,revision=getState().room.revision,scene=clone(getScene()),epoch=++saveEpoch;saving=true;saveError='';update();
-  try{const result=await api('/api/rooms/'+savingRoom+'/scene',{method:'PUT',body:{revision,scene,...(policy().saveMetadata?.()||{})}});if(roomId!==savingRoom||epoch!==saveEpoch)return;const room=result.room||result;if(room.id!==undefined&&room.id!==savingRoom)throw new Error('The save response belongs to another room. Your draft is unchanged.');bindServerRoom(room);acceptRoomMetadata(room);getState().room.revision=room.revision;base=clone(room.scene||scene);getState().room.scene=clone(base);onScene(bindDraft(getState().room,clone(base)));conflictRoom=null;dirty=false;onSelect(selected);toast('Room saved · your place is ready');}
+  if(saveInProgress()||!dirty||!permission()||getState().room?.id!==roomId||getState().user?.id!==actorId||!same(admission,admissionIdentity()))return;const denied=changeError(base,getScene());if(denied){saveError=denied;toast(denied);update({inspect:false});return;}try{validateStarts(getScene());validateTerrain(getScene().terrain,getScene().bounds);for(const item of getScene().objects){if(item.type==='image'){validateImageInstance(item);if(!resolvedImage(getScene(),item))throw new Error('This image version is unavailable. Refresh Custom images before saving.');}if(item.actions!==undefined)validateActions(item.actions,{scope:'item'});}for(const area of getScene().areas||[])if(area.actions!==undefined)validateActions(area.actions);}catch(error){saveError=error.message;toast(error.message);update({inspect:false});return;}cancelGesture();const savingRoom=roomId,revision=getState().room.revision,scene=clone(getScene()),epoch=++saveEpoch;const operation=pendingSave={epoch,roomEpoch,roomId:savingRoom,actorId,admission:admissionIdentity(),initialMetadata:roomMetadata(getState().room),metadata:{},committed:conflictRoom?clone(conflictRoom):null};saving=true;saveError='';update();
+  try{
+   const result=await api('/api/rooms/'+savingRoom+'/scene',{method:'PUT',body:{revision,scene,...(policy().saveMetadata?.()||{})},deferRoomPreparation:true});
+   if(!saveCurrent(operation))return;
+   const receipt=result.room||result;if(receipt.id!==undefined&&receipt.id!==savingRoom)throw new Error('The save response belongs to another room. Your draft is unchanged.');
+   if(!Number.isSafeInteger(receipt.revision)||receipt.revision<=revision)throw new Error('The save response has an invalid revision. Your draft is unchanged.');
+   const accepted={...receipt,id:savingRoom,scene:receipt.scene||scene},committed=newerScene(accepted,operation.committed);
+   const room=reconciledRoom({...accepted,revision:committed.revision,scene:committed.scene},operation);
+   bindServerRoom(room);acceptRoomMetadata(room);getState().room.revision=room.revision;base=clone(room.scene);getState().room.scene=clone(base);onScene(bindDraft(getState().room,clone(base)));conflictRoom=null;dirty=false;
+   if(Number(room.revision)>Number(receipt.revision)){history=[];future=[];}if(!itemById(selected))selected=null;
+   onSelect(selected);toast('Room saved · your place is ready');
+  }
   catch(e){
-   if(roomId!==savingRoom||epoch!==saveEpoch)return;
+   if(!saveCurrent(operation))return;
    const remote=e.data?.room,code=e.code||e.data?.code||e.data?.error?.code||e.data?.error;
    const newerRoom=remote?.id===savingRoom&&remote.scene&&Number(remote.revision)>Number(revision);
-   if(e.status===409&&(code==='REVISION_CONFLICT'||newerRoom)){conflictRoom=newerRoom?bindServerRoom(remote):conflictRoom;saveError='Someone saved a newer version. Your draft is still here.';toast('A newer room version was saved. Export your draft or load the server version.');}
+   const committed=newerScene(operation.committed,newerRoom?remote:null);
+   if(committed&&Number(committed.revision)>Number(revision)){
+    conflictRoom=bindServerRoom(reconciledRoom(committed,operation));acceptRoomMetadata(conflictRoom);
+   }
+   if(e.status===409&&(code==='REVISION_CONFLICT'||newerRoom)){saveError='Someone saved a newer version. Your draft is still here.';toast('A newer room version was saved. Export your draft or load the server version.');}
    else{saveError=e.message||'Save failed. Your edits are still here.';toast(saveError);}
   }
-  finally{if(epoch===saveEpoch){saving=false;update();refreshPreview();}}
+  finally{if(pendingSave===operation){const current=saveCurrent(operation);retireSave();if(current){update();refreshPreview();}}}
  }
  function receiveScene(room){
-  if(room.id!==roomId)return;flushFields();bindServerRoom(room);acceptRoomMetadata(room);
+  saveInProgress();
+  if(room.id!==roomId||room.id!==getState().room?.id||actorId!==getState().user?.id||!same(admission,admissionIdentity()))return;
+  flushFields();
+  if(pendingSave){pendingSave.committed=newerScene(pendingSave.committed,room);Object.assign(pendingSave.metadata,roomMetadata(room));}
+  bindServerRoom(room);acceptRoomMetadata(room);
+  // Keep the newest recovery geometry even when a later metadata-only event
+  // repeats an older scene revision. Loading recovery must retain live authority.
+  if(conflictRoom)conflictRoom=reconciledRoom({...newerScene(conflictRoom,room),...roomMetadata(getState().room)});
   if(saving||Number(room.revision)<=Number(getState().room.revision)){update({inspect:false});refreshPreview();return;}
-  if(dirty){conflictRoom=clone(room);update({inspect:false});refreshPreview();return;}
+  if(dirty){conflictRoom=reconciledRoom({...newerScene(conflictRoom,room),...roomMetadata(getState().room)});update({inspect:false});refreshPreview();return;}
   cancelGesture();base=clone(room.scene);history=[];future=[];getState().room.revision=room.revision;getState().room.scene=clone(base);onScene(bindDraft(getState().room,clone(base)));if(!itemById(selected))selected=null;onSelect(selected);update();
  }
  function exportScene(){const data=JSON.stringify({format:'universe-room',version:1,name:getState().room.name,scene:getScene()},null,2);const url=URL.createObjectURL(new Blob([data],{type:'application/json'}));const a=el('a');a.href=url;a.download=getState().room.id+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -458,5 +494,5 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  };
  const layoutObserver=new ResizeObserver(syncLayout);layoutObserver.observe(root);syncLayout();
  window.addEventListener('keydown',key);window.addEventListener('blur',cancelGesture);window.addEventListener('pointercancel',cancelPointer);
- return {attachRoom,setBuild,setTool,setImageAsset,undo:undoScene,redo:redoScene,rotate,duplicate,remove,pick,pointerDown,pointerMove,pointerUp,cancelGesture,select,save:saveScene,receiveScene,isDirty:()=>dirty,isSaving:()=>saving,getSelected:()=>selected,getTool:()=>tool,getInteractionState:()=>({tool,selected,snap:strokeTool()?1:placementStep(activeImage()),rotation,dragging:!!gesture?.dragged,preview:preview?clone(preview):null,undo:history.length,redo:future.length,dirty,saving}),revert,exportScene,destroy(){layoutObserver.disconnect();for(const picker of destinationPickers)picker.destroy();destinationPickers=[];cancelGesture();window.removeEventListener('keydown',key);window.removeEventListener('blur',cancelGesture);window.removeEventListener('pointercancel',cancelPointer);root.removeEventListener('pointerdown',inspectorPointerDown,true);window.removeEventListener('pointerup',inspectorPointerEnd);window.removeEventListener('pointercancel',inspectorPointerEnd);}};
+ return {attachRoom,setBuild,setTool,setImageAsset,undo:undoScene,redo:redoScene,rotate,duplicate,remove,pick,pointerDown,pointerMove,pointerUp,cancelGesture,select,save:saveScene,receiveScene,isDirty:()=>dirty,isSaving:saveInProgress,getSelected:()=>selected,getTool:()=>tool,getInteractionState:()=>({tool,selected,snap:strokeTool()?1:placementStep(activeImage()),rotation,dragging:!!gesture?.dragged,preview:preview?clone(preview):null,undo:history.length,redo:future.length,dirty,saving:saveInProgress()}),revert,exportScene,destroy(){retireSave();roomEpoch++;layoutObserver.disconnect();for(const picker of destinationPickers)picker.destroy();destinationPickers=[];cancelGesture();window.removeEventListener('keydown',key);window.removeEventListener('blur',cancelGesture);window.removeEventListener('pointercancel',cancelPointer);root.removeEventListener('pointerdown',inspectorPointerDown,true);window.removeEventListener('pointerup',inspectorPointerEnd);window.removeEventListener('pointercancel',inspectorPointerEnd);}};
 }
