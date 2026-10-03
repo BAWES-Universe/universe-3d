@@ -13,7 +13,7 @@ const policy=()=>({selfId:'a',roomId:'r',enabled,context:{kind:'proximity',label
 const server=createServer(async(req,res)=>{
   try {
     const path=new URL(req.url,'http://localhost').pathname;let data='';for await(const c of req)data+=c;
-    if(['/src/media.js','/src/media-ice.js','/src/media.css','/src/media-policy-copy.js'].includes(path)){res.setHeader('Content-Type',path.endsWith('.js')?'text/javascript':'text/css');res.end(await readFile(new URL('..'+path,import.meta.url)));return;}
+    if(['/src/media.js','/src/media-ice.js','/src/media-away.js','/src/media.css','/src/media-policy-copy.js'].includes(path)){res.setHeader('Content-Type',path.endsWith('.js')?'text/javascript':'text/css');res.end(await readFile(new URL('..'+path,import.meta.url)));return;}
     if(path==='/api/media'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(policy()));return;}
     if(path==='/api/media/state'){enabled=JSON.parse(data).enabled;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(policy()));return;}
     if(path==='/api/media/signal'){signals.push(JSON.parse(data));res.setHeader('Content-Type','application/json');res.end('{"ok":true}');return;}

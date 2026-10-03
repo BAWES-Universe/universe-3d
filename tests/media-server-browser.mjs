@@ -10,7 +10,7 @@ import {seedWorlds} from '../src/worlds.js';
 const require=createRequire(import.meta.url);
 const {chromium}=require('playwright-core'), embedded=(await import(require.resolve('@sparticuz/chromium'))).default;
 const dir=await mkdtemp(join(tmpdir(),'universe-media-browser-')),results=[],errors=[];
-await copyFile(new URL('../src/media.js',import.meta.url),join(dir,'media.js'));await copyFile(new URL('../src/media-ice.js',import.meta.url),join(dir,'media-ice.js'));await copyFile(new URL('../src/media-policy-copy.js',import.meta.url),join(dir,'media-policy-copy.js'));await copyFile(new URL('../src/media.css',import.meta.url),join(dir,'media.css'));
+await copyFile(new URL('../src/media-away.js',import.meta.url),join(dir,'media-away.js'));await copyFile(new URL('../src/media.js',import.meta.url),join(dir,'media.js'));await copyFile(new URL('../src/media-ice.js',import.meta.url),join(dir,'media-ice.js'));await copyFile(new URL('../src/media-policy-copy.js',import.meta.url),join(dir,'media-policy-copy.js'));await copyFile(new URL('../src/media.css',import.meta.url),join(dir,'media.css'));
 await writeFile(join(dir,'index.html'),'<link rel="stylesheet" href="/media.css"><div id="media"></div><script type="module" src="/harness.js"></script>');
 await writeFile(join(dir,'harness.js'),`import {mountMedia} from './media.js';
 window.api=async(path,{method='GET',body}={})=>{const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok)throw Error(data.message||data.error);return data};

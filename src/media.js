@@ -1,4 +1,5 @@
 import {createIceCache} from './media-ice.js';
+import {createAwayMicrophonePreference,createAwayLatch,readAwayConversation} from './media-away.js';
 import {SILENT_MEDIA_MESSAGE,SILENT_MEDIA_EXIT_MESSAGE} from './media-policy-copy.js';
 // Real, opt-in WebRTC. Room membership and recipients come only from the server.
 // Server-authorized ICE only; an unconfigured server provides honest host-only transport.
@@ -12,6 +13,7 @@ const containsCommittedArea = (area, x, z) => Math.abs(x-area.x) <= area.width/2
 const labelFor = kind => ({ microphone: 'Microphone', camera: 'Camera', screen: 'Screen sharing' }[kind]);
 const currentRoomId = state => state?.room?.id || (typeof state?.room === 'string' ? state.room : null);
 const currentActorId = state => state?.user?.id || null;
+const currentAdmissionId = state => state?.admissionId || null;
 const hasProximityScope = policy => policy?.proximityMembership !== undefined;
 const opaqueId = value => typeof value === 'string' && value.length > 0;
 const counter = value => Number.isSafeInteger(value) && value >= 0;
@@ -50,7 +52,7 @@ export function proximityMediaNotice(policy) {
 }
 const publishingDenied = policy => policy?.context?.canPublish === false || policy?.context?.kind === 'silent';
 const denialReason = context => context?.kind === 'silent' ? SILENT_MEDIA_MESSAGE : context?.reason || (context?.kind === 'audience' ? 'Audience members can listen. Move to the stage to publish.' : 'Publishing is not allowed in this area.');
-const stopStream = stream => stream?.getTracks?.().forEach(track => track.stop());
+const stopStream = (stream, remove = false) => { for (const track of [...(stream?.getTracks?.() || [])]) { track.stop(); if (remove) stream.removeTrack?.(track); } };
 export function mediaCapabilities(env = globalThis) {
   const secure = env.isSecureContext === true;
   const rtc = typeof env.RTCPeerConnection === 'function';
@@ -88,12 +90,16 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   const peers = new Map();
   const earlyCandidates = new Map();
   const deviceJoins = {microphone:null,camera:null,screen:null};
+  const awayPreference = createAwayMicrophonePreference(env);
+  const awayLatch = createAwayLatch(env.document?.visibilityState || 'visible');
+  const awayIntent = {microphone:null,camera:null,screen:null};
+  let awayTransition = 0, confirmedPolicySequence = 0;
   let consentTail = null, activeJoin = null, proximityProtocolSeen = false;
   // Serialize writes so Leave cannot overtake a still-pending enable at the server.
   function writeConsent(enabled) {
-    const owner = {roomId,actorId,generation,memberId:policy?.proximityMembership?.memberId};
+    const owner = {roomId,actorId,admissionId,generation,memberId:policy?.proximityMembership?.memberId};
     const run = () => {
-      const sameOwner = currentRoomId(getState()) === owner.roomId && currentActorId(getState()) === owner.actorId;
+      const sameOwner = currentRoomId(getState()) === owner.roomId && currentActorId(getState()) === owner.actorId && currentAdmissionId(getState()) === owner.admissionId;
       if (!sameOwner || (enabled && (disposed || owner.generation !== generation || owner.memberId !== policy?.proximityMembership?.memberId || localSilent || getState()?.ready === false))) return Promise.resolve(null);
       return api('/api/media/state', {method:'POST',body:{enabled,roomId:owner.roomId,...(owner.memberId?{memberId:owner.memberId}:{})}});
     };
@@ -108,7 +114,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   const captureAuthority = value => JSON.stringify([value?.selfId,value?.roomId,value?.context?.kind,value?.context?.group,value?.context?.canPublish,value?.proximityMembership?.memberId,hasProximityScope(value)?value.enabled:null]);
   const deviceJoinAuthority = value => JSON.stringify([value?.selfId,value?.roomId,value?.context?.kind,value?.context?.group,value?.context?.canPublish,value?.proximityMembership?.memberId]);
   let iceEpoch = 0, iceError = '', policy = null, joined = false, joining = false, disposed = false, generation = 0;
-  let roomId = currentRoomId(getState()), actorId = currentActorId(getState()), policyError = '', notice = '', refreshRequest = null;
+  let roomId = currentRoomId(getState()), actorId = currentActorId(getState()), admissionId = currentAdmissionId(getState()), policyError = '', notice = '', refreshRequest = null;
   // Orders overlapping HTTP fetches against accepted pushes within this client lifecycle.
   // The server has no monotonic revision; this is not an ordering claim across SSE reconnects.
   let policyEpoch = 0, localSilent = false, awaitingPolicy = false, roomUnavailable = false, committedAreas = null;
@@ -116,7 +122,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   // Denial geometry and personalized server scope stay independent of transport cache.
   const authorityKey = value => JSON.stringify([value?.selfId,value?.roomId,value?.context?.kind,value?.context?.group,value?.context?.canPublish,proximityAuthority(value)]);
   function peerCurrent(p) { return transportAllowed() && !p.closed && peers.get(p.id) === p && p.authority === authorityKey(policy) && policyPeers(policy).some(info => info.id === p.id && info.memberId === p.info.memberId && peerDirection(info) === peerDirection(p.info)); }
-  const sameContext = () => currentRoomId(getState()) === roomId && currentActorId(getState()) === actorId;
+  const sameContext = () => currentRoomId(getState()) === roomId && currentActorId(getState()) === actorId && currentAdmissionId(getState()) === admissionId;
   const elapsedNow = () => env.performance?.now?.() ?? now();
   let lastRefresh = null, lastStats = 0, captureSequence = { microphone: 0, camera: 0, screen: 0 };
   let idSequence = 0;
@@ -147,6 +153,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   const emit = () => { if (!disposed) onChange(snapshot()); };
   function snapshot() {
     return { capabilities, roomId, joined, joining, policy, policyError, iceError, transportNotice:scopedPolicyError(policy)||proximityMediaNotice(policy), iceTransport:ice.transport(iceContext())||(policy&&!hasProximityScope(policy)&&!policy.iceRequired&&!policy.iceScope?'host-only':null), notice, localSilent, awaitingPolicy,
+      awayPrivacy: {...awayLatch.snapshot(),...awayPreference.snapshot(),conversation:readAwayConversation(policy),suspended:KINDS.filter(kind=>!!awayIntent[kind])},
       devices: Object.fromEntries(KINDS.map(k => [k, { ...devices[k], stream: streams[k] }])),
       peers: [...peers.values()].map(p => ({ id: p.id, name: p.info.displayName || p.info.name || 'Participant', canSend: p.info.canSend, canReceive: p.info.canReceive,
         status: p.status, error: p.error, candidateCount: p.candidateCount, gathering: p.pc.iceGatheringState,
@@ -162,16 +169,77 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     p.remote = {};
   }
   function closePeers() { for (const id of [...peers.keys()]) dropPeer(id); earlyCandidates.clear(); }
-  function stopDevice(kind, reason = '') {
+  function stopDevice(kind, reason = '', forAway = false) {
+    if (!forAway) awayIntent[kind] = null;
     deviceJoins[kind] = null;
     captureSequence[kind]++;
     const stream = streams[kind]; streams[kind] = null;
     devices[kind] = { status: 'off', error: reason };
-    stopStream(stream); stopStream(pendingStreams[kind]); pendingStreams[kind] = null;
+    stopStream(stream, forAway); stopStream(pendingStreams[kind], forAway); pendingStreams[kind] = null;
     for (const p of peers.values()) void applyTracks(p);
   }
+  const awayOwner = () => ({generation,roomId,actorId,admissionId,authority:captureAuthority(policy)});
+  const awayOwnerCurrent = owner => owner && owner.generation === generation && owner.roomId === roomId && owner.actorId === actorId && owner.admissionId === admissionId && owner.authority === captureAuthority(policy) && sameContext();
+  function suspendForAway() {
+    for (const kind of KINDS) {
+      // Keeping an already live microphone is explicit. A still-pending browser
+      // request is fenced even with that preference; it cannot start in hiding.
+      if (kind === 'microphone' && awayPreference.snapshot().keepMicrophone && devices[kind].status === 'on') continue;
+      const requested = streams[kind] || pendingStreams[kind] || devices[kind].status === 'requesting';
+      if (!requested) continue;
+      if (kind !== 'screen' && joined && policy && !policyError && !iceError && !localSilent && !awaitingPolicy && !publishingDenied(policy)) awayIntent[kind] = awayOwner();
+      stopDevice(kind, '', true);
+    }
+  }
+  async function resumeFromAway(transition) {
+    if (!KINDS.some(kind=>awayIntent[kind])) return;
+    // A GET that began while hidden is not fresh return authority. This request
+    // may be confirmed against a newer push only when its authority still agrees.
+    retirePolicyRequest();
+    const confirmation = confirmedPolicySequence;
+    await refreshPolicy(true, true);
+    if (disposed || transition !== awayTransition || awayLatch.snapshot().away || !awayLatch.snapshot().visible) return;
+    if (confirmedPolicySequence <= confirmation) {
+      for (const kind of KINDS) if (awayIntent[kind]) stopDevice(kind, 'Return authorization could not be confirmed. Turn the device on again when ready.');
+      emit(); return;
+    }
+    for (const kind of ['microphone','camera']) {
+      const owner = awayIntent[kind];
+      if (!owner) continue;
+      if (!awayOwnerCurrent(owner) || !joined || policy?.enabled === false || !policy || policyError || iceError || localSilent || awaitingPolicy || publishingDenied(policy) || getState()?.ready === false) { awayIntent[kind] = null; continue; }
+      let permission;
+      try { permission = await env.navigator?.permissions?.query({name:kind}); } catch { /* Unsupported inspection requires a fresh user click. */ }
+      if (disposed || transition !== awayTransition || awayLatch.snapshot().away || !awayLatch.snapshot().visible) return;
+      if (awayIntent[kind] !== owner) continue;
+      if (!awayOwnerCurrent(owner) || policyError || iceError || localSilent || awaitingPolicy || !joined || publishingDenied(policy) || getState()?.ready === false) { stopDevice(kind); continue; }
+      if (permission?.state !== 'granted') { stopDevice(kind, `${labelFor(kind)} needs your confirmation to return. Turn it on again to check browser access.`); continue; }
+      awayIntent[kind] = null;
+      // Only this lifecycle's suspended intent reaches this path. Ordinary
+      // policy/room recovery never calls it, and screen pickers never resume.
+      void toggleDevice(kind);
+    }
+    emit();
+  }
+  function checkVisibility() {
+    if (disposed) return;
+    checkLocalPolicy();
+    const before = awayLatch.snapshot();
+    const after = awayLatch.update(env.document?.visibilityState || 'visible',readAwayConversation(policy));
+    if (before.away !== after.away || before.visible !== after.visible) {
+      const transition = ++awayTransition;
+      if (after.away) suspendForAway();
+      else if (after.visible && before.away) void resumeFromAway(transition);
+      emit();
+    }
+    return after.away;
+  }
+  function setKeepMicrophoneAway(value) {
+    awayPreference.set(value);
+    if (awayLatch.snapshot().away) suspendForAway();
+    emit();
+  }
   function retirePolicyRequest() {
-    const request = refreshRequest; refreshRequest = null; request?.cancel?.();
+    const request = refreshRequest; refreshRequest = null; if (request) { request.retired = true; request.cancel?.(); }
   }
   function pauseMedia(reason = '') {
     retireIce(); closePeers();
@@ -194,12 +262,12 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   // never grants recipients or capture: a new post-exit GET must confirm policy.
   function checkLocalPolicy() {
     if (disposed) return true;
-    const state = getState(), nextRoom = currentRoomId(state), nextActor = currentActorId(state);
-    if (nextRoom !== roomId || nextActor !== actorId) {
+    const state = getState(), nextRoom = currentRoomId(state), nextActor = currentActorId(state), nextAdmission = currentAdmissionId(state);
+    if (nextRoom !== roomId || nextActor !== actorId || nextAdmission !== admissionId) {
       generation++; policyEpoch++; retirePolicyRequest(); pauseMedia();
-      roomId = nextRoom; actorId = nextActor; joined = false; joining = false;
+      roomId = nextRoom; actorId = nextActor; admissionId = nextAdmission; joined = false; joining = false;
       policy = null; proximityProtocolSeen = false; policyError = ''; iceError = ''; lastRefresh = null; localSilent = false; awaitingPolicy = false; committedAreas = null;
-      notice = nextRoom ? 'Your room or account changed. Join audio again when you are ready.' : ''; emit();
+      notice = nextRoom ? 'Your room, account or admission changed. Join audio again when you are ready.' : ''; emit();
     }
     if (state?.ready === false) {
       if (!roomUnavailable) {
@@ -330,12 +398,13 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     // even before the world UI processes its own access-revoked event.
     if (!disposed && next?.roomId === null && next.enabled === false && next.selfId === (actorId || policy?.selfId) && sameContext()) {
       generation++; policyEpoch++; joined = false; joining = false; committedAreas = null; retirePolicyRequest(); policy = next;
-      retireIce();for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'Room access ended. Join an authorized room again to reconnect.'; emit(); return true;
+      retireIce();for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'Room access ended. Join an authorized room again to reconnect.'; checkVisibility(); emit(); return true;
     }
     if (disposed || !next || next.roomId !== roomId || !sameContext() || (actorId && next.selfId !== actorId)) return false;
     if (hasProximityScope(next)) proximityProtocolSeen = true;
     const previousDenial = publishingDenied(policy) ? denialReason(policy.context) : null;
     const authorityChanged = authorityKey(next) !== authorityKey(policy);
+    if (policy && captureAuthority(next) !== captureAuthority(policy)) for (const kind of KINDS) awayIntent[kind] = null;
     if(authorityChanged||next.iceScope!==policy?.iceScope){retireIce();closePeers();}
     // Capture has its own ownership boundary: admission, own consent and
     // publishing context. Peer/AV/intent changes retire transport, not devices.
@@ -363,19 +432,20 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     // Revoke pending capture as well as live streams. Leaving the area must never revive
     // a permission prompt started before denial; a deliberate later click gets a new token.
     if (publishingDenied(next)) for (const kind of KINDS) {
-      if (streams[kind] || devices[kind].status === 'requesting') stopDevice(kind, denialReason(next.context));
+      if (streams[kind] || devices[kind].status === 'requesting' || awayIntent[kind]) stopDevice(kind, denialReason(next.context));
     }
-    reconcile(); emit(); return true;
+    checkVisibility(); reconcile(); emit(); return true;
   }
-  async function refreshPolicy(force = false) {
+  async function refreshPolicy(force = false, requireFresh = false) {
     checkLocalPolicy();
     if (disposed || !roomId || !sameContext() || getState()?.ready === false) return null;
     if (refreshRequest) return refreshRequest.promise;
     const elapsed = elapsedNow(), since = elapsed - lastRefresh;
     if (!force && lastRefresh !== null && since >= 0 && since < 900) return policy;
-    const request = { roomId, actorId, generation, policyEpoch, startedAt:elapsed, confirmation:awaitingPolicy && !localSilent, promise: null }; lastRefresh = elapsed;
+    const request = { roomId, actorId, generation, policyEpoch, startedAt:elapsed, confirmation:(awaitingPolicy && !localSilent) || requireFresh, promise: null }; lastRefresh = elapsed;
     refreshRequest = request;
-    const current = () => !disposed && request.generation === generation && request.roomId === roomId && request.actorId === actorId && sameContext();
+    const owned = () => !disposed && request.generation === generation && request.roomId === roomId && request.actorId === actorId && sameContext();
+    const current = () => !request.retired && owned();
     request.promise = (async () => {
       let timeout;
       const Controller = env.AbortController || globalThis.AbortController;
@@ -392,18 +462,18 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
         if (!current()) return null;
         // A newer push owns policy/recipients. A post-exit GET can only confirm
         // its matching scope, without replacing newer recipients or denials.
-        const confirming = request.confirmation && awaitingPolicy && !localSilent;
+        const confirming = request.confirmation && !localSilent;
         if (request.policyEpoch !== policyEpoch && !confirming) return policy;
         if (elapsedNow() - request.startedAt >= POLICY_TIMEOUT_MS) throw Error(POLICY_TIMEOUT_MESSAGE);
         if (!next || next.roomId !== roomId || (actorId && next.selfId !== actorId)) { policyError = 'Room or account changed. Media is paused until the server confirms your session.'; pauseMedia(); emit(); return null; }
         if (request.policyEpoch !== policyEpoch) {
-          if (next.enabled === policy?.enabled && authorityKey(next) === authorityKey(policy)) { awaitingPolicy = false; policyError = scopedPolicyError(policy); reconcile(); emit(); }
+          if (next.enabled === policy?.enabled && authorityKey(next) === authorityKey(policy)) { confirmedPolicySequence++; awaitingPolicy = false; policyError = scopedPolicyError(policy); reconcile(); emit(); }
           return policy;
         }
-        acceptPolicy(next, 'fetch'); return policy;
+        if (acceptPolicy(next, 'fetch')) confirmedPolicySequence++; return policy;
       } catch (error) {
-        if (current() && (request.policyEpoch === policyEpoch || (request.confirmation && awaitingPolicy))) { policyError = `Media policy unavailable: ${String(error?.message || 'server unreachable').slice(0, 150)}`; pauseMedia(); emit(); }
-        return current() && request.policyEpoch !== policyEpoch ? policy : null;
+        if (current() && (request.policyEpoch === policyEpoch || (request.confirmation && (awaitingPolicy || requireFresh)))) { policyError = `Media policy unavailable: ${String(error?.message || 'server unreachable').slice(0, 150)}`; pauseMedia(); emit(); }
+        return owned() && request.policyEpoch !== policyEpoch ? policy : null;
       } finally { if (timeout !== undefined) env.clearTimeout(timeout); if (refreshRequest === request) refreshRequest = null; }
     })();
     return request.promise;
@@ -452,9 +522,12 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   async function toggleDevice(kind) {
     if (!KINDS.includes(kind) || disposed) return false;
+    checkVisibility();
     const locallyDenied = checkLocalPolicy();
+    if (awayIntent[kind]) { stopDevice(kind); emit(); return false; }
     if (!sameContext() || locallyDenied || policyError || iceError) { emit(); return false; }
     if (streams[kind] || devices[kind].status === 'requesting') { stopDevice(kind); emit(); return false; }
+    if (awayLatch.snapshot().away) { notice = 'Devices stay paused while this page is hidden. Return to the page before turning one on.'; emit(); return false; }
     if (!policy) {
       if (kind === 'screen') { notice = 'Join audio before sharing your screen, then choose Share again.'; emit(); return false; }
       const epoch = generation, sequence = ++captureSequence[kind];
@@ -485,7 +558,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       return toggleDevice(kind);
     }
     const epoch = generation, sequence = ++captureSequence[kind];
-    const ownsCapture = () => !disposed && epoch === generation && sequence === captureSequence[kind] && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy;
+    const ownsCapture = () => !disposed && epoch === generation && sequence === captureSequence[kind] && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy && (!awayLatch.snapshot().away || (kind === 'microphone' && awayPreference.snapshot().keepMicrophone && streams[kind] === stream && devices[kind].status === 'on'));
     devices[kind] = { status: 'requesting', error: '' }; notice = ''; emit();
     let stream;
     try {
@@ -493,23 +566,23 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       const capture = kind === 'screen'
         ? env.navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
         : env.navigator.mediaDevices.getUserMedia(kind === 'camera' ? { video: { width: { ideal: 640 }, height: { ideal: 360 } }, audio: false } : { video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      stream = await capture; checkLocalPolicy();
-      if (!ownsCapture()) { stopStream(stream); return false; }
+      stream = await capture; checkVisibility();
+      if (!ownsCapture()) { stopStream(stream, awayLatch.snapshot().away); return false; }
       pendingStreams[kind] = stream;
       if (!stream.getTracks().length) throw new Error('No media track was returned');
       if (!joined) {
         const didJoin = await setJoined(true);
-        if (!ownsCapture()) { stopStream(stream); return false; }
+        if (!ownsCapture()) { stopStream(stream, awayLatch.snapshot().away); return false; }
         if (!didJoin) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because the call could not be joined.' }; emit(); return false; }
       }
       await refreshPolicy(true);
       // A stale operation disposes only its own stream. Never clobber the next request's UI.
-      if (!ownsCapture()) { stopStream(stream); return false; }
+      if (!ownsCapture()) { stopStream(stream, awayLatch.snapshot().away); return false; }
       if (!joined || !policy || policyError || iceError || (policy.iceRequired===true&&!policy.iceScope&&!hasProximityScope(policy)) || (hasProximityScope(policy)&&policy.enabled!==true) || publishingDenied(policy)) { stopStream(stream); devices[kind] = { status: 'off', error: 'Capture stopped because this area does not currently allow publishing.' }; emit(); return false; }
       pendingStreams[kind] = null; streams[kind] = stream; devices[kind] = { status: 'on', error: '' };
       for (const track of stream.getTracks()) track.onended = () => { if (streams[kind] === stream) { stopDevice(kind, 'Sharing stopped by your browser or device.'); emit(); } };
       for (const p of peers.values()) await applyTracks(p);
-      if (!ownsCapture()) { stopStream(stream); return false; }
+      if (!ownsCapture()) { stopStream(stream, awayLatch.snapshot().away); return false; }
       emit(); return true;
     } catch (error) {
       stopStream(stream);
@@ -588,7 +661,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   async function update() {
     if (disposed) return;
-    checkLocalPolicy();
+    checkVisibility();
     await refreshPolicy();
     if (now() - lastStats > 3000) {
       lastStats = now();
@@ -604,12 +677,15 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   function destroy() {
     if (disposed) return;
+    env.document?.removeEventListener?.('visibilitychange', checkVisibility);
     retireIce();disposed = true; generation++; policyEpoch++; joined = false; joining = false; retirePolicyRequest();
     for (const kind of KINDS) stopDevice(kind); closePeers();
     // Best-effort opt-out; server also expires disconnected presence.
     void writeConsent(false).catch(() => {});
   }
-  return { snapshot, update, checkLocalPolicy, acceptCommittedRoom, refreshPolicy, acceptPolicy, setJoined, toggleDevice, retry, onSignal, destroy };
+  env.document?.addEventListener?.('visibilitychange', checkVisibility);
+  checkVisibility();
+  return { snapshot, update, checkVisibility, setKeepMicrophoneAway, checkLocalPolicy, acceptCommittedRoom, refreshPolicy, acceptPolicy, setJoined, toggleDevice, retry, onSignal, destroy };
 }
 
 const ICONS = {
@@ -619,10 +695,12 @@ const ICONS = {
   sound: '<path d="m11 5-6 4H2v6h3l6 4V5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.sound}</svg>`;
+let mediaMountSequence = 0;
 export function mountMedia({ root, api, getState, toast = () => {} }) {
   if (!root) throw new Error('A media container is required');
+  const awayHelpId = `media-away-help-${++mediaMountSequence}`;
   root.classList.add('universe-media');
-  root.innerHTML = `<div class="media-peers" aria-label="Call participants"></div><section class="media-dock" aria-label="Live media controls"><div class="media-context"><span class="media-dot"></span><div><strong class="media-context-label">Spatial audio</strong><span class="media-context-detail">Mic and camera stay off until you choose</span></div></div><div class="media-actions"><button class="media-join" type="button">Join audio</button><span class="media-divider"></span>${KINDS.map(k => `<button type="button" class="media-device" data-media="${k}" aria-label="${labelFor(k)} off" aria-pressed="false" title="Turn on ${k}">${icon(k)}<span>${k === 'microphone' ? 'Mic' : k === 'camera' ? 'Camera' : 'Share'}</span></button>`).join('')}<button class="media-details-toggle" type="button" aria-expanded="false" aria-label="Media connection details">···</button></div></section><div class="media-warning" role="status" hidden></div><section class="media-details" aria-label="Media connection details" hidden><div class="media-details-heading"><strong>Connection details</strong><button type="button" class="media-retry">Retry connections</button></div><p class="media-policy-detail"></p><div class="media-transport"></div><p class="media-network-note">Peer-to-peer transport · Server ICE configuration is requested after authorized opt-in.</p></section>`;
+  root.innerHTML = `<div class="media-peers" aria-label="Call participants"></div><section class="media-dock" aria-label="Live media controls"><div class="media-context"><span class="media-dot"></span><div><strong class="media-context-label">Spatial audio</strong><span class="media-context-detail">Mic and camera stay off until you choose</span></div></div><div class="media-actions"><button class="media-join" type="button">Join audio</button><span class="media-divider"></span>${KINDS.map(k => `<button type="button" class="media-device" data-media="${k}" aria-label="${labelFor(k)} off" aria-pressed="false" title="Turn on ${k}">${icon(k)}<span>${k === 'microphone' ? 'Mic' : k === 'camera' ? 'Camera' : 'Share'}</span></button>`).join('')}<button class="media-details-toggle" type="button" aria-expanded="false" aria-label="Media connection details">···</button></div></section><div class="media-warning" role="status" hidden></div><section class="media-details" aria-label="Media connection details" hidden><div class="media-details-heading"><strong>Connection details</strong><button type="button" class="media-retry">Retry connections</button></div><p class="media-policy-detail"></p><fieldset class="media-away-settings"><legend>When this page is hidden</legend><label class="media-away-choice"><input type="checkbox" class="media-keep-microphone" aria-describedby="${awayHelpId}"><span>Keep my microphone on while away</span></label><p id="${awayHelpId}" class="media-away-help"></p><p class="media-away-status" role="status"></p></fieldset><div class="media-transport"></div><p class="media-network-note">Peer-to-peer transport · Server ICE configuration is requested after authorized opt-in.</p></section>`;
   const $ = selector => root.querySelector(selector);
   let destroyed = false, expanded = false, lastWarning = '', lastRoom = currentRoomId(getState());
   const elements = new Map();
@@ -663,9 +741,10 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
       const unsupported = kind === 'screen' ? s.capabilities.screenReason : s.capabilities.deviceReason;
       const denied = silent || s.awaitingPolicy || !!s.policyError || !!s.iceError || publishingDenied(s.policy);
       button.disabled = !!unsupported || denied || !s.roomId || !s.policy;
-      button.setAttribute('aria-pressed', device.status === 'on' ? 'true' : 'false');
-      button.setAttribute('aria-label', `${labelFor(kind)} ${device.status}`);
-      button.title = unsupported || (denied ? (s.localSilent ? SILENT_MEDIA_MESSAGE : s.iceError || s.policyError || s.transportNotice || denialReason(context)) : device.error || (device.status === 'on' ? `Stop ${labelFor(kind).toLowerCase()}` : `Turn on ${labelFor(kind).toLowerCase()}`));
+      const suspended = s.awayPrivacy.suspended.includes(kind);
+      button.setAttribute('aria-pressed', device.status === 'on' || suspended ? 'true' : 'false');
+      button.setAttribute('aria-label', `${labelFor(kind)} ${suspended ? 'paused while away; turn off to cancel return' : device.status}`);
+      button.title = unsupported || (denied ? (s.localSilent ? SILENT_MEDIA_MESSAGE : s.iceError || s.policyError || s.transportNotice || denialReason(context)) : device.error || (suspended ? 'Turn off to cancel automatic return' : device.status === 'on' ? `Stop ${labelFor(kind).toLowerCase()}` : `Turn on ${labelFor(kind).toLowerCase()}`));
       button.classList.toggle('is-requesting', device.status === 'requesting');
       button.classList.toggle('has-error', device.status === 'error');
     }
@@ -673,8 +752,11 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
     $('.media-warning').hidden = !warning; $('.media-warning').textContent = warning;
     if (warning && warning !== lastWarning) { lastWarning = warning; }
     $('.media-policy-detail').textContent = silent ? `${SILENT_MEDIA_MESSAGE} ${SILENT_MEDIA_EXIT_MESSAGE}` : `Server-authorized ${context?.kind || 'room'} recipients. ${context?.reason || context?.description || 'Location and room permissions are evaluated by the server.'}`;
+    $('.media-keep-microphone').checked = s.awayPrivacy.keepMicrophone;
+    $('.media-away-help').textContent = `Applies when no server-recognized conversation is active. Camera and screen sharing stop while away. An existing conversation can continue while hidden, subject to browser behavior. ${s.awayPrivacy.persisted ? 'Saved in this browser on this device.' : 'Browser storage is unavailable; this choice lasts for this session.'}`;
+    $('.media-away-status').textContent = s.awayPrivacy.away ? (s.awayPrivacy.keepMicrophone ? 'Away: an already-on microphone may stay on. Paused camera can return when this page is visible.' : 'Away: microphone and camera are paused. Still-requested devices can return after fresh authorization when this page is visible.') : 'Returning restores only devices paused by away privacy. Screen sharing always needs a new Share click.';
     const networkNote=s.transportNotice|| (s.iceTransport==='relay-configured'?'P2P · TURN configured; relay reachability and media delivery are unverified.':s.iceTransport==='stun-configured'?'P2P · STUN configured; no TURN relay configured. Restricted networks may fail.':s.iceTransport==='host-only'?'Host-only P2P · No STUN or TURN configured. Restricted networks may fail.':'P2P · No active ICE configuration. Configuration is requested after authorized opt-in.');
-    $('.media-network-note').textContent=networkNote+' Use one active tab per account. Devices are requested only when you turn them on.';
+    $('.media-network-note').textContent=networkNote+' Use one active tab per account. Devices start from your choice; away-paused mic and camera may resume on return.';
     const transport = $('.media-transport'); transport.replaceChildren();
     const connectionRows = s.peers.length ? s.peers.map(p => `${p.name}: ${p.status === 'connected' ? 'transport connected' : p.status} · ${p.candidateCount} local ICE candidates · ${p.receivedBytes} bytes received${p.error ? ` — ${p.error}` : ''}`) : [s.transportNotice || (s.joined ? 'No eligible opted-in participants yet.' : 'Not in a call. No peer connection is active.')];
     for (const row of connectionRows) { const p = document.createElement('p'); p.textContent = row; transport.append(p); }
@@ -693,6 +775,7 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
   const handle = promise => promise.catch(error => toast(error?.message || 'Media operation failed'));
   $('.media-join').addEventListener('click', () => handle(session.setJoined(!(session.snapshot().joined || session.snapshot().joining))));
   for (const kind of KINDS) $(`[data-media="${kind}"]`).addEventListener('click', () => handle(session.toggleDevice(kind)));
+  $('.media-keep-microphone').addEventListener('change', event => session.setKeepMicrophoneAway(event.target.checked));
   $('.media-retry').addEventListener('click', () => handle(session.retry()));
   $('.media-details-toggle').addEventListener('click', () => { expanded = !expanded; $('.media-details').hidden = !expanded; $('.media-details-toggle').setAttribute('aria-expanded', String(expanded)); });
   render(session.snapshot()); void session.update();

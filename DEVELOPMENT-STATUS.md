@@ -1,6 +1,16 @@
-# Development status · 2026-10-03 06:24 UTC
+# Development status · 2026-10-03 06:44 UTC
 
-## Current increment: participant locks and consented following
+## Current increment: mobile away media privacy
+
+The source-pinned PR610 adaptation uses independent mobile/desktop microphone preferences and page visibility rather than focus. Mobile/iPad/Android starts with keep-microphone-away off; desktop retains the native default on. A hidden page enters away only without a recognized conversation, including when the last conversation ends. Away stays latched until visible. The policy derives conversation state from all-member bubble authority where enabled and the existing authorized media graph otherwise; zero WebRTC peers does not establish absence. Actual live-session authority is explicitly unsupported.
+
+Away stops owned tracks and retires pending capture. Returning can restore only mic/camera intent suspended by this same lifecycle, after fresh current policy and a browser permission state of granted. Manual off, room/account/admission replacement, Silent/denial, revoked consent, policy failure and disposal cancel that intent. Screen sharing always needs a new click. Unsupported permission inspection requires an explicit device click instead of opening a prompt automatically. Connection details exposes the browser-local setting with native keyboard/touch controls.
+
+The combined source passes 1,269 CPU/API tests with zero failures and the same historical skip, all 273 source syntax checks, build, package startup/static files and Dockerfile-copy reconstruction. All eight media browser suites pass, including the new privacy fixture, existing Silent/ICE/lifecycle fixtures, actual-game Silent/freshness flows and native scoped SDP/signaling teardown. The new privacy fixture uses injected visibility/permissions/media and denied physical capture; these results do not establish real phone, camera, microphone, call, relay or SFU operation. The existing optional membership configuration stays unchanged. Detailed source semantics and remaining physical-device acceptance are in `docs/mobile-away-privacy.md`.
+
+Final integration bundle: main `6536741f76ff85831c149bb92a0206a52805e369da7aa56732ea39e4e83be9f0`, CSS `0161fac62f8d2def9477dca4755d9b0062df661dcb4ba11a7e821969e690a93d`. Publication and exact-head CI are pending. The separate named-arrival integration will expose the optional admission identity seam; it is not included in this checkpoint.
+
+## Prior increment: participant locks and consented following
 
 An admitted bubble participant can lock/unlock that conversation and invite its other participants to follow. Each recipient explicitly accepts or declines. Stop halts locally immediately and requests authoritative cleanup; a newer server-confirmed Stop survives a lost HTTP acknowledgement. Ignore invitations is saved per account on this device and reapplied on admission. Room ownership grants no control over someone else's bubble. F is the source social-follow shortcut, with Shift+F reserved for camera follow; pending incoming consent does not make F accept or dismiss it.
 
@@ -12,7 +22,7 @@ Seventeen distinct actual-game behavioral scenarios pass across recorded runs on
 
 The final visual follow-up preserves source coral Stop backgrounds under hover/press, keeps text contrast above 4.5, avoids a transparent background interpolation when Stop first appears, and uses native Roboto. Eleven native component checks and five touch layouts pass. The corrected actual-game touch replay verifies readable Stop, native Ignore/Lock/Accept/Stop and reachability on both compact dimensions. The unchanged JavaScript SHA-256 is `219468f3985d6e24243552f64d1bf756810ff4693bb694f4343f4b9cf85f6e93`; final CSS is `47199705d14c181248baf7c08317483b2efa3e4ae2e63a85dbee2288b80a0971`.
 
-Source checkpoint `d33179823b649f9fd7893d5545ce50058306fd66` is published. Its initial CI passed eleven jobs and failed two test contracts: an older framing fixture still used F for camera follow, and the group helper tried a covered Explore button after successful moderation had already opened Places. The scoped corrections preserve their assertions; all 29 framing/picking/resident regression checks pass. Final correction publication and exact-head CI are pending. Exact scope, source pins and remaining gaps are in `GROUP-PLAY-CONTRACT.md`, `server/PROXIMITY-CONTROLS.md`, and `FOLLOW-MOTION.md`. No live configuration, device capture, relay/provider or deployment was performed.
+Source checkpoint `d33179823b649f9fd7893d5545ce50058306fd66` is published. Its initial CI passed eleven jobs and failed two test contracts: an older framing fixture still used F for camera follow, and the group helper tried a covered Explore button after successful moderation had already opened Places. The scoped corrections preserve their assertions; all 29 framing/picking/resident regression checks pass. The five-file correction is published as `f534ad2b19bc6cda9cb64b0f7e567930d724810b`; all thirteen exact-head CI jobs passed in run `37103103927`. Exact scope, source pins and remaining gaps are in `GROUP-PLAY-CONTRACT.md`, `server/PROXIMITY-CONTROLS.md`, and `FOLLOW-MOTION.md`. No live configuration, device capture, relay/provider or deployment was performed.
 
 ## Prior increment: usable embedded content windows
 
@@ -119,9 +129,10 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Complete the participant-control native replay, publish its bounded source and verify exact-head CI
-2. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
-3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
-4. Continue larger world-creation and social-play parity gaps and port the next verified source control changes
+1. Verify mobile-away exact-head CI and freeze the development release candidate
+2. Integrate named arrivals, authoritative doorway travel and entry-point sharing
+3. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
+4. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
+5. Continue larger world-creation and social-play parity gaps and port the next verified source control changes
 
 The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.

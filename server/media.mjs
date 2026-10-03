@@ -6,7 +6,7 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
   const enabled=new Map(),priorEdges=new Set();let refreshFrame=null;
   if(proximityMembershipConfig!==undefined)proximityMembershipConfig=validateProximityMembershipConfig(proximityMembershipConfig);
   const membership=proximityMembershipConfig===undefined?null:createProximityMembershipAuthority({config:proximityMembershipConfig,store,presence,now,onInvalidate:notifyUnavailable});
-  function notifyUnavailable(roomId){for(const p of presence.values())if(p.roomId===roomId)emitUser(p.userId,'media-policy',{selfId:p.userId,roomId,enabled:false,context:{kind:'none',label:'Media unavailable',canPublish:false,reason:'Current membership authority is unavailable'},peers:[],iceServers:[],proximityAuthorityUnavailable:true});}
+  function notifyUnavailable(roomId){for(const p of presence.values())if(p.roomId===roomId)emitUser(p.userId,'media-policy',{selfId:p.userId,roomId,enabled:false,context:{kind:'none',label:'Media unavailable',canPublish:false,reason:'Current membership authority is unavailable'},peers:[],iceServers:[],proximityAuthorityUnavailable:true,awayPrivacy:awayProjection('unavailable')});}
   const key=(a,b)=>[a,b].sort().join(':');
   function context(p) {
     const room=store.room(p.roomId,p.userId),areas=(room.scene.areas||[]).filter(a=>inside(a,p));
@@ -44,8 +44,9 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
     for(const pair of [...priorEdges])if(players.some(p=>pair.includes(p.userId)))priorEdges.delete(pair);for(const pair of active)priorEdges.add(pair);
     return {links,contexts};
   }
+  const awayProjection=(source,conversationActive=false)=>({protocol:'media-away-v1',source,conversationActive,liveSessionActive:false,liveSessionSupported:false});
   function policy(userId,roomId,acceptedSession) {
-    if(!roomId)return {selfId:userId,roomId:null,enabled:false,context:{kind:'none',label:'Outside a room',canPublish:false,reason:'Join a room first'},peers:[],iceServers:[]};
+    if(!roomId)return {selfId:userId,roomId:null,enabled:false,context:{kind:'none',label:'Outside a room',canPublish:false,reason:'Join a room first'},peers:[],iceServers:[],awayPrivacy:awayProjection('unavailable')};
     store.authorize(roomId,userId);const p=presence.get(`${roomId}:${userId}`);
     const scope=membership?(refreshFrame?.roomId===roomId?(acceptedSession?refreshFrame.batch.policyForSession(acceptedSession):refreshFrame.batch.policyForAccount(userId)):(acceptedSession?membership.policy(acceptedSession):membership.policyForAccount(userId,roomId))):null;
     const localContext=scope?.context??(p?context(p):{kind:'none',label:'Offline',canPublish:false,reason:'Waiting for player presence'});
@@ -59,6 +60,12 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
       result.proximityMembership={protocol:'proximity-v1',memberId,bubbleId,membershipRevision,mediaScope,conversationRecipients,transport};
       result.limits={proximityParticipants:proximityMembershipConfig.membershipCeiling,p2pParticipants:proximityMembershipConfig.p2pThreshold,joinDistance:proximityMembershipConfig.minimumDistanceSource/proximityMembershipConfig.sourceUnitsPerWorldUnit,groupRadius:proximityMembershipConfig.groupRadiusSource/proximityMembershipConfig.sourceUnitsPerWorldUnit};
     }
+    // All-member conversation survives AV opt-out and unavailable SFU transport.
+    // Legacy areas expose only their actual server media graph. No native live
+    // session exists here, and a stage/meeting label is not one.
+    result.awayPrivacy=membership&&result.context.kind==='proximity'
+      ?awayProjection('proximity-membership',!!scope.bubbleId&&scope.conversationRecipients.length>0)
+      :awayProjection(result.context.kind==='none'?'unavailable':'legacy-media-graph',result.peers.length>0);
     return result;
   }
   function refresh(roomId,after) {

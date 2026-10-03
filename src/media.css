@@ -496,3 +496,23 @@
     font-size: 10px;
   }
 }
+.media-away-settings {
+  border: 1px solid var(--u-edge, #655076);
+  border-radius: 10px;
+  margin: 12px 0;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.media-away-settings legend { padding: 0 4px; font-weight: 650; }
+.media-away-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.media-away-choice input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--u-primary, #8d65ba); }
+.media-away-choice input:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.media-away-help, .media-away-status { margin: 7px 0; font-size: 11px; line-height: 1.5; }
+.media-away-help { color: var(--u-text-muted, #c6b2dc); }

@@ -20,7 +20,7 @@ const results=[],pageErrors=[];
 const syntheticSecret=randomBytes(48).toString('base64url');
 const urls=['stun:127.0.0.1:9','turn:127.0.0.1:9?transport=udp'];
 const iceRelayConfig=readIceRelayConfig({MEDIA_STUN_URLS:urls[0],MEDIA_TURN_URLS:urls[1],MEDIA_TURN_SHARED_SECRET:syntheticSecret,MEDIA_ICE_TTL_SECONDS:'60',MEDIA_ICE_RENEWAL_SECONDS:'45'});
-for(const file of ['media.js','media-ice.js','media-policy-copy.js'])await copyFile(new URL('../src/'+file,import.meta.url),join(dir,file));
+for(const file of ['media.js','media-ice.js','media-away.js','media-policy-copy.js'])await copyFile(new URL('../src/'+file,import.meta.url),join(dir,file));
 await writeFile(join(dir,'index.html'),'<!doctype html><meta charset="utf-8"><title>Native ICE signaling probe</title><script type="module" src="/harness.js"></script>');
 await writeFile(join(dir,'harness.js'),String.raw`
 import {createMediaSession} from './media.js';
