@@ -1,3 +1,4 @@
+import {validateEntryKey} from './arrivals.js';
 // Shared authoring/runtime contract. Ordered arrays are authoritative when present.
 // Legacy scene properties remain available for export and old scene compatibility.
 export const ACTION_TYPES = Object.freeze(['message','link','audio','teleport']);
@@ -38,7 +39,7 @@ export function createAction(type,id){
 export function itemActions(item){
  if(Array.isArray(item?.actions))return item.actions;
  const result=[];
- if(item?.target)result.push({id:'legacy-target',type:'teleport',name:'Travel to room',description:'',target:item.target});
+ if(item?.target)result.push({id:'legacy-target',type:'teleport',name:'Travel to room',description:'',target:item.target,...(item.entry!==undefined?{entry:item.entry}:{})});
  if(item?.url)result.push({id:'legacy-url',type:'link',name:item.document?'Download '+item.document.name:'Open website',description:'',url:item.url,label:item.document?'Download document':'Open website',mode:'tab',width:60,closable:true});
  return result;
 }
@@ -53,12 +54,13 @@ export function validateActions(actions,{scope='area'}={}){
   if(typeof action.id!=='string'||!ID.test(action.id)||ids.has(action.id))invalid('Action IDs must be valid and unique within their item or area');ids.add(action.id);
   if(scope==='area'&&/^legacy-area-(?:link|target|message)$/.test(action.id))invalid('This action ID is reserved for legacy area behavior');
   if(!ACTION_TYPES.includes(action.type))invalid('Unsupported action type');
-  const fields=['id','type','name','description','trigger',...(action.type==='message'?['message']:action.type==='link'?['url','label','mode','width','closable']:action.type==='audio'?['url','label','volume','loop']:['target'])];
+  const fields=['id','type','name','description','trigger',...(action.type==='message'?['message']:action.type==='link'?['url','label','mode','width','closable']:action.type==='audio'?['url','label','volume','loop']:['target','entry'])];
   if(Object.keys(action).some(key=>!fields.includes(key)))invalid('Unsupported action field');
   for(const [key,max]of [['name',120],['description',1000],['label',120],['message',2000]])if(action[key]!==undefined)text(action[key],`Action ${key}`,max);
   if(['link','audio'].includes(action.type)&&!safeActionUrl(action.url))invalid('Action URL must use safe HTTP(S), a local asset, or a protected room document; credentials are not allowed');
   if(action.type==='audio'&&safeActionUrl(action.url)?.kind==='document')invalid('Room documents are downloads, not playable audio');
   if(action.type==='teleport'&&(typeof action.target!=='string'||!ID.test(action.target)))invalid('Choose a valid destination room ID');
+  if(action.entry!==undefined)validateEntryKey(action.entry);
   if(action.trigger!==undefined&&(!['interact','enter'].includes(action.trigger)||(scope==='item'&&action.trigger!=='interact')))invalid('Items require deliberate activation; area triggers must be interact or enter');
   if(action.mode!==undefined&&!['tab','embed'].includes(action.mode))invalid('Link mode must be tab or embed');
   if(action.width!==undefined&&(typeof action.width!=='number'||!Number.isFinite(action.width)||action.width<30||action.width>90))invalid('Panel width must be between 30 and 90 percent');

@@ -1,3 +1,4 @@
+import {validateEntryKey,validateStarts} from '../src/arrivals.js';
 import {validateAppearance} from '../src/avatar-spec.js';
 import {safeActionUrl,validateActions} from '../src/action-schema.js';
 import {validateImageInstance,canRenderImageReference} from '../src/image-asset-schema.js';
@@ -56,6 +57,7 @@ function interactionUrl(value){if(value!==undefined&&value!==''&&!safeActionUrl(
 export function scene(value,imageDefinitions={}) {
   record(value, 'scene');
   for(const key of ['imageDefinitions','imageAssets','assetDefinitions','imageLibrary'])if(Object.hasOwn(value,key))fail(400,'SERVER_OWNED_FIELD','Image definitions are a server-resolved room projection, not scene data');
+  for(const key of ['arrival','entries','admissionId','admissionEpoch','admissionRevision'])if(Object.hasOwn(value,key))fail(400,'SERVER_OWNED_FIELD',`${key} is server-owned arrival metadata, not scene data`);
   if (!Array.isArray(value.objects) || value.objects.length > 2000) fail(400, 'INVALID_SCENE', 'scene.objects must contain at most 2000 objects');
   record(value.bounds, 'scene.bounds');
   finite(value.bounds.width, 'bounds.width', 8, 200); finite(value.bounds.depth, 'bounds.depth', 8, 200);
@@ -80,6 +82,7 @@ export function scene(value,imageDefinitions={}) {
     if(object.color !== undefined && (typeof object.color !== 'string' || !/^#[0-9a-f]{3,8}$/i.test(object.color))) fail(400, 'INVALID_SCENE', 'Use a hex object color');
     interactionUrl(object.url);if(object.actions!==undefined)actions(object.actions,'item');
     if(object.text!==undefined)text(object.text,'object description',2000,{empty:true});
+    if(object.entry!==undefined){try{validateEntryKey(object.entry);}catch(error){fail(400,error.code,error.message);}}
     if(object.target !== undefined && object.target !== '') id(object.target, 'portal target');
     if (seen.has(object.id)) fail(400, 'INVALID_SCENE', 'Object IDs must be unique'); seen.add(object.id);
     for (const key of ['x','y','z','rotation','rotationY']) if (object[key] !== undefined) finite(object[key], key);
@@ -92,10 +95,12 @@ export function scene(value,imageDefinitions={}) {
     text(area.name, 'area name', 120); oneOf(area.action, ['welcome','silent','meeting','stage','audience','teleport','link'], 'area action');
     finite(area.x, 'area.x', -value.bounds.width/2, value.bounds.width/2); finite(area.z, 'area.z', -value.bounds.depth/2, value.bounds.depth/2);
     finite(area.width, 'area.width', 0.5, value.bounds.width); finite(area.depth, 'area.depth', 0.5, value.bounds.depth);
+    if(area.entry!==undefined){try{validateEntryKey(area.entry);}catch(error){fail(400,error.code,error.message);}}
     if(area.target !== undefined && area.target !== '') id(area.target, 'area target');
     interactionUrl(area.url);if(area.actions!==undefined)actions(area.actions);
     if(area.message!==undefined)text(area.message,'area message',2000,{empty:true});
   }
+  try{validateStarts(value);}catch(error){fail(400,error.code,error.message);}
   return safeJson(value);
 }
 export function woka(value) {

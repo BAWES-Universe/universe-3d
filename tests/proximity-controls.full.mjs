@@ -1,7 +1,7 @@
 /**
  * Actual bundled 3D game, authenticated local HTTP/SSE, native product input.
  * Run after building and freezing runtime source:
- * flock /workspace/scratch/41c8dbf833be/.universe-gpu-test.lock node tests/proximity-controls.full.mjs
+ * node tests/proximity-controls.full.mjs
  * Two independent Chromium processes prevent accidental identity sharing.
  * API fixtures only create an explicitly synthetic outsider, sibling sessions,
  * and room access changes. Browser evaluation reads diagnostics/DOM only.
@@ -16,7 +16,7 @@ import {launch} from '../scripts/browser.mjs';
 
 const root=new URL('../',import.meta.url), out=new URL('../evidence/proximity-controls-full/',import.meta.url);
 const replay=process.env.PROXIMITY_CONTROLS_REPLAY;
-assert(replay===undefined||['secondary','touch'].includes(replay),'Only explicit secondary or touch replay modes are supported');
+assert(replay===undefined||['secondary','touch','observer'].includes(replay),'Only explicit secondary, touch or observer replay modes are supported');
 const targeted=!!replay;
 await mkdir(out,{recursive:true});
 async function hashes(){
@@ -158,23 +158,25 @@ try{
  await check('Authenticated API access revocation clears native follower consent and local motion',async()=>{
   await resetPair();await nativeInvite(alice,bob,names.alice);await nativeAccept(bob,names.alice);const id=await bob.evaluate(()=>__universe.getState().user.id);const result=await alice.request.post(base+'/api/rooms/commons/moderate',{data:{userId:id,action:'kick'}});fixtures.push({label:'Authenticated owner access-revocation fixture',path:'/api/rooms/commons/moderate',method:'POST',status:result.status()});assert.equal(result.status(),200);await bob.waitForFunction(()=>!__universe.getState().ready);await bob.waitForFunction(()=>!__universe.getProximityControls().motion&&!__universe.getFollowMotion().armed);const after=await position(bob);await unchangedAcrossFrames(bob,after);assert.equal((await (await bob.request.get(base+'/api/proximity-controls')).json()).following??null,null);await visit(bob,'The Studio','studio');await visit(bob,'The Commons','commons');
  });
+ }
+ if(!targeted||replay==='observer'){
  await check('Separate authenticated session observes following without a lease, preserves position and cannot drive the shared avatar',async()=>{
   await resetPair();const username='group_'+randomUUID().replaceAll('-','').slice(0,16),password=randomUUID();const registered=await bob.request.post(base+'/api/account',{data:{username,password}});assert.equal(registered.status(),201);fixtures.push({label:'Ephemeral synthetic test-account registration',path:'/api/account',method:'POST',status:registered.status()});
   await nativeInvite(alice,bob,names.alice);await nativeAccept(bob,names.alice);await walkAxis(alice,'z',-8);await bob.waitForFunction(()=>__universe.getState().position.z< -3);await settled(bob);const before=await position(bob),lease=(await controls(bob)).motion.leaseId;
   const session=apiFixture('Separate-session synthetic login');assert.equal((await session.call('/api/login','POST',{username,password})).status,200);const cookie=session.cookie.slice(session.cookie.indexOf('=')+1);const third=await makeBrowserPage('separate-session sibling',{cookies:[{name:'universe_session',value:cookie,domain:'127.0.0.1',path:'/',httpOnly:true,secure:false,sameSite:'Strict'}],origins:[]});
   try{await enter(third.page,names.bob);assert.equal(await third.page.evaluate(()=>__universe.getState().user.id),await bob.evaluate(()=>__universe.getState().user.id));await third.page.waitForFunction(()=>__universe.getProximityControls().followingReadOnly);const secondary=await controls(third.page);assert.equal(secondary.motion,null);assert.equal(secondary.context.following.controlling,false);assert.equal(secondary.context.following.leaseId,null);assert.equal((await controls(bob)).motion.leaseId,lease);assert(distance(await position(bob),before)<.1,'Secondary admission must preserve controlling position');await third.page.waitForFunction(expected=>Math.hypot(__universe.getState().position.x-expected.x,__universe.getState().position.z-expected.z)<.1,before);
-   const stopped=await position(third.page);await gameplay(third.page);try{await third.page.keyboard.down('w');await frames(third.page,8);}finally{await third.page.keyboard.up('w');}await unchangedAcrossFrames(third.page,stopped);const response=await third.page.request.post(base+'/api/presence',{data:{roomId:'commons',x:20,z:20,moving:true}});fixtures.push({label:'Separate-session unauthorized movement attempt',path:'/api/presence',method:'POST',status:response.status()});assert.equal(response.status(),409);assert.equal((await response.json()).code,'FOLLOW_CONTROLLED_ELSEWHERE');await followButton(third.page).click();await bob.waitForFunction(()=>!__universe.getProximityControls().context?.following&&!__universe.getProximityControls().motion);
+   const stopped=await position(third.page);await gameplay(third.page);try{await third.page.keyboard.down('w');await frames(third.page,8);}finally{await third.page.keyboard.up('w');}await unchangedAcrossFrames(third.page,stopped);const admissionId=await third.page.evaluate(()=>__universe.getState().admissionId);assert(admissionId,'Observer must have a current placement before probing follow authorization');const response=await third.page.request.post(base+'/api/presence',{data:{roomId:'commons',admissionId,x:20,z:20,moving:true}});fixtures.push({label:'Separate-session unauthorized movement attempt',path:'/api/presence',method:'POST',status:response.status()});assert.equal(response.status(),409);assert.equal((await response.json()).code,'FOLLOW_CONTROLLED_ELSEWHERE');await followButton(third.page).click();await bob.waitForFunction(()=>!__universe.getProximityControls().context?.following&&!__universe.getProximityControls().motion);
   }finally{await third.context.close();await third.browser.close();}await gameplay(bob);
  });
  }
- if(replay!=='touch')await check('Same-cookie secondary browser observes a single controller; native sibling room travel retires the prior lease',async()=>{
+ if(!targeted||replay==='secondary')await check('Same-cookie secondary browser observes a single controller; native sibling room travel retires the prior lease',async()=>{
   await resetPair();await nativeInvite(alice,bob,names.alice);await nativeAccept(bob,names.alice);const oldConnection=(await controls(bob)).context.connectionId,oldLease=(await controls(bob)).motion.leaseId;
   // Same accepted HTTP session in another process. This deliberately avoids the
   // same-process multi-WebGL bootstrap instability seen in this test runtime.
   const secondary=await makeBrowserPage('same-cookie sibling',await bobContext.storageState()),sibling=secondary.page;
   try{await enter(sibling,names.bob);assert.equal(await sibling.evaluate(()=>__universe.getState().user.id),await bob.evaluate(()=>__universe.getState().user.id));await sibling.waitForFunction(()=>__universe.getProximityControls().followingReadOnly);assert.equal((await controls(sibling)).motion,null);assert.equal((await controls(bob)).motion.leaseId,oldLease);assert.notEqual((await controls(sibling)).context.connectionId,oldConnection);await visit(sibling,'The Studio','studio');await bob.waitForFunction(()=>!__universe.getProximityControls().motion&&!__universe.getProximityControls().context?.following);await visit(sibling,'The Commons','commons');await bob.waitForFunction(old=>!!__universe.getProximityControls().context&&__universe.getProximityControls().context.connectionId!==old,oldConnection);}finally{await secondary.context.close();await secondary.browser.close();}await gameplay(bob);
  });
- await check('At 320px portrait and short landscape native touch can reach invitation, Lock, Ignore, Accept and Stop',async()=>{
+ if(replay!=='observer')await check('At 320px portrait and short landscape native touch can reach invitation, Lock, Ignore, Accept and Stop',async()=>{
   if(replay!=='touch')await resetPair();const cdp=await bobContext.newCDPSession(bob);
   for(const viewport of [{width:320,height:568},{width:568,height:320}]){
    await bob.setViewportSize(viewport);await frames(bob,6);
@@ -201,6 +203,6 @@ try{
  for(const release of heldReleases)await release().catch(()=>{});
  const afterHashes=await hashes(),unchanged=beforeHashes.combined===afterHashes.combined;
  if(!unchanged){checks.push({name:'Exact source and bundle hashes unchanged throughout run',status:'failed'});process.exitCode=1;}else checks.push({name:'Exact source and bundle hashes unchanged throughout run',status:'passed'});
- await writeFile(new URL(replay==='touch'?'results-touch.json':targeted?'results-secondary.json':'results.json',out),JSON.stringify({status:process.exitCode?'failed':'passed',mode:replay==='touch'?'touch-only replay':targeted?'same-cookie and touch replay only':'full native suite',scope:'Actual bundled 3D shell, separate Chromium processes, native keyboard/pointer/touch, isolated memory SQLite and opt-in test membership configuration. API-only outsider/access fixtures are labeled when used. No actual devices, live providers, physical phones or deployment claimed.',checks,errors,hashes:{before:beforeHashes,after:afterHashes,unchanged},fixtures,requests,layouts,motionSamples,configuration:{proximityMembershipConfig:proximityFixture,database:':memory:',scene:{spawn:{x:0,z:0},bounds:{width:48,depth:40},obstacle}},browserVersions:await Promise.all(browsers.map(browser=>browser.version()))},null,2));
+ await writeFile(new URL(replay==='observer'?'results-observer.json':replay==='touch'?'results-touch.json':targeted?'results-secondary.json':'results.json',out),JSON.stringify({status:process.exitCode?'failed':'passed',mode:replay==='observer'?'separate-session observer replay only':replay==='touch'?'touch-only replay':targeted?'same-cookie and touch replay only':'full native suite',scope:'Actual bundled 3D shell, separate Chromium processes, native keyboard/pointer/touch, isolated memory SQLite and opt-in test membership configuration. API-only outsider/access fixtures are labeled when used. No actual devices, live providers, physical phones or deployment claimed.',checks,errors,hashes:{before:beforeHashes,after:afterHashes,unchanged},fixtures,requests,layouts,motionSamples,configuration:{proximityMembershipConfig:proximityFixture,database:':memory:',scene:{spawn:{x:0,z:0},bounds:{width:48,depth:40},obstacle}},browserVersions:await Promise.all(browsers.map(browser=>browser.version()))},null,2));
  for(const context of contexts)await context.close().catch(()=>{});for(const browser of browsers)await browser.close().catch(()=>{});await app.close();
 }

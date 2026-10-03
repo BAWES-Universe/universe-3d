@@ -4,9 +4,9 @@ import {createAreaActionController} from './actions.js';
 import {createAudioActions} from './audio-actions.js';
 import {mountEmbeddedPanels} from './embedded-panels.js';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
-const legacyAreaActions=area=>[...(area.action==='link'&&area.url?[{id:'legacy-area-link',type:'link',url:area.url,label:area.name,mode:'tab',trigger:'enter'}]:[]),...(area.action==='teleport'&&area.target?[{id:'legacy-area-target',type:'teleport',target:area.target,label:area.name,trigger:'enter'}]:[]),...(area.actions||[])];
+const legacyAreaActions=area=>[...(area.action==='link'&&area.url?[{id:'legacy-area-link',type:'link',url:area.url,label:area.name,mode:'tab',trigger:'enter'}]:[]),...(area.action==='teleport'&&area.target?[{id:'legacy-area-target',type:'teleport',target:area.target,...(area.entry===undefined?{}:{entry:area.entry}),label:area.name,trigger:'enter'}]:[]),...(area.actions||[])];
 export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve=async()=>{},onDialog,onCloseDialog=()=>{},onNavigate,onOpenChange=()=>{},getGameWidth,onWindowChange=()=>{},toast=()=>{}}){
- let scope='',userId='',epoch=0,activeMenu=null,lastFrameRef=null,lastFrameKey=null,restoreEpoch=0;const inflight=new Map(),resources=new Map(),controls=new Map();
+ let scope='',userId='',epoch=0,activeMenu=null,lastFrameRef=null,lastFrameKey=null,restoreEpoch=0;const inflight=new Map(),resources=new Map(),controls=new Map(),landingExits=new Set();
  const areaList=el('div','area-action-list'),audioRoot=el('div','world-audio-controls');controlsRoot.replaceChildren(areaList,audioRoot);
  const frames=mountEmbeddedPanels({root,onOpenChange,getGameWidth,onWindowChange,toast});
  let storedVolume=1;try{storedVolume=Number(localStorage.getItem('universe-world-volume')??1);}catch{}
@@ -38,11 +38,11 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
    await beforeResolve({ref,deliberate});if(!isCurrent()||!getState().ready||getState().user?.id!==actorId||epoch!==started||inflight.get(id)!==token||!find(ref))return false;
    const revision=getState().room.revision,response=await api(`/api/rooms/${encodeURIComponent(ref.roomId)}/actions/resolve`,{method:'POST',body:{entityType:ref.entityType,entityId:ref.entityId,actionId:ref.actionId,revision}});
    if(!isCurrent()||!getState().ready||getState().user?.id!==actorId||epoch!==started||inflight.get(id)!==token||getState().room?.id!==ref.roomId||getState().room.revision!==response.revision||JSON.stringify(find(ref)?.action)!==requested)return false;
-   const action=response.action;if(['type','url','target','message','volume','loop','width','closable'].some(field=>action[field]!==current.action[field]))throw Error('This action changed. Open the item again.');const safe=action.url?safeActionUrl(action.url,location.origin):null;
+   const action=response.action;if(['type','url','target','entry','message','volume','loop','width','closable'].some(field=>action[field]!==current.action[field]))throw Error('This action changed. Open the item again.');const safe=action.url?safeActionUrl(action.url,location.origin):null;
    if(action.url&&!safe)throw Error('This item needs a safe HTTP(S), asset or protected document address');
    resources.set(id,{ref,fingerprint:JSON.stringify(current.action)});activeMenu=null;
    if(action.type==='message')onDialog({owner:'room-action:'+id,eyebrow:response.entity.name,title:action.name||action.label||'A message for you',text:action.message||''});
-   if(action.type==='teleport'){await onNavigate(action.target);return true;}
+   if(action.type==='teleport'){await onNavigate(action.target,{...(action.entry===undefined?{}:{entry:action.entry}),sourceAction:{...ref,revision:response.revision}});return true;}
    if(action.type==='audio'){
     if(safe.kind==='document')throw Error('Protected documents download; they cannot be used as room audio');
     await audio.play({key:id,url:safe.url,label:action.label||action.name||response.entity.name,volume:action.volume??1,loop:action.loop??false});
@@ -63,19 +63,21 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
  const areaController=createAreaActionController({enter:({area,action})=>{
   const ref=reference('area',area,action),id=key(ref),button=el('button','small-btn',action.label||action.name||actionName(action));button.type='button';button.onclick=()=>activate(ref,{deliberate:true});const holder=el('div','area-action-control');holder.append(button);areaList.append(holder);controls.set(id,button);
   const trigger=action.trigger??(action.type==='audio'||action.type==='teleport'?'enter':'interact');
-  if(trigger==='enter')void activate(ref);
+  if(trigger==='enter'&&!(action.type==='teleport'&&landingExits.has(area.id)))void activate(ref);
  },leave:({area,action})=>{const id=key({roomId:scope,entityType:'area',entityId:area.id,actionId:action.id});controls.get(id)?.parentElement?.remove();controls.delete(id);release(id);}});
  function release(id){if(lastFrameRef&&key(lastFrameRef)===id){lastFrameRef=null;restoreEpoch++;}const pending=inflight.get(id);try{pending?.popup?.close();}catch{}inflight.delete(id);resources.delete(id);audio.stop(id);frames.close(id);if(!frames.isOpen()&&!lastFrameRef)lastFrameKey=null;}
- function clear(){epoch++;restoreEpoch++;lastFrameRef=null;lastFrameKey=null;if(activeMenu)onCloseDialog('room-item:'+activeMenu.entityId);for(const id of resources.keys())onCloseDialog('room-action:'+id);areaController.clear();for(const pending of inflight.values())try{pending.popup?.close();}catch{}inflight.clear();resources.clear();controls.clear();areaList.replaceChildren();audio.clear();frames.clear();activeMenu=null;}
+ function clear(){epoch++;restoreEpoch++;landingExits.clear();lastFrameRef=null;lastFrameKey=null;if(activeMenu)onCloseDialog('room-item:'+activeMenu.entityId);for(const id of resources.keys())onCloseDialog('room-action:'+id);areaController.clear();for(const pending of inflight.values())try{pending.popup?.close();}catch{}inflight.clear();resources.clear();controls.clear();areaList.replaceChildren();audio.clear();frames.clear();activeMenu=null;}
+ function arrive(roomId,scene,position){clear();scope=roomId;userId=getState().user?.id||'';for(const area of scene?.areas||[])if(contains(area,position.x,position.z))landingExits.add(area.id);}
  function update({suppressed=false}={}){
   const state=getState(),room=state.room?.id||'',person=state.user?.id||'';if(scope!==room||userId!==person){clear();scope=room;userId=person;lastFrameRef=null;}
   if(!state.ready||!room){clear();return;}
   if(activeMenu){const item=state.scene.objects.find(o=>o.id===activeMenu.entityId);if(!item){onCloseDialog('room-item:'+activeMenu.entityId);activeMenu=null;}}
+  for(const id of landingExits){const area=state.scene.areas?.find(area=>area.id===id);if(!area||!contains(area,state.position.x,state.position.z))landingExits.delete(id);}
   const scene={...state.scene,areas:(state.scene.areas||[]).map(area=>({...area,actions:legacyAreaActions(area)}))};areaController.update(room,scene,state.position,{suppressed});
   for(const[id,value]of resources){const actual=find(value.ref);if(!actual||JSON.stringify(actual.action)!==value.fingerprint||(value.ref.entityType==='area'&&!contains(actual.entity,state.position.x,state.position.z))){onCloseDialog('room-action:'+id);release(id);}}
  }
  function cancelRestore(){restoreEpoch++;for(const[id,token]of inflight)if(token.restoring)inflight.delete(id);}
  function close(){cancelRestore();frames.clear();}
  async function restore(contentKey,{focus=true,isCurrent=()=>true}={}){const state=getState();if(!lastFrameRef||contentKey!==lastFrameKey||scope!==state.room?.id||userId!==state.user?.id||!state.ready)return false;cancelRestore();const current=restoreEpoch;const ok=await activate(lastFrameRef,{restoring:true,focus,isCurrent:()=>current===restoreEpoch&&contentKey===lastFrameKey&&isCurrent()});return current===restoreEpoch&&isCurrent()?ok:null;}
- return {openItem,activate,update,clear,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,windowState:()=>frames.windowState(),setWindowForeground:value=>frames.setForeground(value),setWindowMaximized:value=>frames.setMaximized(value),handleWindowEscape:event=>frames.handleEscape(event),refreshWindowLayout:()=>frames.refreshLayout(),close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
+ return {openItem,activate,update,clear,arrive,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,windowState:()=>frames.windowState(),setWindowForeground:value=>frames.setForeground(value),setWindowMaximized:value=>frames.setMaximized(value),handleWindowEscape:event=>frames.handleEscape(event),refreshWindowLayout:()=>frames.refreshLayout(),close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
 }

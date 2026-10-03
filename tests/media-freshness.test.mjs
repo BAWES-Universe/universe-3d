@@ -94,7 +94,7 @@ test('current-policy network rejection invalidates unresolved permission prompts
 test('main area reconciliation invokes its synchronous deny guard before publishing the Silent banner',async()=>{
  const path=process.env.MAIN_SOURCE || new URL('../src/main.js',import.meta.url),source=await readFile(path,'utf8');const start=source.indexOf('function updateAreas('),end=source.indexOf('\nasync function sendPresence',start);const order=[];
  const nodes=new Map();const $=id=>{if(!nodes.has(id))nodes.set(id,new Proxy({}, {set(target,key,value){if(id==='area-message'&&key==='textContent')order.push('banner');target[key]=value;return true;}}));return nodes.get(id);};
- const ctx={state:{scene:{areas:[silentArea],objects:[]},user:{id:'a'},position:{x:5,z:0},ready:true,online:true},media:{checkLocalPolicy(){order.push('guard');}},contains:()=>true,areaActions:null,personalAreas:null,botEditor:null,building:false,modalOpen:()=>false,isTyping:()=>false,currentAreas:null,activeMediaArea:areas=>areas[0],mediaAreaLabel:()=>'',mediaAreaMessage:()=>'',nearby:null,$};
+ const ctx={navigating:false,state:{scene:{areas:[silentArea],objects:[]},user:{id:'a'},position:{x:5,z:0},ready:true,online:true,admissionId:'current-placement'},media:{checkLocalPolicy(){order.push('guard');}},contains:()=>true,areaActions:null,personalAreas:null,botEditor:null,building:false,modalOpen:()=>false,isTyping:()=>false,currentAreas:null,activeMediaArea:areas=>areas[0],mediaAreaLabel:()=>'',mediaAreaMessage:()=>'',nearby:null,$};
  vm.runInNewContext(source.slice(start,end)+';updateAreas();',ctx);assert.deepEqual(order,['guard','banner']);
 });
 
@@ -174,11 +174,15 @@ test('committed Silent cache rejects other rooms/accounts/malformed revisions an
  f.state.room={id:'r',revision:1,scene:{areas:[]}};f.state.user={id:'b'};f.guard();assert.equal(f.session.snapshot().localSilent,false);assert.equal(f.session.acceptCommittedRoom?.(saved,'a'),false);assert.equal(f.session.acceptCommittedRoom?.({...saved,revision:2},'b'),true);assert.equal(f.session.snapshot().localSilent,true);
 });
 
-test('scene and guarded reconnect hooks capture committed authority before editor draft reconciliation',async()=>{
- const path=process.env.MAIN_SOURCE || new URL('../src/main.js',import.meta.url),source=await readFile(path,'utf8');
- assert.match(source,/const eventActorId=state\.user\?\.id/);assert.match(source,/handleEvent\(\{type,data,actorId:eventActorId\}\)/);
- const reconnect=source.slice(source.indexOf('function connectEvents'),source.indexOf('async function refreshCatalog'));assert.ok(reconnect.indexOf('accountId!==state.user?.id')<reconnect.indexOf('media?.acceptCommittedRoom(data.room,accountId)'));assert.ok(reconnect.indexOf('media?.acceptCommittedRoom(data.room,accountId)')<reconnect.indexOf('editor.receiveScene(data.room)'));
- const scene=source.match(/if\(type==='scene'&&thisRoom&&state.ready\)\{[^\n]+/)[0];assert.ok(scene.indexOf('media?.acceptCommittedRoom(data.room,event.actorId)')<scene.indexOf('editor.receiveScene(data.room)'));
+test('retained reconnect applies committed Silent authority before preserving a dirty editor base',async t=>{
+ const f=fixture();t.after(()=>f.session.destroy());f.state.room.revision=1;const draft=f.state.scene;await f.session.toggleDevice('camera');const track=f.session.snapshot().devices.camera.stream.getTracks()[0];
+ const path=process.env.MAIN_SOURCE || new URL('../src/main.js',import.meta.url),source=await readFile(path,'utf8'),start=source.indexOf('const arrivalNavigation=createArrivalNavigation('),end=source.indexOf('\nfunction joinRoom',start),order=[];
+ assert(start>=0&&end>start,'The real navigation callback must be present');let callbacks;
+ const nodes=new Map();const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,focus(){throw Error('Retained reconnect must not steal focus');}});return nodes.get(id);};
+ const ctx={createArrivalNavigation:options=>{callbacks=options;return{};},api(){},state:f.state,building:true,applyArrival(){},loseArrivalAuthority(){},media:{acceptCommittedRoom:(room,actor)=>{order.push('committed-media');return f.session.acceptCommittedRoom(room,actor);},update(){},onEvent(){}},imageLibrary:{receiveRoom(){order.push('image-authority');},acceptRoom(){}},editor:{cancelGesture(){},receiveScene(){order.push(track.readyState);}},canBuildInRoom:()=>true,normalizePeople:people=>people||[],updateTitle(){},renderPeople(){},social:{render(){}},refreshBotPermissions(){},quests:null,setOnline(){},writeDestination(){throw Error('Retained reconnect must preserve history');},$};
+ vm.runInNewContext(source.slice(start,end),ctx);
+ callbacks.onCommit({result:{room:{id:'r',revision:2,scene:{areas:[{...silentArea,x:0}]}},presence:[],members:[],bots:[]},decision:{kind:'retain'},destination:{roomId:'r'},options:{reconcile:true},events:[]});
+ assert.deepEqual(order,['committed-media','image-authority','ended']);assert.equal(track.readyState,'ended');assert.equal(f.state.room.revision,1);assert.equal(f.state.scene,draft);assert.equal(f.session.snapshot().localSilent,true);assert.equal(f.session.snapshot().peers.length,0);assert.equal(ctx.building,true);assert.equal(nodes.has('editor'),false,'Same admission must not hide or rebuild the editor');
 });
 
 test('actual EventSource hooks reject retired streams, closed generations and switched accounts',async()=>{
@@ -186,7 +190,7 @@ test('actual EventSource hooks reject retired streams, closed generations and sw
  const code=source.slice(source.indexOf('function connectEvents'),source.indexOf('async function refreshCatalog'));
  const streams=[],accepted=[],online=[],resets=[],controlResets=[],motionClears=[];
  class Source {constructor(){this.listeners=new Map();streams.push(this);}addEventListener(type,fn){this.listeners.set(type,fn);}close(){this.closed=true;}emit(type,value){this.listeners.get(type)?.({data:JSON.stringify(value)});}}
- const ctx={events:null,pendingNearbyContext:null,pendingGroupContext:null,motion:{},path:[],groupControls:{resetConnection:reason=>controlResets.push(reason)},followMotion:{clear:()=>motionClears.push('clear')},state:{user:{id:'a'},room:null},joinEpoch:0,EventSource:Source,social:{resetNearbyConnection:reason=>resets.push(reason)},setOnline:value=>online.push(value),handleEvent:event=>accepted.push(event)};
+ let generation=0;const ctx={navigating:false,reconcileArrival:()=>Promise.resolve(),arrivalNavigation:{reset:()=>++generation,hello:()=>({kind:'ready'}),observe:()=>({buffered:false,decision:null})},events:null,pendingNearbyContext:null,pendingGroupContext:null,motion:{},path:[],groupControls:{resetConnection:reason=>controlResets.push(reason)},followMotion:{clear:()=>motionClears.push('clear')},state:{user:{id:'a'},room:null},joinEpoch:0,EventSource:Source,social:{resetNearbyConnection:reason=>resets.push(reason)},setOnline:value=>online.push(value),handleEvent:event=>accepted.push(event)};
  vm.runInNewContext(code+';connectEvents();',ctx);const first=streams[0];first.emit('scene',{});assert.equal(accepted.length,0);
  first.onopen();first.emit('scene',{roomId:'r'});assert.equal(accepted.length,1);assert.equal(accepted[0].actorId,'a');
  vm.runInNewContext('connectEvents();',ctx);const second=streams[1];assert.equal(first.closed,true);const retiredResetCount=controlResets.length,retiredClearCount=motionClears.length;first.emit('scene',{});first.emit('proximity-controls',{});first.onerror();assert.equal(accepted.length,1);assert.deepEqual(online,[true]);assert.equal(controlResets.length,retiredResetCount);assert.equal(motionClears.length,retiredClearCount);

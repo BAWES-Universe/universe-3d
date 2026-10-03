@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ arrivals:['arrival-editor.browser.mjs','arrival-renderer.browser.mjs','arrival-surfaces.browser.mjs','arrival-navigation.full.mjs','arrival-reconnect.full.mjs'],
  groupplay:['proximity-controls-client.browser.mjs','proximity-controls.full.mjs'],
  windows:['window-control-states.browser.mjs','content-window.browser.mjs','social.browser.mjs','content-window.full.mjs'],
  terrain:['terrain-editor.browser.mjs','terrain-renderer.browser.mjs','terrain.full.mjs','terrain-keyboard.full.mjs'],
@@ -16,7 +17,7 @@ const groups={
  images:['image-library-shell.browser.mjs','editor-image.browser.mjs','editor-toolbar.browser.mjs','image-library.full.mjs','image-lifecycle.full.mjs'],
  authoring:['tranche-smoke.browser.mjs','tranche-actions.browser.mjs','tranche-personal.browser.mjs','tranche-bots.browser.mjs']
 };
-const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media, framing, residents, presentation, hud, nearby, terrain, windows or groupplay');
+const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay or arrivals');
 await mkdir('evidence',{recursive:true});const results=[];
 for(const file of groups[group]){
  console.log('\n=== '+file+' ===');const start=Date.now();

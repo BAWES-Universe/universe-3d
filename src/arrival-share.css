@@ -1,0 +1,5 @@
+.arrival-share-form { display: grid; gap: 12px; margin-top: 16px; }
+.arrival-share-form label { display: grid; gap: 6px; font-size: 14px; }
+.arrival-share-form input, .arrival-share-form select { width: 100%; min-width: 0; min-height: 48px; }
+.arrival-share-form button { min-height: 48px; justify-self: start; }
+.arrival-share-form p { margin: 0; color: var(--u-text-muted); font-size: 13px; }

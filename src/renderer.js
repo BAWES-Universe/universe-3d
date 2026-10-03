@@ -160,7 +160,16 @@ export async function createRenderer(canvas,labels){
   if(!newWorld)return;world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
   const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,groundPieces,boxPieces,material});floor.metadata={type:'ground'};addTerrain(world.terrain,root);
   for(const o of world.objects)if(o.type!=='image')addObject(o);syncImages();
-  if(build)for(const a of world.areas){const col={silent:'#67bdae',meeting:'#b09add',stage:'#e0bd77',audience:'#bc9bca',welcome:'#9eccab',teleport:'#c3a8fa'}[a.action]||'#aa9cc2';box(a.id,a.x,.083,a.z,a.width,.015,a.depth,col,root,{alpha:.15,pickable:false,metadata:{id:a.id,type:'area'}});worldLabels.push({el:label(a.id,a.name,'area-label'),position:new Vector3(a.x,.5,a.z)});}
+  if(build)for(const a of world.areas){
+   const col=a.start?'#8bdbc8':{silent:'#67bdae',meeting:'#b09add',stage:'#e0bd77',audience:'#bc9bca',welcome:'#9eccab',teleport:'#c3a8fa'}[a.action]||'#aa9cc2';box(a.id,a.x,.083,a.z,a.width,.015,a.depth,col,root,{alpha:.15,pickable:false,metadata:{id:a.id,type:'area'}});
+   const marker=label(a.id,a.start?'Arrival: '+a.name+(a.start.isDefault?' · default':''):a.name,'area-label'+(a.start?' arrival-label':''));
+   if(a.start){
+    marker.dataset.arrivalKey=a.start.key;marker.dataset.arrivalDefault=String(a.start.isDefault===true);marker.title='Entry key: '+a.start.key;
+    const diameter=Math.min(.9,a.width*.6,a.depth*.6),ring=CreateTorus('arrival-marker-'+a.id,{diameter,thickness:.055,tessellation:20},scene);ring.position.set(a.x,.14,a.z);finish(ring,col,root,{pickable:false,metadata:{id:a.id,type:'area'}});
+    cylinder('arrival-centre-'+a.id,a.x,.14,a.z,diameter*.1,.025,col,root,diameter*.1,{pickable:false,metadata:{id:a.id,type:'area'}});
+   }
+   worldLabels.push({el:marker,position:new Vector3(a.x,.5,a.z)});
+  }
   // Merge by material, pickability and shadow behavior, preserving exact face ranges.
   const batches=new Map();for(const parent of nodes)for(const mesh of parent.getChildMeshes()){
    if(mesh===floor||!mesh.getTotalVertices()||mesh.metadata?.dynamic)continue;

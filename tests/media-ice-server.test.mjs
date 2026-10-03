@@ -498,7 +498,7 @@ test('HTTP per-session attempts are bounded, including failures, and recover at 
   const f=await httpFixture(t), a=await f.guest(), p=await f.joined(a);
   for(let i=0;i<8;i++)assertFailure(await a.call('/api/media/ice','POST',bodyFor(randomScope())),403,'ICE_SCOPE_FORBIDDEN');
   assertFailure(await a.call('/api/media/ice','POST',bodyFor(p.iceScope)),429,'ICE_RATE_LIMITED');
-  f.advance(60_000);await a.call('/api/presence','POST',{roomId:'commons',x:0,z:7,moving:false});
+  f.advance(60_000);assert.equal((await a.call('/api/rooms/commons/join','POST',{mode:'resume'})).status,200); // Expired placement recovers through authoritative arrival.
   const renewed=await f.optIn(a);assert.equal((await a.call('/api/media/ice','POST',bodyFor(renewed.iceScope))).status,200);
 });
 

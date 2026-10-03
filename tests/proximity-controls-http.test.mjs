@@ -191,9 +191,9 @@ test('invitation state reaches a hard room bound without partial broadcast or ex
 });
 
 test('movement body started before accept and Stop cannot overwrite the completed transition',async t=>{
- const f=await setup(t,2),[a,b]=f.clients,[sa,sb]=f.streams;
- const early=delayedPost(f,b,{roomId:'r',x:22,z:0,moving:true},'/api/presence');await early.ready;await accept(f);const p=await f.context(b,sb);assert.equal((await post(b,p,'stop')).status,200);early.finish();assert.equal((await early.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,0);
- const accepted=await accept(f),held=delayedPost(f,b,{roomId:'r',x:24,z:0,moving:true,connectionId:accepted.connectionId,followLeaseId:accepted.following.leaseId},'/api/presence');await held.ready;assert.equal((await post(b,await f.context(b,sb),'stop')).status,200);held.finish();assert.equal((await held.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,0);
+ const f=await setup(t,2),[a,b]=f.clients,[sa,sb]=f.streams,acceptedX=f.app.presence.get(`r:${b.user.id}`).x;
+ const early=delayedPost(f,b,{roomId:'r',x:22,z:0,moving:true},'/api/presence');await early.ready;await accept(f);const p=await f.context(b,sb);assert.equal((await post(b,p,'stop')).status,200);early.finish();assert.equal((await early.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,acceptedX);
+ const accepted=await accept(f),held=delayedPost(f,b,{roomId:'r',x:24,z:0,moving:true,connectionId:accepted.connectionId,followLeaseId:accepted.following.leaseId},'/api/presence');await held.ready;assert.equal((await post(b,await f.context(b,sb),'stop')).status,200);held.finish();assert.equal((await held.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,acceptedX);
 });
 
 test('secondary same-room join retains controlling follow position and the accepted lease',async t=>{
@@ -209,8 +209,8 @@ test('partial command body cannot rebind to post-Stop revisions or a new stream 
 });
 
 test('ordinary delayed movement cannot survive session room ABA while a sibling preserves admission',async t=>{
- const f=await setup(t,2),[a,b]=f.clients,[sa,sb]=f.streams,sibling=f.sameUser(b),ss=await stream(t,f,sibling),before=await f.context(b,sb),held=delayedPost(f,b,{roomId:'r',x:19,z:0,moving:true},'/api/presence');await held.ready;
- await b.call('/api/rooms/other/join','POST',{});await b.call('/api/rooms/r/join','POST',{});assert.equal((await f.context(b,sb)).memberId,before.memberId);held.finish();assert.equal((await held.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,0);
+ const f=await setup(t,2),[a,b]=f.clients,[sa,sb]=f.streams,sibling=f.sameUser(b),ss=await stream(t,f,sibling),before=await f.context(b,sb),acceptedX=f.app.presence.get(`r:${b.user.id}`).x,held=delayedPost(f,b,{roomId:'r',x:19,z:0,moving:true},'/api/presence');await held.ready;
+ await b.call('/api/rooms/other/join','POST',{});await b.call('/api/rooms/r/join','POST',{});assert.equal((await f.context(b,sb)).memberId,before.memberId);held.finish();assert.equal((await held.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,acceptedX);
 });
 
 test('ordinary delayed leader movement cannot survive same-room session rejoin and revoked leadership',async t=>{
@@ -220,7 +220,7 @@ test('ordinary delayed leader movement cannot survive same-room session rejoin a
 
 test('kick fences pending movement even for a session without an SSE stream',async t=>{
  const f=await setup(t,2),[owner,b]=f.clients,sibling=f.sameUser(b),held=delayedPost(f,sibling,{roomId:'r',x:19,z:0,moving:true},'/api/presence');await held.ready;
- assert.equal((await owner.call('/api/rooms/r/moderate','POST',{userId:b.user.id,action:'kick'})).status,200);assert.equal((await sibling.call('/api/rooms/r/join','POST',{})).status,200);held.finish();assert.equal((await held.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,0);
+ assert.equal((await owner.call('/api/rooms/r/moderate','POST',{userId:b.user.id,action:'kick'})).status,200);const accepted=await sibling.call('/api/rooms/r/join','POST',{});assert.equal(accepted.status,200);held.finish();assert.equal((await held.done).status,409);assert.equal(f.app.presence.get(`r:${b.user.id}`).x,accepted.data.arrival.x);
 });
 
 test('pending presence fences have per-session limits and release after completion',async t=>{

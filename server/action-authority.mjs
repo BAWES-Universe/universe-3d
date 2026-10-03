@@ -6,14 +6,12 @@ import {bindImageDefinitions} from '../src/image-asset-context.js';
 export function canonicalAreaActions(area){
  const legacy=[];
  if(area.action==='link'&&area.url)legacy.push({id:'legacy-area-link',type:'link',url:area.url,label:area.name,mode:'tab',trigger:'enter'});
- if(area.action==='teleport'&&area.target)legacy.push({id:'legacy-area-target',type:'teleport',target:area.target,label:area.name,trigger:'enter'});
+ if(area.action==='teleport'&&area.target)legacy.push({id:'legacy-area-target',type:'teleport',target:area.target,...(area.entry!==undefined?{entry:area.entry}:{}),label:area.name,trigger:'enter'});
  return [...legacy,...(area.actions||[])];
 }
-export function createActionAuthority({store,presence,body,send,now=Date.now}){
- async function handle({req,res,path,method,userId,session}){
-  const match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/actions\/resolve$/);
-  if(!match||method!=='POST')return false;
-  const roomId=id(match[1]),input=record(await body(req));
+export function createActionAuthority({store,presence,body,send,now=Date.now,captureFence=()=>null,checkFence=()=>{}}){
+ function resolveCanonical({roomId,userId,session,input}){
+  id(roomId);record(input);
   const current=store.get('SELECT * FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?',session.token_hash,userId,now());
   if(!current)fail(401,'AUTH_REQUIRED','Sign in again before using this action');
   if(current.current_room_id!==roomId)fail(409,'ROOM_CHANGED','Return to this room before using the item');
@@ -44,7 +42,13 @@ export function createActionAuthority({store,presence,body,send,now=Date.now}){
   if(canonical.type==='teleport'){
    const target=store.roomRow(canonical.target);if(!store.canSeeRoom(target,userId))fail(404,'DESTINATION_UNAVAILABLE','That destination is not available to you');
   }
-  send(res,200,{roomId,revision:row.revision,entityType,entity:{id:entity.id,name:entity.name||entity.type,text:entity.text||''},action:canonical});return true;
+  return {roomId,revision:row.revision,entityType,entity:{id:entity.id,name:entity.name||entity.type,text:entity.text||''},action:canonical};
  }
- return {handle};
+ async function handle({req,res,path,method,userId,session}){
+  const match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/actions\/resolve$/);
+  if(!match||method!=='POST')return false;
+  const fence=captureFence(session),input=record(await body(req));checkFence(session,fence);
+  send(res,200,resolveCanonical({roomId:id(match[1]),userId,session,input}));return true;
+ }
+ return {handle,resolveCanonical};
 }

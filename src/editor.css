@@ -1095,3 +1095,17 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
 @media (max-height: 520px) { .builder-terrain { max-height: calc(100dvh - 255px); overflow: auto; } .builder-terrain:not([hidden]) ~ .builder-hint { display: none; } }
 
 @media (pointer: coarse) { .builder-toolbelt .small-btn { min-width: 44px; } }
+
+/* Arrival settings follow the existing inspector and remain touch reachable. */
+.builder-arrival { margin: 12px 0; padding: 12px; border: 1px solid var(--u-secondary-border); border-radius: 12px; background: var(--u-secondary); }
+.builder-arrival h3 { margin: 0 0 10px; font-size: 12px; color: var(--u-text-soft); }
+.builder-arrival .field { margin-top: 8px; }
+.builder-arrival .arrival-error { color: #ffb3b1; }
+.arrival-save-state { display: block; margin: 9px 0; font-size: 10px; color: var(--u-text-muted); }
+.builder-arrival button { width: 100%; min-height: 44px; }
+.destination-picker { min-width: 0; }
+.destination-picker button { min-height: 44px; }
+.destination-picker select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.destination-picker .destination-hint { margin-top: 6px; font-size: 10px; line-height: 1.45; }
+.arrival-label { color: #a5edda; }
+@media (pointer: coarse) { .builder-arrival input, .builder-arrival select, .destination-picker select { min-height: 44px; } }

@@ -2,7 +2,7 @@ import {isDeepStrictEqual} from 'node:util';
 import * as v from './validation.mjs';
 import {objectFootprint,footprintInside,footprintsOverlap,editablePersonalArea} from '../src/personal-area-policy.js';
 const FULL_EDIT=['owner','admin','editor'];
-const RESERVED=['ownerId','owner_id','actorId','actor_id','userId','user_id','claimRevision','personalAreaId','createdBy','creatorId','canEdit','canEditObjects','serverData'];
+const RESERVED=['ownerId','owner_id','actorId','actor_id','userId','user_id','claimRevision','personalAreaId','createdBy','creatorId','canEdit','canEditObjects','serverData','arrival','admissionId','admissionEpoch','admissionRevision'];
 export function validatePersonalScene(scene){
   for(const area of scene.areas??[]){
     for(const key of RESERVED)if(Object.hasOwn(area,key))v.fail(400,'SERVER_OWNED_FIELD',`${key} is controlled by the server`);
@@ -63,7 +63,7 @@ export const personalAreaMethods={
     const {objects:oldObjects,...oldOther}=before,{objects:newObjects,...newOther}=next;
     if(!isDeepStrictEqual(oldOther,newOther))v.fail(403,'PERSONAL_AREA_ONLY','Personal-area ownership only allows object edits inside your own area');
     const revisions=v.record(expected,'personalAreaRevisions'),old=new Map(oldObjects.map(o=>[o.id,o])),fresh=new Map(newObjects.map(o=>[o.id,o]));
-    const allowed=new Set(['id','type','name','x','y','z','rotation','rotationY','width','height','depth','scale','color','text','url','target','document','actions','assetRef']);
+    const allowed=new Set(['id','type','name','x','y','z','rotation','rotationY','width','height','depth','scale','color','text','url','target','entry','document','actions','assetRef']);
     for(const objectId of new Set([...old.keys(),...fresh.keys()])){
       const a=old.get(objectId),b=fresh.get(objectId);if(isDeepStrictEqual(a,b))continue;
       for(const object of [a,b].filter(Boolean)){

@@ -49,6 +49,19 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
   function humans(roomId,row){return[...presence.values()].filter(p=>p.roomId===roomId&&p.kind!=='bot'&&p.userId&&now()-p.lastSeen<60000&&store.user(p.userId)&&store.canSeeRoom(row,p.userId));}
   function publicBot(r){return{id:r.id,botId:r.id,kind:'bot',roomId:r.roomId,name:r.config.name,appearance:clone(r.config.appearance),x:r.x,z:r.z,moving:r.moving,heading:r.heading,direction:r.direction,status:r.status,revision:r.revision,providerStatus:'unconnected'};}
   function snapshot(roomId){return[...runtime.values()].filter(r=>r.roomId===roomId).map(publicBot);}
+  // Predict the resident centres that reconcileRoom will expose on admission.
+  // Reading this never activates or publishes dormant residents: a failed human
+  // arrival must not create destination runtime state as a side effect.
+  function arrivalOccupants(roomId,{retiringAccountId=null}={}){
+    // Removing the sole visible account during an explicit relocation empties
+    // runtime before publication, so residents restart at their configured home.
+    const resets=retiringAccountId&&!humans(roomId,store.roomRow(roomId)).some(p=>p.userId!==retiringAccountId);
+    return store.all('SELECT id,config FROM room_bots WHERE room_id=? AND deleted_at IS NULL',roomId).flatMap(row=>{
+      const config=JSON.parse(row.config);if(!config.enabled)return[];
+      const point=(!resets&&runtime.get(row.id))||config.spawn;
+      return[{id:row.id,kind:'bot',roomId,x:point.x,z:point.z}];
+    });
+  }
   function publish(roomId){const bots=snapshot(roomId),encoded=JSON.stringify(bots);if(lastPublished.get(roomId)!==encoded){lastPublished.set(roomId,encoded);emitRoom(roomId,'bots',{roomId,bots});}}
   function stop(r,status){r.path=[];r.moving=false;r.status=status;}
   function reset(r,config,revision,sceneRevision){r.config=config;r.revision=revision;r.sceneRevision=sceneRevision;r.waypoint=0;r.pauseUntil=0;r.command=null;r.routeDone=false;r.blockedUntil=0;r.failures=0;stop(r,'returning');r.target=null;}
@@ -179,5 +192,5 @@ export function createBotService({store,presence,body,send,session,emitRoom=()=>
     if(id&&(method==='PATCH'||method==='DELETE')&&!result.duplicate)onChanged(roomId,id);
     tick();publish(roomId);send(res,method==='POST'&&!id&&!result.duplicate?201:200,result);return true;
   }
-  return{handle,command,snapshot,reconcileRoom,tick,capabilities,close(){closed=true;if(timer)clearInterval(timer);runtime.clear();lastPublished.clear();commandRates.clear();}};
+  return{handle,command,snapshot,arrivalOccupants,reconcileRoom,tick,capabilities,close(){closed=true;if(timer)clearInterval(timer);runtime.clear();lastPublished.clear();commandRates.clear();}};
 }

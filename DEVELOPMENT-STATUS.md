@@ -1,6 +1,16 @@
-# Development status · 2026-10-03 06:44 UTC
+# Development status · 2026-10-03 08:03 UTC
 
-## Current increment: mobile away media privacy
+## Current increment: native named arrivals (separate development work)
+
+Room editors can mark rectangular areas as named or default arrivals and choose destination entries on item/area doorways. The server authorizes the committed action and destination, chooses a collision-safe bounded landing, and returns one accepted pose plus placement identity. The client integration carries that authority through movement, reload, same-room travel and history; ordinary shared links choose an entry without granting private access. Arrival landing suppresses automatic doorway loops until the person leaves that area. This is a native adaptation of the pinned inline start/exit contracts, not Tiled import or infinite-world support.
+
+The operator release candidate remains `76b83c34cb2d461523ccb1b3b065c3030104fd28`, all thirteen jobs green in CI run `37104145211`. It excludes named arrivals. This development increment does not change that deployment pin, activate providers/media, or establish operator deployment.
+
+The final integrated source passes 1,370 CPU/API tests, zero failures and the same historical skip; all 291 source files pass syntax checks. Build, package startup/static serving and Dockerfile-copy reconstruction pass. All five new browser suites pass on the final bundle: native editor/markers/Share, twelve actual travel flows and four actual reconnect flows. They cover held newer scene/revocation, failed automatic doorway recovery, exact accepted placement/history, retained dirty Build and iframe/form/focus, and immediate committed Silent/media denial during held resume. The media fixture uses inert JavaScript audio tracks, not real device capture or AV packets.
+
+The existing separate-login observer and same-cookie/touch regressions also pass on this exact final bundle, including 320px portrait and short landscape. Both replays report unchanged source/bundle hashes and zero page exceptions. Every default groupplay assertion remains in CI. The source checkpoint and exact-head remote CI are pending publication. Final bundle SHA-256: main `cc19596ea337790da2bf53793326eff5a21fd621ef8d5eda98579f43a248c57d`, CSS `26e371387d5773ab891e0db08c83a2184b8be16238a41c6b718cbe3c4695039c`. See `docs/NAMED-ARRIVALS.md`, `docs/named-arrival-authoring.md` and `docs/ARRIVAL-INTEGRATION-STATUS.md` for the precise boundary.
+
+## Prior increment: mobile away media privacy
 
 The source-pinned PR610 adaptation uses independent mobile/desktop microphone preferences and page visibility rather than focus. Mobile/iPad/Android starts with keep-microphone-away off; desktop retains the native default on. A hidden page enters away only without a recognized conversation, including when the last conversation ends. Away stays latched until visible. The policy derives conversation state from all-member bubble authority where enabled and the existing authorized media graph otherwise; zero WebRTC peers does not establish absence. Actual live-session authority is explicitly unsupported.
 
@@ -8,7 +18,7 @@ Away stops owned tracks and retires pending capture. Returning can restore only 
 
 The combined source passes 1,269 CPU/API tests with zero failures and the same historical skip, all 273 source syntax checks, build, package startup/static files and Dockerfile-copy reconstruction. All eight media browser suites pass, including the new privacy fixture, existing Silent/ICE/lifecycle fixtures, actual-game Silent/freshness flows and native scoped SDP/signaling teardown. The new privacy fixture uses injected visibility/permissions/media and denied physical capture; these results do not establish real phone, camera, microphone, call, relay or SFU operation. The existing optional membership configuration stays unchanged. Detailed source semantics and remaining physical-device acceptance are in `docs/mobile-away-privacy.md`.
 
-Final integration bundle: main `6536741f76ff85831c149bb92a0206a52805e369da7aa56732ea39e4e83be9f0`, CSS `0161fac62f8d2def9477dca4755d9b0062df661dcb4ba11a7e821969e690a93d`. Publication and exact-head CI are pending. The separate named-arrival integration will expose the optional admission identity seam; it is not included in this checkpoint.
+Final integration bundle: main `6536741f76ff85831c149bb92a0206a52805e369da7aa56732ea39e4e83be9f0`, CSS `0161fac62f8d2def9477dca4755d9b0062df661dcb4ba11a7e821969e690a93d`. This checkpoint is published as `76b83c34cb2d461523ccb1b3b065c3030104fd28`; all thirteen exact-head CI jobs passed. It remains the frozen operator release candidate. The later named-arrival integration exposes the optional admission identity seam in a separate increment.
 
 ## Prior increment: participant locks and consented following
 
@@ -18,7 +28,7 @@ Accepted followers use collision-aware movement and exact world-motion facing, w
 
 Final CPU/API verification passes 1,219 tests with zero failures and the same one historical skip; all 268 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. Authority has 37 focused HTTP/SQLite/SSE cases and 25 independent boundary checks; the client has 54 protocol checks and motion has 26 focused/existing checks. These counts overlap and do not represent feature completion.
 
-Seventeen distinct actual-game behavioral scenarios pass across recorded runs on the same JavaScript bundle, with zero page exceptions. They include participant/outsider lock boundaries, named consent and text/IME safety, source F/Shift+F ownership, real movement/facing/collision, immediate Stop with lost acknowledgement, Chat/Build/dialog pause and fresh rearm, controlled older-GET/newer-SSE and aborted-GET retry, room/access revocation, separate-session and same-cookie observers, and 320×568/568×320 native touch. Two early runtime races were reproduced and corrected; later cleanup and same-process browser-bootstrap harness issues are explicitly distinguished. A single final default all-scenario run remains for exact-head CI; the default suite still executes every assertion.
+Seventeen distinct actual-game behavioral scenarios pass across recorded runs on the same JavaScript bundle, with zero page exceptions. They include participant/outsider lock boundaries, named consent and text/IME safety, source F/Shift+F ownership, real movement/facing/collision, immediate Stop with lost acknowledgement, Chat/Build/dialog pause and fresh rearm, controlled older-GET/newer-SSE and aborted-GET retry, room/access revocation, separate-session and same-cookie observers, and 320×568/568×320 native touch. Two early runtime races were reproduced and corrected; later cleanup and same-process browser-bootstrap harness issues are explicitly distinguished. The subsequent exact-head CI completed the default all-scenario run successfully; the default suite retains every assertion.
 
 The final visual follow-up preserves source coral Stop backgrounds under hover/press, keeps text contrast above 4.5, avoids a transparent background interpolation when Stop first appears, and uses native Roboto. Eleven native component checks and five touch layouts pass. The corrected actual-game touch replay verifies readable Stop, native Ignore/Lock/Accept/Stop and reachability on both compact dimensions. The unchanged JavaScript SHA-256 is `219468f3985d6e24243552f64d1bf756810ff4693bb694f4343f4b9cf85f6e93`; final CSS is `47199705d14c181248baf7c08317483b2efa3e4ae2e63a85dbee2288b80a0971`.
 
@@ -125,14 +135,14 @@ Tests exercise explicit boundaries and failure cases. Counts overlap and do not 
 - Real device capture, physical-phone performance, network handover, operator-run Docker/proxy/TLS, backups and production capacity remain unverified
 - Matrix/E2EE/federation, SSO, full quest programs, upstream owned-avatar entitlements, image pixel/geometry version editing, permanent definition deletion and collection import, persistent chunks, reusable primitive workshop, terrain elevation/custom materials and creator games remain partial or missing
 
-The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. Source publication does not change the deployed revision or configure a relay.
+The operator release candidate remains pinned to `76b83c34cb2d461523ccb1b3b065c3030104fd28` until separately updated. Source publication does not change the deployed revision or configure a relay.
 
 ## Next
 
-1. Verify mobile-away exact-head CI and freeze the development release candidate
-2. Integrate named arrivals, authoritative doorway travel and entry-point sharing
+1. Publish the independent named-arrivals development increment and verify its exact-head CI
+2. Keep the operator release candidate pinned to `76b83c34cb2d461523ccb1b3b065c3030104fd28` unless separately updated
 3. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
 4. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
 5. Continue larger world-creation and social-play parity gaps and port the next verified source control changes
 
-The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.
+The operator release candidate remains pinned to `76b83c34cb2d461523ccb1b3b065c3030104fd28` until separately updated. No deployment or running service modification occurred.
