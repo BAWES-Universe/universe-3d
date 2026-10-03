@@ -24,6 +24,10 @@
   --u-text-muted:rgba(255,255,255,.72);
   --u-control-hover:rgba(255,255,255,.08);
   --u-control-pressed:rgba(255,255,255,.12);
+  /* PR609 at 9a68beea: an open window is distinct from a switched-on mode. */
+  --u-control-open:rgba(255,255,255,.14);
+  --u-control-open-hover:rgba(255,255,255,.18);
+  --u-control-open-edge:rgba(255,255,255,.10);
   --u-secondary:rgba(255,255,255,.06);
   --u-secondary-border:rgba(255,255,255,.12);
   --u-secondary-hover:rgba(255,255,255,.12);

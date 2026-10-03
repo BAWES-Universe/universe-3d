@@ -1,6 +1,18 @@
-# Development status · 2026-10-03 02:49 UTC
+# Development status · 2026-10-03 04:02 UTC
 
-## Current increment: bounded cut-surface construction
+## Current increment: usable embedded content windows
+
+Existing room-content windows now resize with a 48px native handle or keyboard steps, and maximize/restore when the measured game canvas is at least 1024px wide. The same iframe, unsent form, tabs and underlying Chat remain mounted. Presentation changes add no history entries or authorization calls; explicit Return, Close, room exit and revoked actions still dispose content, and later history reopening reauthorizes. The pinned design source is PR609 merge `9a68beea975560480c2c4dd3f23aeb50ef6f330b`, not evidence of deployment.
+
+Maximized content makes covered controls inert and yields to real higher dialogs, Quick actions and Express. Native focus boundaries handle Tab leaving a cross-origin frame, where parent key handlers cannot see the event. Enter activation retains its UI origin through keyup, so normal or held Enter can close Return/Close controls without reopening Express after canvas focus returns; a fresh world Enter still works. Covered Chat retains its draft and cursor, counts incoming messages unread, and stops Nearby typing until fresh input. Six existing dock window triggers now use neutral open styling and accurate `aria-expanded`; Build and camera modes retain their enabled gradients. `CONTENT-WINDOWS.md` and `WINDOW-CONTROL-STATES.md` describe the exact scope.
+
+The integrated tree passes 1,110 CPU/API tests with the same historical skip, 259 syntax checks, build, package startup/static checks and Dockerfile-copy reconstruction. All ten new actual-game scenarios, all eleven unchanged content-history scenarios and all five unchanged Express scenarios pass on the final bundle, with zero page exceptions. Ten native window-component cases also pass. Exact iframe identity, draft, history and authorization counters are checked through pointer resize, native keyboard, cross-frame Tab in both directions, real Room SSE unread, higher dialogs, 1023/1024 resize and CDP touch/cancellation. The 320px portrait and 844px landscape captures keep controls reachable, opaque ink headers and no obsolete map-framing warning. Social and Nearby typing fixtures each pass eighteen cases, including covered-state handling. The new `windows` CI group exercises these modules, Social and the actual game; existing groups remain present.
+
+Final main bundle: `2979ba0181c69ca0441e999a1fce013a09e31e59e0bc81e120a84c75e78e6430`; CSS: `6cae2c2c7c625ffffb5cf28eb31f88d902971d2966d1ccacbd3bb0637b8407ad`. This increment is locally verified; its publication and exact-head CI are pending.
+
+This is a bounded adaptation of working content windows. The source Orbit shell, its full toolbar layout and per-device bar preference, provider embedding acceptance, physical devices and deployment remain separate. Current remote baseline is `a72fcd30761822243d28ab15a831c2632fed4427`; its one-file terrain readiness correction passed all eleven exact-head CI jobs. No live configuration or credentials changed.
+
+## Prior increment: bounded cut-surface construction
 
 Sparse terrain now builds the cut base grounds and decorative boxes directly into bounded geometry buffers. The previous renderer already merged compatible surfaces into few final draw calls, but first constructed thousands of temporary meshes. On the same valid 200×200 scene with 4,096 separated stone cells, constructions drop from 5,276 to 307 and peak live meshes from 5,255 to 289. Final geometry stays 26 meshes, 25 draw calls and 61,473 vertices. A shared-host diagnostic measured 959ms versus 200ms synchronous construction; this is one controlled fixture, not physical-device or production capacity evidence.
 
@@ -8,7 +20,7 @@ The terrain path caps merged buffers at 60,000 vertices. No material art, water 
 
 Fresh combined integration passes 1,099 CPU/API checks with the same historical skip, all 250 source syntax checks, build, package startup/static files and Dockerfile-copy reconstruction. All 6 native DPR2 mouse/touch cases and all 7 actual terrain authoring scenarios pass after combining this correction with the compact-toolbar fix. Final main bundle: `1631e855e2731ce43de30a99e4901a551cdd1e14215b6a0ea5b85bf9d8c5aff7`; CSS: `ef875f413264efc3b973c311654b1dc5fe3958204a28832cb5972c8f5904aa9e`.
 
-The compact-toolbar correction is published at `d238342b15acd6eac588d67fe11a56974678972f`; all eleven exact-head CI jobs passed. This construction correction is a separate local increment with publication/CI pending. No deployment or live configuration changed.
+The compact-toolbar correction is published at `d238342b15acd6eac588d67fe11a56974678972f`; all eleven exact-head CI jobs passed. The construction correction was published as `6e9b710f437f080617bcbbd812915eac045e5121`. Its exact-head CI passed ten jobs and exposed a fixed-duration native movement precondition; test-only correction `a72fcd30761822243d28ab15a831c2632fed4427` waits for actual movement and twelve rendered collision frames. The unchanged runtime passes all seven terrain flows normally and under a labeled 1700ms frame-delivery delay. The old harness reproduced its stationary failure under that delay; CI’s exact scheduling trace was unavailable. No deployment or live configuration changed.
 
 ## Prior increment: native terrain workbench
 

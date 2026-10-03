@@ -88,11 +88,14 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   const user = () => currentState().user || {};
   const room = () => currentState().room || {};
   const channelKey = () => chatMode === 'nearby' ? 'nearby' : chatMode === 'dm' && selectedPeer ? `dm:${selectedPeer.id}` : `room:${room().id || ''}`;
+  // Maximized content covers the still-mounted panel with inert, preserving its
+  // composer and history. Covered messages are not readable just because it is unhidden.
+  const isPanelReadable = () => !destroyed && !root.hidden && !root.inert;
   const nearby = createNearbyText({ api, getState, onChange: nearbyChanged, onMessage: ({stayId, own}) => {
-    if (!own && (root.hidden || activeTab !== 'chat' || chatMode !== 'nearby' || nearby.snapshot().selectedId !== stayId)) nearby.markUnread(stayId);
+    if (!own && (!isPanelReadable() || activeTab !== 'chat' || chatMode !== 'nearby' || nearby.snapshot().selectedId !== stayId)) nearby.markUnread(stayId);
   }});
   const typing = createNearbyTyping({ api, getNearby: () => nearby.snapshot(), getPresence: () => ({
-    visible: !destroyed && !root.hidden && !document.hidden && activeTab === 'chat' && chatMode === 'nearby' && !!composer?.isConnected,
+    visible: isPanelReadable() && !document.hidden && activeTab === 'chat' && chatMode === 'nearby' && !!composer?.isConnected,
     focused: document.activeElement === composer
   }), onChange: renderNearbyTyping });
   const channelPath = (key) => key.startsWith('dm:') ? `/api/dm/${enc(key.slice(3))}/messages` : `/api/rooms/${enc(key.slice(5))}/messages`;
@@ -178,8 +181,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   root.addEventListener('keydown', stopGameKeys);
   root.addEventListener('keyup', stopGameKeys);
   root.replaceChildren(header, tabBar, panel);
-  const hiddenObserver = new MutationObserver(records => { if (root.hidden || records.some(record => record.oldValue === null)) typing.stop(); });
-  hiddenObserver.observe(root, {attributes: true, attributeFilter: ['hidden'], attributeOldValue: true});
+  // An added attribute also stops typing if the panel was covered and restored
+  // before this observer runs. Restoring never restarts activity from the draft.
+  const visibilityObserver = new MutationObserver(records => { if (!isPanelReadable() || records.some(record => record.oldValue === null)) typing.stop(); });
+  visibilityObserver.observe(root, {attributes: true, attributeFilter: ['hidden', 'inert'], attributeOldValue: true});
   const visibilityChanged = () => { if (document.hidden) typing.stop(); };
   document.addEventListener('visibilitychange', visibilityChanged);
 
@@ -206,8 +211,8 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     root.hidden = false;
     dismissConfirm();
     activeTab = tab;
-    if (tab === 'chat' && chatMode !== 'inbox') unread.delete(channelKey());
-    if (tab === 'chat' && chatMode === 'nearby') nearby.markRead();
+    if (isPanelReadable() && tab === 'chat' && chatMode !== 'inbox') unread.delete(channelKey());
+    if (isPanelReadable() && tab === 'chat' && chatMode === 'nearby') nearby.markRead();
     render();
   }
   function render() {
@@ -435,7 +440,9 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   }
   function openDm(peer) {
     if (!peer?.id || peer.id === user().id) return;
-    selectedPeer = { ...peer }; chatMode = 'dm'; activeTab = 'chat'; unread.delete(channelKey()); root.hidden = false; resetView();
+    selectedPeer = { ...peer }; chatMode = 'dm'; activeTab = 'chat'; root.hidden = false;
+    if (isPanelReadable()) unread.delete(channelKey());
+    resetView();
     composer?.focus();
   }
   function buildInbox() {
@@ -474,7 +481,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   function appendNearbyMode(toolbar) {
     if (!nearby.snapshot().available) return;
     toolbar.append(button('Nearby', () => {
-      edit = null; chatMode = 'nearby'; nearby.markRead(); resetView();
+      edit = null; chatMode = 'nearby'; if (isPanelReadable()) nearby.markRead(); resetView();
     }, { class: 'button social-btn social-btn-small social-nearby-mode', 'aria-label': 'Nearby', 'aria-pressed': String(chatMode === 'nearby') }));
   }
   function nearbyChanged() {
@@ -827,7 +834,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       } else key = `room:${message.roomId || data.roomId || room().id}`;
       const alreadyKnown = getChannel(key).messages.some((item) => item.id === message.id);
       upsertMessage(key, message);
-      if (!alreadyKnown && message.userId !== user().id && (root.hidden || activeTab !== 'chat' || chatMode === 'inbox' || key !== channelKey())) unread.set(key, (unread.get(key) || 0) + 1);
+      if (!alreadyKnown && message.userId !== user().id && (!isPanelReadable() || activeTab !== 'chat' || chatMode === 'inbox' || key !== channelKey())) unread.set(key, (unread.get(key) || 0) + 1);
       syncHeader();
       if (activeTab === 'chat' && chatMode === 'inbox') renderInbox?.();
     } else if (['presence', 'members', 'room', 'role', 'hello'].includes(type)) {
@@ -845,7 +852,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   }
   function destroy() {
     typing.destroy(); destroyed = true; nearby.destroy(); dismissConfirm();
-    hiddenObserver.disconnect(); document.removeEventListener('visibilitychange', visibilityChanged);
+    visibilityObserver.disconnect(); document.removeEventListener('visibilitychange', visibilityChanged);
     root.removeEventListener('keydown', stopGameKeys); root.removeEventListener('keyup', stopGameKeys);
     root.replaceChildren(); root.classList.remove('social-shell');
   }

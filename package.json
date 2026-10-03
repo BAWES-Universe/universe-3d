@@ -22,7 +22,8 @@
     "test:browser:residents": "node scripts/test-browser.mjs residents",
     "test:browser:presentation": "node scripts/test-browser.mjs presentation",
     "test:browser:nearby": "node scripts/test-browser.mjs nearby",
-    "test:browser:terrain": "node scripts/test-browser.mjs terrain"
+    "test:browser:terrain": "node scripts/test-browser.mjs terrain",
+    "test:browser:windows": "node scripts/test-browser.mjs windows"
   },
   "dependencies": {
     "@babylonjs/core": "9.28.0"

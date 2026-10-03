@@ -49,6 +49,35 @@ const errors = [];
 page.on('pageerror', error => { errors.push(error.message); console.error('PAGE ERROR', error.message); });
 let passed = 0;
 async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
+async function checkCoveredChat(kind) {
+  const before = await page.locator('#root textarea').evaluate(node => {
+    node.setSelectionRange(2, 7, 'backward');
+    window.coveredComposer = node;
+    window.coveredTimeline = document.querySelector('.social-timeline');
+    return { draft: node.value, history: [...coveredTimeline.querySelectorAll('[data-message-id]')].map(row => row.dataset.messageId) };
+  });
+  await page.evaluate(kind => {
+    const root = document.querySelector('#root');
+    root.inert = true;
+    const message = { id: `covered-${kind}`, roomId: state.room.id, userId: 'ari', author: state.people[1], text: `Arrived under content (${kind})`, createdAt: Date.now(), reactions: {}, ...(kind === 'dm' ? {recipientId: 'me'} : {}) };
+    social.onEvent({type: kind === 'dm' ? 'dm' : 'message', data: {message}});
+    social.onEvent({type: kind === 'dm' ? 'dm' : 'message', data: {message}});
+    social.render();
+    social.setTab('chat');
+  }, kind);
+  assert.equal(await page.locator('#root').evaluate(node => node.hidden), false);
+  assert.equal(await page.locator('#social-tab-chat .social-unread').textContent(), '1');
+  assert.deepEqual(await page.locator('#root textarea').evaluate(node => ({same: node === coveredComposer, draft: node.value, selection: [node.selectionStart, node.selectionEnd, node.selectionDirection]})), {same: true, draft: before.draft, selection: [2, 7, 'backward']});
+  assert.equal(await page.locator('.social-timeline').evaluate(node => node === coveredTimeline), true);
+  const history = await page.locator('[data-message-id]').evaluateAll(rows => rows.map(row => row.dataset.messageId));
+  assert.deepEqual(history.filter(id => id !== `covered-${kind}`), before.history);
+  assert.equal(history.filter(id => id === `covered-${kind}`).length, 1);
+  await page.evaluate(() => { document.querySelector('#root').inert = false; social.render(); });
+  assert.equal(await page.locator('#social-tab-chat .social-unread').textContent(), '1');
+  await page.evaluate(() => social.setTab('chat'));
+  assert.equal(await page.locator('#social-tab-chat .social-unread').count(), 0);
+  assert.equal(await page.locator('#root textarea').evaluate(node => node === coveredComposer), true);
+}
 try {
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.getByText('Welcome aboard', { exact: true }).waitFor();
@@ -79,6 +108,7 @@ try {
     await page.evaluate(() => { window.state.room = { id: 'r1', worldId: 'w1', name: 'Moon garden', role: 'owner', ownerId: 'me' }; window.social.render(); });
     assert.equal(await page.getByRole('textbox', { name: 'Message the room' }).inputValue(), 'A newer draft');
   });
+  await check('inert Room chat counts new messages once and retains mounted draft, selection and history', () => checkCoveredChat('room'));
   await check('own message editing preserves the separate unsent draft', async () => {
     await page.locator('[data-message-id="m2"]').getByRole('button', { name: 'Edit your message' }).click();
     await page.getByRole('textbox', { name: 'Message the room' }).fill('Welcome, everyone');
@@ -117,6 +147,10 @@ try {
     await page.getByText('Hello privately', { exact: true }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Edit your message' }).count(), 0);
     assert.equal(await page.getByRole('button', { name: /reaction/ }).count(), 0);
+  });
+  await check('inert Direct chat counts new messages once and retains mounted draft, selection and history', async () => {
+    await page.getByRole('textbox', { name: 'Message Ari <b>unsafe</b>', exact: true }).fill('A private draft');
+    await checkCoveredChat('dm');
   });
   await check('DM SSE updates the conversation list immediately', async () => {
     await page.getByRole('button', { name: 'Open direct messages' }).click();

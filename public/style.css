@@ -1612,6 +1612,33 @@ kbd {
   outline: 2px solid #fff;
   outline-offset: -3px;
 }
+/* Only explicitly bound window triggers use PR609's held-open treatment.
+   Actual visibility owns this state, even when a legacy .active flag is stale.
+   Build, camera modes, media devices and other selected controls are unbound. */
+#dock button[data-window-control][aria-expanded] {
+  background: transparent;
+  color: var(--u-text-soft);
+  box-shadow: none;
+}
+#dock button[data-window-control] > span {
+  color: inherit;
+}
+#dock button[data-window-control][aria-expanded=true] {
+  background: var(--u-control-open);
+  color: var(--u-text);
+  box-shadow: inset 0 0 0 1px var(--u-control-open-edge);
+}
+@media (hover: hover) {
+  #dock button[data-window-control][aria-expanded]:not(:disabled):hover {
+    background: var(--u-control-hover);
+  }
+  #dock button[data-window-control][aria-expanded=true]:not(:disabled):hover {
+    background: var(--u-control-open-hover);
+  }
+}
+#dock button[data-window-control][aria-expanded]:not(:disabled):active {
+  background: var(--u-control-pressed);
+}
 @media (min-width: 701px) and (max-width: 1279px) and (pointer: fine) {
   #dock {
     height: 56px;

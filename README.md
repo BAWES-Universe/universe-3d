@@ -25,6 +25,7 @@ Optional all-member proximity and Nearby text are off by default. An operator ca
 - **Move:** WASD / ZQSD / arrows, relative to the camera. Hold Shift for 2.5× manual fast walk. Click the ground to pathfind; Shift does not accelerate automatic paths. Diagonals are normalized.
 - **Camera:** drag to orbit; right-drag also orbits. Wheel or +/− zooms. Middle-drag / Shift-right-drag pans. `[ ]` orbits, Page Up/Down tilts, F follows, Home resets. Pan mode gives arrows to the camera. Touch: two fingers orbit/pinch, three fingers pan; joystick moves the character.
 - **Interact:** Space on key release, or click nearby functional furniture. Stored documents download through authenticated access checks.
+- **Room content:** open an embedded item or area link, then drag the white resize handle or Tab to it and use Left/Right. Escape cancels a resize. Desktop Maximize/Restore keeps the same document and draft; Return to world closes it. Quick actions also offers Expand/Restore. Provider pages may refuse embedding, so Open in new tab remains available. See [content-window controls](CONTENT-WINDOWS.md).
 - **Build:** E (B is an alias). Choose furniture, inspect the snapped footprint, rotate with R, click or Space to place. Select and drag to move; V selects, X erases, D duplicates, Delete removes. Arrows move the preview or selection; `[ ]` cycles selection. Undo/redo uses Cmd/Ctrl Z / Shift Z; save uses Cmd/Ctrl S. Escape cancels the current operation before closing.
 - **Terrain:** open Build → Terrain. Choose grass, soil, stone, wood or water, then drag a snapped rectangle. Water starts with Blocks walking enabled; there is no swimming. Restore base erases authored cells. Draw wall makes a normal wall you can select, move and rotate. Shift+arrows size a keyboard preview; Space or Enter commits, and one Undo reverses the whole stroke. Terrain needs room-wide editor rights. See [the terrain workbench](TERRAIN-WORKBENCH.md) for limits.
 - **Custom images:** open Build → Custom images. Choose a PNG, name/tag it, choose a floor or upright representation and optional collision cells, then explicitly Upload. Search the room library and place a pinned reusable instance. Drag, quarter-turn, duplicate and Save work as with furniture. Images stay flat; they are not converted into 3D meshes. See `CUSTOM-IMAGES.md` for limits and current lifecycle gaps.
@@ -76,6 +77,8 @@ npm run test:browser:authoring
 npm run test:browser:images
 npm run test:browser:media
 npm run test:browser:nearby
+npm run test:browser:terrain
+npm run test:browser:windows
 ```
 
 Core browser tests run serially through the actual shell for camera, direct building, character persistence, Express and WebGL-unavailable fallback. Module tests separately cover fixtures and media-policy/lifecycle behavior. Browser tests use Chromium software WebGL; local results do not certify physical phones or production capacity. Old test scripts remain as historical probes and are not implicitly passing checks.

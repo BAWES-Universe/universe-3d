@@ -5,10 +5,10 @@ import {createAudioActions} from './audio-actions.js';
 import {mountEmbeddedPanels} from './embedded-panels.js';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const legacyAreaActions=area=>[...(area.action==='link'&&area.url?[{id:'legacy-area-link',type:'link',url:area.url,label:area.name,mode:'tab',trigger:'enter'}]:[]),...(area.action==='teleport'&&area.target?[{id:'legacy-area-target',type:'teleport',target:area.target,label:area.name,trigger:'enter'}]:[]),...(area.actions||[])];
-export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve=async()=>{},onDialog,onCloseDialog=()=>{},onNavigate,onOpenChange=()=>{},toast=()=>{}}){
+export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve=async()=>{},onDialog,onCloseDialog=()=>{},onNavigate,onOpenChange=()=>{},getGameWidth,onWindowChange=()=>{},toast=()=>{}}){
  let scope='',userId='',epoch=0,activeMenu=null,lastFrameRef=null,lastFrameKey=null,restoreEpoch=0;const inflight=new Map(),resources=new Map(),controls=new Map();
  const areaList=el('div','area-action-list'),audioRoot=el('div','world-audio-controls');controlsRoot.replaceChildren(areaList,audioRoot);
- const frames=mountEmbeddedPanels({root,onOpenChange,toast});
+ const frames=mountEmbeddedPanels({root,onOpenChange,getGameWidth,onWindowChange,toast});
  let storedVolume=1;try{storedVolume=Number(localStorage.getItem('universe-world-volume')??1);}catch{}
  const audio=createAudioActions({initialVolume:storedVolume,saveVolume:value=>{try{localStorage.setItem('universe-world-volume',String(value));}catch{}},onChange:renderAudio,onError:()=>{}});
  const audioRows=new Map();let volumeRow=null,volumeRange=null,muteButton=null;
@@ -77,5 +77,5 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
  function cancelRestore(){restoreEpoch++;for(const[id,token]of inflight)if(token.restoring)inflight.delete(id);}
  function close(){cancelRestore();frames.clear();}
  async function restore(contentKey,{focus=true,isCurrent=()=>true}={}){const state=getState();if(!lastFrameRef||contentKey!==lastFrameKey||scope!==state.room?.id||userId!==state.user?.id||!state.ready)return false;cancelRestore();const current=restoreEpoch;const ok=await activate(lastFrameRef,{restoring:true,focus,isCurrent:()=>current===restoreEpoch&&contentKey===lastFrameKey&&isCurrent()});return current===restoreEpoch&&isCurrent()?ok:null;}
- return {openItem,activate,update,clear,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
+ return {openItem,activate,update,clear,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,windowState:()=>frames.windowState(),setWindowForeground:value=>frames.setForeground(value),setWindowMaximized:value=>frames.setMaximized(value),handleWindowEscape:event=>frames.handleEscape(event),refreshWindowLayout:()=>frames.refreshLayout(),close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
 }
