@@ -7,7 +7,7 @@
   bottom: var(--proximity-bottom,var(--proximity-base-bottom)); transform: translateX(-50%);
   width: max-content; max-width: min(440px,calc(var(--hud-width,100vw) - 24px));
   max-height: var(--proximity-max-height,var(--proximity-base-max-height)); overflow: auto; overscroll-behavior: contain;
-  color: var(--u-text-soft,#fff); font: 13px/1.4 Inter,Arial,sans-serif;
+  color: var(--u-text-soft,#fff); font: 13px/1.4 Roboto,Arial,sans-serif;
   scrollbar-width: thin; scrollbar-color: var(--u-text-muted) var(--u-ink);
 }
 .proximity-controls[hidden], .proximity-controls [hidden] { display: none !important; }
@@ -17,13 +17,17 @@
 .proximity-control { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 48px; min-height: 48px; border: 1px solid transparent; border-radius: var(--u-pill,9999px); padding: 8px 11px; background: transparent; color: inherit; font: inherit; line-height: 1.3; cursor: pointer; touch-action: manipulation; flex-shrink: 0; }
 .proximity-control svg { width: 24px; height: 24px; flex: 0 0 24px; pointer-events: none; }
 .proximity-control[aria-pressed=true], .proximity-primary { background: var(--u-primary,#8629fc); color: #fff; }
-.proximity-control[data-stop=true] { background: var(--u-muted-coral,#e96d51); color: #14121e; font-weight: 600; }
+.proximity-control[data-stop=true] { background: var(--u-muted-coral,#e96d51); color: #14121e; font-weight: 600; transition: border-color .15s, box-shadow .15s; }
 .proximity-control[data-control=ignore] { font-size: 11px; padding-inline: 9px; }
 .proximity-control[data-control=ignore][aria-pressed=true] { background: var(--u-selected); box-shadow: inset 0 0 0 1px var(--u-selected-border); }
 .proximity-control[aria-disabled=true] { opacity: .55; cursor: default; }
 .proximity-control:focus-visible, .proximity-summary:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
 .proximity-control:not([aria-disabled=true]):active { box-shadow: inset 0 0 0 2px rgba(255,255,255,.5); }
-@media (hover:hover) { .proximity-control:not([aria-disabled=true]):hover { box-shadow: inset 0 0 0 1px var(--u-secondary-hover-border); background-color: var(--u-control-hover); } }
+@media (hover:hover) {
+  .proximity-control:not([aria-disabled=true]):hover { box-shadow: inset 0 0 0 1px var(--u-secondary-hover-border); background-color: var(--u-control-hover); }
+  .proximity-control[data-stop=true]:not([aria-disabled=true]):hover { background: var(--u-muted-coral-hover,#d4553a); color: #14121e; }
+}
+.proximity-control[data-stop=true]:not([aria-disabled=true]):active { background: var(--u-muted-coral-pressed,#c44a30); color: #fff; }
 .proximity-invitation { margin-bottom: 7px; padding: 10px; border-radius: 20px; background: var(--u-surface-raised,#14121e); box-shadow: var(--u-shadow-raised); backdrop-filter: var(--u-backdrop); }
 .proximity-invitation-title { margin: 0 0 8px; text-align: center; overflow-wrap: anywhere; }
 .proximity-invitation-actions { display: flex; gap: 6px; }
