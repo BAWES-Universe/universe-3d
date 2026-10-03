@@ -1,12 +1,22 @@
-# Development status · 2026-10-03 00:19 UTC
+# Development status · 2026-10-03 00:58 UTC
 
-## Current increment: explicit optional process configuration
+## Current increment: bounded Nearby context refresh cost
+
+Nearby context refresh now captures membership once per room, completes that room before capturing another, and rereads each accepted session and its ACL. Fresh text submission and recipient checks immediately before body emission are unchanged. Nested refresh, retirement, registration or close invalidates an older metadata refresh; failed/stale batches clear affected context instead of reusing prior authority. This changes synchronous metadata work, not cached message authorization.
+
+Real local HTTP/SQLite/SSE checks at 6, 20 and 50 accounts show that Nearby adds N membership session enumerations per presence update, replacing the prior N² overhead. Text-on total Store.all calls fell from 47/425/2,555 to 17/45/105. Bounded server-handler medians fell from 11.4/54.2/309.8ms to 9.1/30.6/92.5ms on the shared local host. Other handler work remains costly; these measurements do not establish production capacity. The exact fixture and limitations are described in `PROXIMITY-TEXT-CONTRACT.md`.
+
+The isolated exact-source aggregate passes 952 CPU/API checks with the same one historical skip. Syntax, build, package startup/static files and Dockerfile-copy reconstruction pass. Final integrated Nearby browser regression passes all 11 module-native and 7 actual-shell scenarios, including doubled-text native touch. The frontend bundle is unchanged. Publication and exact-head CI for this small performance correction are pending.
+
+Baseline `70aa4377cbaf913d6f20270f1e96f19f3c3b8f77` passed all ten remote CI jobs. Optional membership/text remain off unless explicitly configured; no live values or credentials changed.
+
+## Prior increment: explicit optional process configuration
 
 The standard entry point can now read `UNIVERSE_PROXIMITY_CONFIG`. Absent or explicit off omits both factory options and preserves the legacy path. Enabling membership requires every policy value, with real JSON booleans/numbers and no unknown or duplicate fields. Nearby text can be enabled only with membership. The reader selects no cap, threshold, scale or deployment defaults; see `PROXIMITY-RUNTIME-CONFIG.md` for field meanings and bounds.
 
 Invalid configuration fails before database creation/mutation or socket binding, and errors omit raw submitted values. The reusable server factory still ignores ambient configuration. Existing Host/Origin/TLS, login-only mode, ICE configuration and media consent keep their separate contracts. No environment file, host, credential or running service was changed.
 
-The 26 focused reader/process tests pass in the integrated tree. The final aggregate passes 926 CPU/API tests with one existing historical skip; all 230 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. There is no frontend runtime change in this increment, and the built JS/CSS match the preceding Nearby checkpoint. The preceding Nearby source is frozen for separate publication and its final combined 11 module/7 actual-shell checks passed. Configuration publication must follow that increment; exact-head remote CI remains required.
+The 26 focused reader/process tests pass in the integrated tree. The final aggregate passes 926 CPU/API tests with one existing historical skip; all 230 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. There is no frontend runtime change in this increment, and the built JS/CSS match the preceding Nearby checkpoint. The preceding Nearby checkpoint `b56e7bf09c7e59931dea8386e7e906af4d099fc1` and configuration checkpoint `70aa4377cbaf913d6f20270f1e96f19f3c3b8f77` each passed all ten exact-head remote CI jobs.
 
 ## Prior increment: live Nearby text independent of media consent
 
@@ -16,11 +26,11 @@ Received and acknowledged rows, unread state and drafts remain in this browser t
 
 Activation is explicit: `createGameServer({proximityMembershipConfig, proximityTextConfig:{enabled:true}})`. Both features remain off by default; the later process-configuration increment above supplies the same explicit factory options only after full validation. No deployed defaults, relay credentials, provider or SFU are configured by this source change. Named meeting/stage chat, typing, files, Markdown, bot text and Matrix/E2EE are outside this first Nearby slice.
 
-Integrated CPU/API checks pass 900 tests with one existing historical skip. The focused server slice passes 33 HTTP/SQLite/SSE cases, and the client controller passes 38 checks. The Nearby module has 11 passing native browser cases; all 16 existing Social module checks also pass. The actual bundle passes six desktop flows covering two-browser microphone-off text, focus/keyboard/IME/Escape, room travel, real SSE disconnection without replay, inert rendering and reload clearing. A separate final touch replay passes 320px portrait and 700×320 landscape with every computed Nearby text size doubled. Native swipes reveal the composer and Send while Close remains reachable. Syntax, build, package startup/static files and Dockerfile-copy reconstruction pass. The final combined Nearby run passes all 11 native module checks and all 7 actual-shell flows on the final bundle, including the doubled-computed-text touch case. Exact-head publication/CI is pending. No whole source contract or physical-device/media-packet claim follows from these scoped checks.
+Integrated CPU/API checks pass 900 tests with one existing historical skip. The focused server slice passes 33 HTTP/SQLite/SSE cases, and the client controller passes 38 checks. The Nearby module has 11 passing native browser cases; all 16 existing Social module checks also pass. The actual bundle passes six desktop flows covering two-browser microphone-off text, focus/keyboard/IME/Escape, room travel, real SSE disconnection without replay, inert rendering and reload clearing. A separate final touch replay passes 320px portrait and 700×320 landscape with every computed Nearby text size doubled. Native swipes reveal the composer and Send while Close remains reachable. Syntax, build, package startup/static files and Dockerfile-copy reconstruction pass. The final combined Nearby run passes all 11 native module checks and all 7 actual-shell flows on the final bundle, including the doubled-computed-text touch case. This earlier Nearby checkpoint subsequently passed all ten exact-head CI jobs. No whole source contract or physical-device/media-packet claim follows from these scoped checks.
 
 Final local bundle: main `a3c86dc3406f694748b3c0c8a73cf7e6e64bac556203fbdf23660856e17eca9b`, CSS `6e4116d7c6653f69f38c3a20251ef2e9bf1118dab54e830d43d36bb4cf938adb`.
 
-The durable baseline `f2f9b080ed778a105a87f15490aa439038b6f4bf` passed all nine remote CI jobs. It includes all-member proximity/client lifecycle, strict media freshness, native ICE/SDP probes and the one-file HUD readiness correction. Current Nearby publication and exact-head CI are pending. The normalized parity inventory remains deliberately incomplete and certifies no whole source contract.
+The durable baseline `f2f9b080ed778a105a87f15490aa439038b6f4bf` passed all nine remote CI jobs. It includes all-member proximity/client lifecycle, strict media freshness, native ICE/SDP probes and the one-file HUD readiness correction. Nearby and the optional process configuration are now published with exact-head CI green. The normalized parity inventory remains deliberately incomplete and certifies no whole source contract.
 
 ## Implemented and locally exercised
 
@@ -49,9 +59,9 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Publish this bounded Nearby text increment and verify its exact-head CI
+1. Publish this bounded refresh correction and verify its exact-head CI
 2. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
 3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
-4. Continue source-backed parity, including richer proximity text and independent persistent Matrix contracts
+4. Add the audited ephemeral typing slice, then return to larger world-creation and social-play parity gaps
 
 The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.

@@ -41,19 +41,19 @@ export function validateProximityTextRequest(value){
  * An epoch is a particular SSE connection in one continuous room/bubble stay.
  */
 export function createProximityText({store,media,connections,sse,now}){
-  const receipts=new Map(),rates=new Map(),batches=new WeakSet();let closed=false,contextRevision=0;
+  const receipts=new Map(),rates=new Map(),batches=new WeakSet();let closed=false,contextRevision=0,refreshRevision=0;
   const active=client=>!client.res.destroyed&&!client.res.writableEnded;
   const live=token=>store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
   function guarded(fn){try{if(closed)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return fn();}catch(error){if(error.status)throw error;v.fail(503,'PROXIMITY_TEXT_AUTHORITY_UNAVAILABLE');}}
   function rotate(client,key=null){client.proximityText={epoch:randomUUID(),key,startedAt:now(),count:0};}
-  function retire(token){for(const client of connections.get(token)??[])rotate(client);prune();}
+  function retire(token){refreshRevision++;for(const client of connections.get(token)??[])rotate(client);prune();}
   function prune(){
     const epochs=new Set();for(const clients of connections.values())for(const client of clients)if(active(client)&&client.proximityText)epochs.add(client.proximityText.epoch);
     for(const[key,receipt]of receipts)if(!epochs.has(receipt.connectionEpoch)||now()-receipt.recordedAt>=EPOCH_MS)receipts.delete(key);
     for(const[key,rate]of rates)if(now()-rate.at>=5000)rates.delete(key);
   }
-  function contextFor(s,client){
-    const p=s.current_room_id?media.proximityTextPolicy(s):null;
+  function contextFor(s,client,refreshBatch){
+    const p=s.current_room_id?(refreshBatch?refreshBatch.policyForSession(s):media.proximityTextPolicy(s)):null;
     const key=JSON.stringify([s.user_id,s.current_room_id,p?.memberId,p?.bubbleId,p?.context?.kind]);
     if(!client.proximityText||client.proximityText.key!==key||now()-client.proximityText.startedAt>=EPOCH_MS||client.proximityText.count>=MAX_EPOCH_RECEIPTS)rotate(client,key);
     const eligible=p?.context.kind==='proximity'&&!!p.bubbleId&&!!p.memberId&&p.conversationRecipients.length>0;
@@ -63,11 +63,32 @@ export function createProximityText({store,media,connections,sse,now}){
   function findClient(s,epoch){const client=[...(connections.get(s.token_hash)??[])].find(c=>active(c)&&c.proximityText?.epoch===epoch);if(!client)v.fail(409,'STALE_PROXIMITY_TEXT_CONNECTION');return client;}
   function current(accepted){const s=live(accepted.token_hash);if(!s||s.user_id!==accepted.user_id||s.current_room_id!==accepted.current_room_id)v.fail(401,'AUTH_REQUIRED');return s;}
   function context(accepted,epoch){return guarded(()=>{const s=current(accepted),client=findClient(s,epoch),p=contextFor(s,client);sse(client.res,'proximity-text-context',p);return p;});}
-  function push(token,client){
-    let value;try{const s=live(token);if(!s)return;value=guarded(()=>contextFor(s,client));}catch{rotate(client);value={protocol:PROTOCOL,contextRevision:++contextRevision,available:true,canSend:false,reason:'authority-unavailable',selfId:client.userId,connectionEpoch:client.proximityText.epoch,roomId:null,bubbleId:null,memberId:null,membershipRevision:null,conversationRecipients:[],recipientCount:0,limits:PROXIMITY_TEXT_LIMITS};}
-    if(active(client))sse(client.res,'proximity-text-context',value);
+  function push(token,client,refreshBatch,accepted,revision){
+    const superseded=()=>revision!==undefined&&revision!==refreshRevision;
+    let value;try{const s=accepted?current(accepted):live(token);if(!s||superseded())return;value=guarded(()=>contextFor(s,client,refreshBatch));}catch{if(superseded())return;rotate(client);value={protocol:PROTOCOL,contextRevision:++contextRevision,available:true,canSend:false,reason:'authority-unavailable',selfId:client.userId,connectionEpoch:client.proximityText.epoch,roomId:null,bubbleId:null,memberId:null,membershipRevision:null,conversationRecipients:[],recipientCount:0,limits:PROXIMITY_TEXT_LIMITS};}
+    if(!superseded()&&active(client))sse(client.res,'proximity-text-context',value);
   }
-  function refresh(roomId){for(const[token,clients]of connections){let s;try{s=live(token);}catch{continue;}if(!s||roomId&&s.current_room_id!==roomId)continue;for(const client of clients)push(token,client);}prune();}
+  function refresh(roomId){
+    const revision=++refreshRevision,rooms=new Map();
+    for(const[token,clients]of connections){
+      let s;try{s=live(token);}catch{continue;}if(!s||roomId&&s.current_room_id!==roomId)continue;
+      const entries=rooms.get(s.current_room_id)??[];entries.push({token,session:s,clients:[...clients]});rooms.set(s.current_room_id,entries);
+    }
+    // A capture synchronizes all room members once. Each stream still rereads
+    // its accepted session and ACL; batches never reach begin/send or GET.
+    // Finish one room before capturing another: authority transactions are global.
+    for(const[id,entries]of rooms){
+      if(revision!==refreshRevision)break;
+      let batch;try{if(id)batch=media.captureProximityTextRoom(id);}catch(error){batch={policyForSession(){throw error;}};}
+      for(const{token,session,clients}of entries)for(const client of clients){
+        // A nested refresh owns newer contexts. Do not overwrite them or include
+        // streams added by a synchronous SSE callback in this older refresh.
+        if(revision!==refreshRevision)break;
+        if(connections.get(token)?.has(client)&&active(client))push(token,client,batch,session,revision);
+      }
+    }
+    prune();
+  }
   function capture(accepted,b){
     const s=current(accepted),client=findClient(s,b.connectionEpoch),p=contextFor(s,client);
     if(!p.canSend)v.fail(403,p.reason==='muted'?'MUTED':'PROXIMITY_TEXT_FORBIDDEN');
@@ -130,5 +151,5 @@ export function createProximityText({store,media,connections,sse,now}){
     const result={message:{...meta,text:b.text},duplicate:false};
     return result;
   });}
-  return {begin,context,send,retire,refresh,register(token,client){rotate(client);push(token,client);},close(){closed=true;receipts.clear();rates.clear();}};
+  return {begin,context,send,retire,refresh,register(token,client){refreshRevision++;rotate(client);push(token,client);},close(){refreshRevision++;closed=true;receipts.clear();rates.clear();}};
 }

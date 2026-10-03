@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -226,4 +227,22 @@ test('author appearance is current stored public wardrobe, unforgeable and fixed
  const changed=await a.call('/api/me','PATCH',{appearance:AVATAR_PRESETS[3].appearance});assert.equal(changed.status,200);assert.notDeepEqual(changed.data.user.appearance,saved.data.user.appearance);
  const retry=await a.call('/api/proximity-text/messages','POST',request);assert.equal(retry.status,200);assert.equal(retry.data.duplicate,true);assert.deepEqual(retry.data.message.author,first.data.message.author);await barrier(b,sb);assert.equal(texts(sb).length,1);
  const next=await a.call('/api/proximity-text/messages','POST',f.envelope(await f.context(a,sa),'new appearance'));assert.equal(next.status,201);assert.deepEqual(next.data.message.author.appearance,changed.data.user.appearance);
+});
+
+for(const count of[6,20,50])test(`Nearby context refresh adds ${count} session enumerations for ${count} SQLite/HTTP/SSE members`,async t=>{
+ const observed=[];
+ for(const enabled of[false,true])await t.test(enabled?'text enabled':'membership only',async t=>{
+  const f=await fixture(t,{proximityTextConfig:enabled?{enabled:true}:undefined}),clients=[],streams=[];
+  for(let i=0;i<count;i++)clients.push(await f.add('Refresh '+i));
+  for(const c of clients)streams.push(await stream(t,f,c));
+  const scope=new AsyncLocalStorage(),original=f.app.store.all,[handler]=f.app.server.listeners('request');
+  f.app.store.all=function(sql,...args){const sample=scope.getStore();if(sample&&sql==='SELECT token_hash FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? LIMIT ?')sample.enumerations++;return original.call(this,sql,...args);};
+  const sample={enumerations:0};f.app.server.removeListener('request',handler);f.app.server.on('request',(req,res)=>scope.run(sample,()=>handler(req,res)));
+  const before=streams.map(s=>s.events.length);
+  assert.equal((await clients[0].call('/api/presence','POST',{roomId:'r',x:0,z:0,moving:false})).status,200);
+  await Promise.all(streams.map((s,i)=>s.wait(e=>e.event===(enabled?'proximity-text-context':'presence'),before[i])));
+  assert.equal(sample.enumerations,count*(enabled?2:1));observed.push(sample.enumerations);
+  if(enabled)for(const s of streams){const p=s.events.filter(e=>e.event==='proximity-text-context').at(-1).data;assert(p.memberId);assert.notEqual(p.reason,'authority-unavailable');assert(p.recipientCount<=7);}
+ });
+ assert.equal(observed[1]-observed[0],count,'one additional room capture, not one capture per member');
 });

@@ -93,5 +93,5 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
   function authorizeDelivery(s,data){if(!membership)return true;if(data.bubbleId!==undefined)return membership.authorizeDelivery(s,data);try{return membership.policy(s).enabled;}catch{return false;}}
   function sweep(){if(membership)for(const result of membership.sweep())if(!result.error)refresh(result.roomId);}
   function close(){membership?.close();enabled.clear();priorEdges.clear();}
-  return {policy,refresh,state,leave,signal,authorizeDelivery,sweep,close,proximityTextPolicy(s){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.policy(s);},assertAdmission(s,roomId){membership?.assertAdmission(s,roomId);}};
+  return {policy,refresh,state,leave,signal,authorizeDelivery,sweep,close,proximityTextPolicy(s){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.policy(s);},captureProximityTextRoom(roomId){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.captureRoom(roomId);},assertAdmission(s,roomId){membership?.assertAdmission(s,roomId);}};
 }
