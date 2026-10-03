@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import {normalizeAppearance} from '../src/avatar-spec.js';
 import {migrateHierarchy,hierarchyMethods} from './hierarchy-store.mjs';
 import {migratePersonalAreas,personalAreaMethods} from './personal-area-store.mjs';
+import {migrateSceneOperations} from './scene-operation-store.mjs';
 
 export class Store {
   constructor(filename, seeds = [], now = Date.now, {claimUnownedOnCreate = true} = {}) {
@@ -41,6 +42,7 @@ export class Store {
     });
     migrateHierarchy(this);
     migratePersonalAreas(this);
+    migrateSceneOperations(this);
   }
   run(sql, ...args) { return this.db.prepare(sql).run(...args); }
   get(sql, ...args) { return this.db.prepare(sql).get(...args); }

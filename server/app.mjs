@@ -27,6 +27,8 @@ import {readRuntimeConfig,createRequestSecurity} from './runtime-config.mjs';
 import {createAccessGate} from './access-gate.mjs';
 import {createRoomImageAssets} from './image-asset-context.mjs';
 import {validateImageSceneDelta} from './image-scene-authority.mjs';
+import {createSceneOperationService} from './scene-operations.mjs';
+import {sceneOperationGeometryConflicts} from './scene-operation-geometry.mjs';
 
 const passwordHash = promisify(scrypt);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -71,7 +73,9 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       const session = store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?', token,now());
       if (!session || session.current_room_id !== roomId) continue;
       const row = store.roomRow(roomId); if (!store.canSeeRoom(row,session.user_id)) continue;
-      for (const client of clients) sse(client.res,event,data.room?{...data,room:store.room(row,session.user_id,!!data.room.scene)}:data);
+      const room=data.room?store.room(row,session.user_id,!!data.room.scene):null;
+      const delivered=room?{...data,room,...(event==='scene'?{cursor:room.revision}:{})}:data;
+      for (const client of clients) sse(client.res,event,delivered);
     }
   }
   function getPresence(roomId) { return [...presence.values()].filter(p => p.roomId === roomId && now() - p.lastSeen < 60000); }
@@ -201,6 +205,32 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const hierarchy=createHierarchyService({store,now,body,send,changed:policyChanged,emitUser});
   const personalAreas=createPersonalAreaService({store,presence,body,send,session,emitRoom,emitUser,now});
   const actionAuthority=createActionAuthority({store,presence,body,send,now,captureFence:arrivals.captureFence,checkFence:arrivals.checkFence});
+  // Both write protocols use this complete synchronous validation/provenance
+  // chain while holding the same SQLite write lock.
+  function commitScene({row,userId,live,before,next,personalAreaRevisions,imageSessionEpoch,validateGeometry=false,conflict}) {
+    const roomId=row.id;
+    if(!store.roomCapabilities(row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');
+    const resolvedImages=images.resolveScenePair({roomId,userId,token:live.token_hash,before,next,expectedEpoch:imageSessionEpoch});
+    const encoded=v.scene(next,resolvedImages.next);validatePersonalScene(next);
+    store.validatePersonalObjectDelta(row,userId,before,next,personalAreaRevisions,resolvedImages.before,resolvedImages.next);
+    validateImageSceneDelta({store,presence,now,room:row,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
+    validateTerrainSceneDelta({store,presence,residents:bots.snapshot(roomId),now,room:row,userId,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
+    arrivals.validateScene(next,resolvedImages.next,roomId);
+    if(validateGeometry){
+      const conflicts=sceneOperationGeometryConflicts({store,presence,residents:bots.snapshot(roomId),now,room:row,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
+      if(conflicts.length)conflict(conflicts);
+    }
+    store.syncPersonalAreas(roomId,before,next);
+    store.run('UPDATE rooms SET scene=?,revision=revision+1 WHERE id=? AND revision=?',encoded,roomId,row.revision);
+    store.recordPersonalObjects(roomId,userId,before,next,resolvedImages.next);
+    const room=store.room(roomId,userId),questChanges=EDIT.includes(room.role)?quests.observeBuild(userId,roomId,before,room.scene,room.revision):[];
+    return {room,questChanges};
+  }
+  function afterSceneCommit(roomId,userId,room,questChanges) {
+    quests.notify(questChanges);
+    emitRoom(roomId,'scene',{roomId,room,actorId:userId});bots.reconcileRoom(roomId);media.refresh(roomId,batch=>proximityControls?.refresh(roomId,batch));proximityText?.refresh(roomId);quests.reconcileRoom(roomId);
+  }
+  const sceneOperations=createSceneOperationService({store,session,arrivals,images,body,send,commitScene,afterCommit:afterSceneCommit});
   const server=http.createServer(async(req,res) => {
     res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
     try {
@@ -263,6 +293,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         return send(res,201,{user:store.user(userId)});
       }
       if(path==='/api/logout'&&method==='POST') { leave(s.token_hash,userId); store.run('DELETE FROM sessions WHERE token_hash=?',s.token_hash); for(const c of connections.get(s.token_hash)||[])c.res.end();connections.delete(s.token_hash); return send(res,200,{ok:true},{'Set-Cookie':cookie('',req,true)}); }
+      if(await sceneOperations(req,res,url,s))return;
       let match;
       match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)(?:\/(join|entries|leave|scene|messages|emote|moderate|invites|expression|expressions))?$/);
       if(match) {
@@ -287,22 +318,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
           const b=await body(req);if(!store.roomCapabilities(store.authorize(roomId,userId).row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');for(const key of Object.keys(b))if(!['revision','scene','personalAreaRevisions'].includes(key))v.fail(400,'IMMUTABLE_FIELD',`${key} cannot be set here`);v.integer(b.revision,'revision');
           // Re-check room and scoped ownership after body streaming, under the same
           // SQLite write lock as CAS, geometry validation and provenance writes.
-          let questChanges=[];const room=store.transaction(()=>{
+          const result=store.transaction(()=>{
             const live=session(req);if(live.user_id!==userId)v.fail(401,'AUTH_REQUIRED');
             const {row}=store.authorize(roomId,userId),before=JSON.parse(row.scene);
             if(row.revision!==b.revision)v.fail(409,'REVISION_CONFLICT','The room changed. Review the latest scene before saving.',{room:store.room(roomId,userId)});
-            const resolvedImages=images.resolveScenePair({roomId,userId,token:live.token_hash,before,next:b.scene,expectedEpoch:imageSessionEpoch});
-            const encoded=v.scene(b.scene,resolvedImages.next);validatePersonalScene(b.scene);
-            store.validatePersonalObjectDelta(row,userId,before,b.scene,b.personalAreaRevisions,resolvedImages.before,resolvedImages.next);
-            validateImageSceneDelta({store,presence,now,room:row,before,next:b.scene,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
-            validateTerrainSceneDelta({store,presence,residents:bots.snapshot(roomId),now,room:row,userId,before,next:b.scene,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
-            arrivals.validateScene(b.scene,resolvedImages.next,roomId);
-            store.syncPersonalAreas(roomId,before,b.scene);
-            store.run('UPDATE rooms SET scene=?,revision=revision+1 WHERE id=? AND revision=?',encoded,roomId,b.revision);
-            store.recordPersonalObjects(roomId,userId,before,b.scene,resolvedImages.next);
-            const saved=store.room(roomId,userId);if(EDIT.includes(saved.role))questChanges=quests.observeBuild(userId,roomId,before,saved.scene,saved.revision);return saved;
-          });quests.notify(questChanges);
-          emitRoom(roomId,'scene',{roomId,room,actorId:userId});bots.reconcileRoom(roomId);media.refresh(roomId,batch=>proximityControls?.refresh(roomId,batch));proximityText?.refresh(roomId);quests.reconcileRoom(roomId);return send(res,200,{room});
+            return commitScene({row,userId,live,before,next:b.scene,personalAreaRevisions:b.personalAreaRevisions,imageSessionEpoch});
+          });
+          afterSceneCommit(roomId,userId,result.room,result.questChanges);return send(res,200,{room:result.room});
         }
         if(action==='messages'&&method==='GET') { const before=url.searchParams.has('before')?Number(url.searchParams.get('before')):Number.MAX_SAFE_INTEGER;v.integer(before,'before');return send(res,200,store.messagesPage(roomId,userId,{before,cursor:url.searchParams.get('cursor')})); }
         if(action==='messages'&&method==='POST') {
