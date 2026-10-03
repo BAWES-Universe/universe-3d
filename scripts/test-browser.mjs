@@ -8,13 +8,13 @@ const groups={
  terrain:['terrain-editor.browser.mjs','terrain-renderer.browser.mjs','terrain.full.mjs','terrain-keyboard.full.mjs'],
  nearby:['proximity-text-client.browser.mjs','proximity-typing-client.browser.mjs','proximity-text.full.mjs','proximity-typing.full.mjs'],
  hud:['hud-availability.browser.mjs','hud-medium-header.browser.mjs','content-history.full.mjs','input-ownership.full.mjs'],
- presentation:['creator-render.actual-game.mjs','static-delivery.browser.mjs'],
+ presentation:['creator-render.actual-game.mjs','static-delivery.browser.mjs','render-quality.browser.mjs'],
  residents:['resident-test-ui.browser.mjs','resident-turn.full.mjs'],
  framing:['panel-framing.browser.mjs','panel-framing-picking.browser.mjs','tranche-bots.browser.mjs'],
  core:['fallback.browser.mjs','camera-walkthrough.browser.mjs','editor-direct.browser.mjs','picking-dpr.browser.mjs','avatar-live.browser.mjs','avatar-layout-final.browser.mjs','express.full.mjs'],
  modules:['avatar.browser.mjs','camera-renderer.browser.mjs','editor-transactions.browser.mjs','editor-actions.browser.mjs','bot-editor.browser.mjs','personal-areas.browser.mjs','express.browser.mjs','express.live.mjs','places.live.mjs','social.browser.mjs','social.live.mjs','media-browser.mjs','media-server-browser.mjs'],
  media:['media-away.browser.mjs','media-silent.browser.mjs','media-browser.mjs','media-server-browser.mjs','media-ice.browser.mjs','silent.full.mjs','media-freshness.full.mjs','proximity-client-native.browser.mjs'],
- images:['image-library-shell.browser.mjs','editor-image.browser.mjs','editor-toolbar.browser.mjs','image-library.full.mjs','image-lifecycle.full.mjs'],
+ images:['image-library-shell.browser.mjs','editor-image.browser.mjs','editor-toolbar.browser.mjs','image-library.full.mjs','image-lifecycle.full.mjs','editor-compact.full.mjs'],
  authoring:['tranche-smoke.browser.mjs','tranche-actions.browser.mjs','tranche-personal.browser.mjs','tranche-bots.browser.mjs','places.live.mjs']
 };
 const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, images, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay or arrivals');

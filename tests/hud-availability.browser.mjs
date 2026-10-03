@@ -16,6 +16,13 @@ async function hit(locator,{scroll=true}={}){
  assert(state.rect.x>=-.5&&state.rect.right<=state.width+.5&&state.rect.y>=-.5&&state.rect.bottom<=state.height+.5,JSON.stringify(state));assert(state.hit,JSON.stringify(state));return state;
 }
 async function press(locator,touch=false){await hit(locator);if(touch)await locator.tap();else await locator.click();await page.waitForTimeout(150);}
+async function customReachable(touch=false){
+ const custom=page.getByRole('button',{name:'Custom images',exact:true});
+ if(await custom.isVisible()){await hit(custom);return;}
+ const more=page.getByRole('button',{name:'More build tools',exact:true});
+ if(!await more.isVisible())for(const name of ['Close furniture tray','Close terrain palette','Close item details']){const close=page.getByRole('button',{name,exact:true});if(await close.isVisible()){await press(close,touch);break;}}
+ await press(more,touch);await hit(custom);await press(page.getByRole('button',{name:'Close more build tools',exact:true}),touch);
+}
 async function noOverflow(){const g=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,canvas:document.querySelector('#game').getBoundingClientRect().toJSON(),dpr:devicePixelRatio,render:document.querySelector('#game').width}));assert(g.scroll<=g.width,JSON.stringify(g));assert.equal(g.canvas.width,g.width);assert.equal(await page.evaluate(()=>__universe.getCamera().viewportWidth),1);return g;}
 async function open(name='Open content fixture',touch=false){await press(page.getByRole('button',{name,exact:true}),touch);await page.locator('.embedded-panel').waitFor();await settle();}
 async function historyDisposition(action){await settle();historyDispositions.push({action,...await page.evaluate(()=>({surface:history.state?.surface||null,embed:!!document.querySelector('#embedded-content:not([hidden])'),chat:!document.querySelector('#social').hidden,build:!document.querySelector('#editor').hidden}))});}
@@ -96,7 +103,7 @@ try{
  await reset();await open();
  assert.equal(await page.locator('.embedded-frame').getAttribute('sandbox'),'allow-scripts allow-forms allow-same-origin allow-popups allow-downloads');
  await press(page.locator('#dock-build'));assert.equal(await page.locator('#editor').isVisible(),true);
- await hit(page.getByRole('button',{name:'Custom images',exact:true}));await hit(page.locator('#quick-actions'));await hit(page.getByRole('button',{name:'Open content fixture',exact:true}));
+ await customReachable();await hit(page.locator('#quick-actions'));await hit(page.getByRole('button',{name:'Open content fixture',exact:true}));
  await page.screenshot({path:out+'/desktop-build-content.png'});
  pass('Desktop embed leaves native Build/content/quick-action targets reachable; sandbox unchanged',{geometry:await noOverflow()});
  await press(page.getByRole('button',{name:'Return to world',exact:true}));await open();assert.equal(await page.locator('#editor').isVisible(),true);
@@ -133,7 +140,7 @@ try{
  await page.setViewportSize({width:1440,height:950});await reset();
  // CSS-only accessibility fixture enlarges existing control text, not app actions.
  const zoom=await page.addStyleTag({content:'#app button,#app input,#app textarea {font-size:24px !important}'});await open();await press(page.locator('#dock-emote'));await press(page.getByRole('button',{name:'Close Express',exact:true}));
- await ensureEmbed();await press(page.locator('#dock-build'));await hit(page.getByRole('button',{name:'Custom images',exact:true}));await hit(page.getByRole('button',{name:'Return to world',exact:true}));await page.screenshot({path:out+'/enlarged-text.png'});
+ await ensureEmbed();await press(page.locator('#dock-build'));await customReachable();await hit(page.getByRole('button',{name:'Return to world',exact:true}));await page.screenshot({path:out+'/enlarged-text.png'});
  pass('Enlarged control text stays in explicit scroll containers with reachable close/return',{geometry:await noOverflow()});await zoom.evaluate(e=>e.remove());await ctx.close();contexts.pop();
  }
  for(const viewport of((process.env.HUD_KEYBOARD_ONLY||process.env.HUD_CAMERA_ONLY)?[]:[{width:390,height:844},{width:844,height:390},{width:1100,height:850}])){
@@ -143,10 +150,10 @@ try{
   if(!full){
    const d=await page.locator('#dock').boundingBox(),touch=await ctx.newCDPSession(page);await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:1,x:d.x+d.width-20,y:d.y+d.height/2}]});
    for(let i=1;i<=6;i++)await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{id:1,x:d.x+d.width-20-i*(d.width-50)/6,y:d.y+d.height/2}]});
-   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(350);assert(await page.locator('#dock').evaluate(e=>e.scrollLeft>0),'native swipe scrolls available dock');await press(page.locator('#dock-build'),true);await hit(page.getByRole('button',{name:'Custom images',exact:true}));
+   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(350);assert(await page.locator('#dock').evaluate(e=>e.scrollLeft>0),'native swipe scrolls available dock');await press(page.locator('#dock-build'),true);await customReachable(true);
   }
   await press(page.getByRole('button',{name:'Return to world',exact:true}),true);await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__universe?.getState().ready);await settle();
-  for(const name of['Open content fixture','Open wide content','Read local message'])await hit(page.getByRole('button',{name,exact:true}));await press(page.locator('#dock-build'),true);await hit(page.getByRole('button',{name:'Custom images',exact:true}));for(const name of['Open content fixture','Open wide content','Read local message'])await hit(page.getByRole('button',{name,exact:true}));await press(page.getByRole('button',{name:'Close editor',exact:true}),true);await settle();
+  for(const name of['Open content fixture','Open wide content','Read local message'])await hit(page.getByRole('button',{name,exact:true}));await press(page.locator('#dock-build'),true);await customReachable(true);for(const name of['Open content fixture','Open wide content','Read local message'])await hit(page.getByRole('button',{name,exact:true}));await press(page.getByRole('button',{name:'Close editor',exact:true}),true);await settle();
   await press(page.locator('#dock-emote'),true);await press(page.getByRole('button',{name:'Close Express',exact:true}),true);
   pass(`Native touch ${viewport.width}×${viewport.height} reaches Build, Express and content Return without page overflow`,{geometry:await noOverflow(),fullscreenContent:full});await ctx.close();contexts.pop();
  }

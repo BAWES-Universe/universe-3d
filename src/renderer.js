@@ -1,4 +1,5 @@
 import {createWorldPresentation} from './world-presentation.js';
+import {resizeRenderBuffer,WORLD_RENDER_PIXELS} from './render-resolution.js';
 import {createBabylonImageTexturePool,createBabylonImageObjectView,pickWithImageAlpha} from './babylon-image-object-view.js';
 import {resolvedImage,imageGeometry} from './image-asset-context.js';
 import {Engine} from '@babylonjs/core/Engines/engine.js';
@@ -39,7 +40,7 @@ const hex=h=>Color3.FromHexString(h);
 export async function createRenderer(canvas,labels){
  const presentation=createWorldPresentation();let drawnFrames=0,lastRenderDt=0,resizePending=false,labelsHiddenBeforePause=null;
  const engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true,alpha:false},false);
- engine.setHardwareScalingLevel(Math.max(1,window.devicePixelRatio/1.5));
+ resizeRenderBuffer(engine,canvas,WORLD_RENDER_PIXELS);
  const scene=new Scene(engine);scene.clearColor=new Color4(.065,.058,.096,1);scene.skipPointerMovePicking=true;
  const camera=new FreeCamera('camera',new Vector3(23,27,23),scene);camera.minZ=.15;camera.maxZ=160;camera.fov=.78;camera.inputs.clear();
  const rig=createCameraRig({aspect:canvas.clientWidth/canvas.clientHeight});
@@ -232,11 +233,11 @@ export async function createRenderer(canvas,labels){
   // Keep labels hidden on close until the first current-state world draw completes.
  }
  function restoreLabels(){if(labelsHiddenBeforePause!==null){labels.hidden=labelsHiddenBeforePause;labelsHiddenBeforePause=null;}}
- function resize(){if(presentation.isSuppressed()){resizePending=true;return;}engine.resize();updateCamera();}
+ function resize(){if(presentation.isSuppressed()){resizePending=true;return;}resizeRenderBuffer(engine,canvas,WORLD_RENDER_PIXELS);updateCamera();}
  function render(dt,actualDt=dt){
   const frame=presentation.nextFrame(dt,actualDt);if(!frame)return;
   dt=frame.dt;actualDt=frame.actualDt;
-  if(resizePending){resizePending=false;engine.resize();}
+  if(resizePending){resizePending=false;resizeRenderBuffer(engine,canvas,WORLD_RENDER_PIXELS);}
   // Restore before measuring label rects (hidden elements have zero bounds).
   // The following layout + world draw complete in this same task before paint.
   restoreLabels();

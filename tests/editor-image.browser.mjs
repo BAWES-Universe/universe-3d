@@ -23,7 +23,8 @@ const bundle=await build({stdin:{contents:source,resolveDir:process.cwd(),source
 const browser=await launch(),page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const check=name=>console.log('PASS',name);
 try{
- await page.route('https://editor.test/',route=>route.fulfill({status:200,contentType:'text/html',body:'<canvas id="game" tabindex="0"></canvas><aside id="editor"></aside>'}));
+ // Give the editor a viewport-height lane before its ResizeObserver measures it.
+ await page.route('https://editor.test/',route=>route.fulfill({status:200,contentType:'text/html',body:'<style>#editor{min-height:100vh}</style><canvas id="game" tabindex="0"></canvas><aside id="editor"></aside>'}));
  await page.goto('https://editor.test/');await page.addScriptTag({content:bundle.outputFiles[0].text});
  await page.getByRole('button',{name:'Custom images',exact:true}).click();assert.equal(await page.evaluate(()=>logs.opened),1);
  assert.equal(await page.evaluate(()=>editor.setImageAsset({assetId:'tree',versionId:'missing'})),false);
@@ -52,14 +53,18 @@ try{
  await page.evaluate(()=>{state.room={id:'other',role:'owner',revision:1,imageDefinitions:{},scene:{...state.room.scene,objects:[]}};state.scene=structuredClone(state.room.scene);editor.attachRoom();});assert.deepEqual(await page.evaluate(()=>definitionKeys()),[]);assert.equal(await page.evaluate(()=>editor.setImageAsset({assetId:'tree',versionId:'v1'})),false);assert.equal(await page.evaluate(()=>editor.getTool()),'select');check('Room switch clears placement and prevents cross-room image context reuse');
  await page.addStyleTag({content:(await readFile('public/style.css','utf8')).replace('@import "/universe-tokens.css";','')});
  await page.addStyleTag({content:await readFile('public/universe-tokens.css','utf8')});await page.addStyleTag({content:await readFile('src/editor.css','utf8')});
- await page.locator('.builder-toolbelt button:nth-child(3)').click();
+ if(!await page.locator('.builder-tray').isVisible())await page.getByRole('button',{name:'＋ Furniture',exact:true}).click();
  for(const width of [320,393,700,800,1024,1440]){
-  await page.setViewportSize({width,height:900});
-  const layout=await page.evaluate(()=>{const belt=document.querySelector('.builder-toolbelt'),buttons=[...belt.querySelectorAll('button')];return {rect:JSON.parse(JSON.stringify(belt.getBoundingClientRect())),buttons:buttons.map(b=>({text:b.textContent,rect:JSON.parse(JSON.stringify(b.getBoundingClientRect())),scroll:b.scrollWidth,client:b.clientWidth})),tray:JSON.parse(JSON.stringify(document.querySelector('.builder-tray').getBoundingClientRect()))};});
+  await page.setViewportSize({width,height:900});await page.waitForFunction(compact=>document.querySelector('#editor').dataset.compact===String(compact),width<760);if(!await page.locator('.builder-tray').isVisible())await page.getByRole('button',{name:'＋ Furniture',exact:true}).click();
+  const layout=await page.evaluate(()=>{const belt=document.querySelector('.builder-toolbelt'),buttons=[...belt.querySelectorAll('button')].filter(b=>b.getClientRects().length);return {rect:JSON.parse(JSON.stringify(belt.getBoundingClientRect())),buttons:buttons.map(b=>({text:b.textContent,rect:JSON.parse(JSON.stringify(b.getBoundingClientRect())),scroll:b.scrollWidth,client:b.clientWidth})),tray:JSON.parse(JSON.stringify(document.querySelector('.builder-tray').getBoundingClientRect()))};});
   for(const button of layout.buttons){assert.ok(button.rect.x>=-1&&button.rect.right<=width+1,width+'px button inside viewport: '+button.text);assert.ok(button.scroll<=button.client+1,width+'px button label fits: '+button.text);}
   assert.ok(layout.tray.bottom<=layout.rect.top+1,width+'px open tray does not cover toolbar');
   if(width===393)await page.screenshot({path:'/tmp/editor-image-mobile.png'});
-  if(width<=700)assert.ok(new Set(layout.buttons.map(b=>Math.round(b.rect.y+b.rect.height/2))).size===2,width+'px toolbar remains two rows');
+  if(width<760)assert.equal(new Set(layout.buttons.map(b=>Math.round(b.rect.y+b.rect.height/2))).size,1,width+'px primary tools remain one visible row');
+  const reachable=async control=>{const r=await control.evaluate(el=>{const b=el.getBoundingClientRect();return{x:b.x,y:b.y,right:b.right,bottom:b.bottom,hit:el.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))};});assert(r.x>=0&&r.right<=width&&r.y>=0&&r.bottom<=900&&r.hit,width+'px native target reachable: '+JSON.stringify(r));};
+  await reachable(page.getByRole('button',{name:'Save room',exact:true}));
+  if(width<760){await page.getByRole('button',{name:'More build tools',exact:true}).click();for(const name of ['Undo','Redo','⌫ Erase','Custom images','▱ Area','Duplicate selected item','Grid 0.5m'])await reachable(page.getByRole('button',{name,exact:true}));}
+  const opened=await page.evaluate(()=>logs.opened);await page.getByRole('button',{name:'Custom images',exact:true}).click();assert.equal(await page.evaluate(()=>logs.opened),opened+1,width+'px native Custom opening reaches its callback');
  }
  check('Custom images stays reachable and labels fit at 320/393/700/800/1024/1440px');
  assert.deepEqual(errors,[]);console.log('PASS No unhandled browser errors');

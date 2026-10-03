@@ -19,7 +19,7 @@ async function owner(path,method='GET',body){
  const data=await response.json();assert(response.ok,JSON.stringify({path,status:response.status,data}));return data;
 }
 const checks=[],errors=[],requests={presence:0,media:0};let browser,context,page;
-const result={bundleSha256:createHash('sha256').update(await readFile(runtime+'/main.js')).digest('hex'),checks,errors,limits:['Software WebGL on a loopback fixture only; no phone, thermal, FPS or production-capacity claim','Media lifecycle/HTTP policy continues; no capture or transport-success claim','No DPR/default resolution modification']};
+const result={bundleSha256:createHash('sha256').update(await readFile(runtime+'/main.js')).digest('hex'),checks,errors,limits:['Software WebGL on a loopback fixture only; no phone, thermal, FPS or production-capacity claim','Media lifecycle/HTTP policy continues; no capture or transport-success claim','Checks presentation suspension and restoration of the current resolution policy; separate render-quality tests cover DPR and pixel budgets']};
 const report=async(name,details={})=>{checks.push({name,...details});console.log('PASS',name);await writeFile(out+'/results.json',JSON.stringify(result,null,2));};
 const stats=()=>page.evaluate(()=>__universe.getStats()),state=()=>page.evaluate(()=>__universe.getState()),preview=()=>page.evaluate(()=>__universe.getCreatorPreview());
 async function openCreator(){
@@ -72,6 +72,6 @@ try{
  const revoked=await stats();assert.equal(revoked.presentation.drawnFrames,beforeRevoke.presentation.drawnFrames);assert.equal(revoked.presentation.suspended,true);assert.equal(await page.locator('#labels').locator('.player-label').count(),0);
  assert(!app.presence.has('commons:'+initialState.user.id));await page.getByRole('button',{name:'Cancel',exact:true}).click();await resumed();assert.equal((await stats()).presentation.avatarCount,0);await page.getByText('You’ve left this room',{exact:true}).waitFor();await page.screenshot({path:out+'/04-access-revoked.png'});
  await report('Access revoke while paused clears actor resources and presence; close cannot resurrect stale people',{revoked:revoked.presentation});
- assert.equal(initialStats.hardwareScalingLevel,(await stats()).hardwareScalingLevel);assert.deepEqual(errors,[]);await report('No page errors; original hardware scaling policy retained');
+ assert.equal(initialStats.hardwareScalingLevel,(await stats()).hardwareScalingLevel);assert.deepEqual(errors,[]);await report('No page errors; presentation transitions preserve the current hardware scale at these viewports');
 }catch(error){errors.push(error.stack);console.error(error);process.exitCode=1;await page?.screenshot({path:out+'/failure.png'}).catch(()=>{});}
 finally{await writeFile(out+'/results.json',JSON.stringify(result,null,2));await browser?.close();await app.close();}

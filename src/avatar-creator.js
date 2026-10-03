@@ -8,6 +8,7 @@ import {DirectionalLight} from '@babylonjs/core/Lights/directionalLight.js';
 import {CreateCylinder} from '@babylonjs/core/Meshes/Builders/cylinderBuilder.js';
 import {StandardMaterial} from '@babylonjs/core/Materials/standardMaterial.js';
 import {createAvatarRig} from './avatar-rig.js';
+import {resizeRenderBuffer,PREVIEW_RENDER_PIXELS} from './render-resolution.js';
 import {AVATAR_OPTIONS,AVATAR_PALETTES,AVATAR_PRESETS,appearanceForUser,normalizeAppearance,validateAppearance,appearanceKey} from './avatar-spec.js';
 import './avatar-creator.css';
 
@@ -29,7 +30,7 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
   let opened=false,destroyed=false,saving=false,draft,baseline,activeTab='body',engine,scene,camera,rig,observer,lastTime=0,animation='idle',returnFocus,commitOverride,generation=0,renderedFrames=0;
   const titleId=`avatar-title-${Math.random().toString(36).slice(2)}`;
   const dialog=el('section',{class:'avatar-dialog',role:'dialog','aria-modal':'true','aria-labelledby':titleId,tabindex:'-1'});
-  const title=el('h2',{id:titleId,text:'Make yourself at home'});
+  const title=el('h2',{id:titleId,text:'Your character'});
   const closeButton=button('×',()=>close(),{class:'avatar-close','aria-label':'Close character creator',title:'Close (Escape)'});
   const heading=el('header',{class:'avatar-header'},el('div',{},el('span',{class:'avatar-eyebrow',text:'YOUR UNIVERSE CHARACTER'}),title,el('p',{text:'A little you. A little possibility.'})),closeButton);
   const canvas=el('canvas',{class:'avatar-preview',tabindex:'0','aria-label':'Live 3D character preview. Drag to orbit, use arrow keys to turn, plus or minus to zoom.','data-testid':'avatar-preview'});
@@ -50,7 +51,7 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
   fields.id=`${titleId}-fields`;
   const editPanel=el('div',{class:'avatar-edit-panel'},el('div',{class:'avatar-preset-title',text:'Start with a look, then make it yours'}),presetList,tablist,fields);
   const error=el('p',{class:'avatar-save-error',role:'alert'});
-  const status=el('p',{class:'avatar-save-status',role:'status','aria-live':'polite',text:'Changes stay in this preview until you save.'});
+  const status=el('p',{class:'avatar-save-status',role:'status','aria-live':'polite',text:'Preview only. Save to apply.'});
   const cancelButton=button('Cancel',()=>close(),{class:'avatar-cancel'});
   const saveButton=button('Save character',save,{class:'avatar-save','data-testid':'avatar-save'});
   dialog.append(heading,el('div',{class:'avatar-workspace'},stage,editPanel),el('footer',{class:'avatar-footer'},el('div',{class:'avatar-footer-copy'},error,status),el('div',{class:'avatar-footer-actions'},cancelButton,saveButton)));
@@ -65,13 +66,13 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
   }
   function renderFields(){const previous=document.activeElement;const key=previous?.dataset?.field,value=previous?.dataset?.value;fields.replaceChildren(...TAB_FIELDS[activeTab].map(([key,label])=>field(key,label)));fields.setAttribute('aria-labelledby',`${titleId}-${activeTab}`);if(key)fields.querySelector(`[data-field="${key}"][data-value="${value}"]`)?.focus({preventScroll:true});}
   function setTab(id){activeTab=id;for(const b of tablist.children){b.setAttribute('aria-selected',String(b.dataset.tab===id));b.tabIndex=b.dataset.tab===id?0:-1;}renderFields();}
-  function refresh(){rig?.setAppearance(draft);renderFields();for(const b of presetList.children){const p=AVATAR_PRESETS.find(p=>p.id===b.dataset.preset);b.setAttribute('aria-pressed',String(appearanceKey(draft)===appearanceKey(p.appearance)));}status.textContent=appearanceKey(draft)===baseline?'Changes stay in this preview until you save.':'Looking good. Save to wear this everywhere.';}
+  function refresh(){rig?.setAppearance(draft);renderFields();for(const b of presetList.children){const p=AVATAR_PRESETS.find(p=>p.id===b.dataset.preset);b.setAttribute('aria-pressed',String(appearanceKey(draft)===appearanceKey(p.appearance)));}status.textContent=appearanceKey(draft)===baseline?'Preview only. Save to apply.':'Unsaved character changes.';}
   function front(){if(!camera)return;camera.alpha=Math.PI/2;camera.beta=1.34;camera.radius=3.6;}
   function orbit(amount){if(camera)camera.alpha+=amount;}
   function startPreview(){
     previewError.hidden=true;
     try{
-      engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:false,alpha:true},false);engine.setHardwareScalingLevel(Math.max(1,window.devicePixelRatio/1.5));
+      engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:false,alpha:true,doNotHandleTouchAction:true},false);resizeRenderBuffer(engine,canvas,PREVIEW_RENDER_PIXELS);
       scene=new Scene(engine);scene.clearColor=new Color4(0,0,0,0);
       camera=new ArcRotateCamera('wardrobe-orbit',Math.PI/2,1.34,3.6,new Vector3(0,1.04,0),scene);camera.lowerRadiusLimit=2.6;camera.upperRadiusLimit=5.5;camera.lowerBetaLimit=.7;camera.upperBetaLimit=1.75;camera.wheelPrecision=45;camera.panningSensibility=0;camera.minZ=.1;camera.fov=.68;camera.attachControl(canvas,true);camera.inputs.removeByType('ArcRotateCameraKeyboardMoveInput');
       const sky=new HemisphericLight('wardrobe-sky',new Vector3(.25,1,.4),scene);sky.intensity=.92;sky.groundColor=Color3.FromHexString('#8b7b9f');
@@ -80,7 +81,7 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
       const mat=new StandardMaterial('wardrobe-plinth',scene);mat.diffuseColor=Color3.FromHexString('#ddd4ec');mat.specularColor=Color3.Black();const base=CreateCylinder('wardrobe-plinth',{height:.08,diameter:1.45,tessellation:64},scene);base.position.y=-.059;base.material=mat;
       rig=createAvatarRig(scene,draft,{id:'wardrobe-preview'});lastTime=performance.now();
       engine.runRenderLoop(()=>{if(!opened)return;const now=performance.now(),dt=Math.min(.1,(now-lastTime)/1000);lastTime=now;rig.update({dt,time:now/1000,heading:0,moving:animation!=='idle',running:animation==='run'});scene.render();renderedFrames++;});
-      observer=new ResizeObserver(()=>engine?.resize());observer.observe(canvas);engine.resize();
+      observer=new ResizeObserver(()=>{if(engine)resizeRenderBuffer(engine,canvas,PREVIEW_RENDER_PIXELS);});observer.observe(canvas);resizeRenderBuffer(engine,canvas,PREVIEW_RENDER_PIXELS);
     }catch(e){stopPreview();previewError.textContent='The live 3D preview could not start. Your saved character is safe. Try reopening in a WebGL-capable browser.';previewError.hidden=false;}
   }
   function stopPreview(){observer?.disconnect();observer=null;rig?.dispose();rig=null;scene?.dispose();scene=null;engine?.dispose();engine=null;camera=null;}
@@ -98,7 +99,7 @@ export function mountAvatarCreator({root,api,getState,onSaved=()=>{},onOpenChang
   }
   function open(options={}){
     if(destroyed||opened)return;generation++;opened=true;saving=false;returnFocus=document.activeElement;commitOverride=options.onCommit||null;
-    draft=normalizeAppearance(options.appearance??appearanceForUser(getState?.()?.user));baseline=appearanceKey(draft);error.textContent='';animation='idle';for(const b of animations.children)b.setAttribute('aria-pressed',String(b.dataset.motion==='idle'));root.hidden=false;refresh();onOpenChange(true);startPreview();closeButton.focus({preventScroll:true});
+    draft=normalizeAppearance(options.appearance??appearanceForUser(getState?.()?.user));baseline=appearanceKey(draft);error.textContent='';animation='idle';for(const b of animations.children)b.setAttribute('aria-pressed',String(b.dataset.motion==='idle'));root.hidden=false;dialog.scrollTop=0;editPanel.scrollTop=0;refresh();onOpenChange(true);startPreview();closeButton.focus({preventScroll:true});
   }
   function close(force=false){if(!opened||(saving&&!force))return;opened=false;generation++;root.hidden=true;stopPreview();onOpenChange(false);if(returnFocus?.isConnected)returnFocus.focus({preventScroll:true});else(document.querySelector('[data-avatar-trigger]')||document.getElementById('game'))?.focus({preventScroll:true});}
   function onKey(event){if(!opened)return;if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();return;}if(event.key==='Tab'){const focusables=[...dialog.querySelectorAll('button:not(:disabled),canvas,[tabindex="0"]')].filter(n=>n.offsetParent!==null&&!n.closest('[inert]'));const first=focusables[0],last=focusables.at(-1);if(event.shiftKey&&(document.activeElement===first||document.activeElement===dialog)){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}event.stopPropagation();}

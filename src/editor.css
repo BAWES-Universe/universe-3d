@@ -1109,3 +1109,109 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
 .destination-picker .destination-hint { margin-top: 6px; font-size: 10px; line-height: 1.45; }
 .arrival-label { color: #a5edda; }
 @media (pointer: coarse) { .builder-arrival input, .builder-arrival select, .destination-picker select { min-height: 44px; } }
+
+/* A sheet owns one scrolling body; its close control never scrolls away. */
+.builder-sheet-body { min-height: 0; }
+.builder-tools { display: none; }
+#editor.editor-workbench[data-compact=true] {
+  --builder-sheet-bottom: 172px;
+  --builder-sheet-top: 190px;
+}
+#editor.editor-workbench[data-compact=true] .builder-heading {
+  top: 100px; left: 8px; right: 8px; min-width: 0; max-width: none;
+  padding: 8px; grid-template-columns: minmax(0,1fr) auto auto auto;
+  gap: 4px; border-radius: 14px;
+}
+#editor.editor-workbench[data-compact=true] .builder-title { grid-column: 1; grid-row: 1; min-width: 0; }
+#editor.editor-workbench[data-compact=true] .builder-title strong { font-size: 14px; line-height: 1.15; }
+#editor.editor-workbench[data-compact=true] .builder-eyebrow { display: none; }
+#editor.editor-workbench[data-compact=true] .builder-heading > button {
+  grid-row: 1; min-height: 48px; min-width: 44px; padding: 8px; font-size: 11px;
+}
+#editor.editor-workbench[data-compact=true] .builder-room-settings { grid-column: 2; }
+#editor.editor-workbench[data-compact=true] .builder-save { grid-column: 3; background: var(--u-primary); color: #fff; }
+#editor.editor-workbench[data-compact=true] .builder-done { grid-column: 4; }
+#editor.editor-workbench[data-compact=true] .editor-status {
+  position: static; grid-column: 1/-1; grid-row: 2; font-size: 10px;
+  line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#editor.editor-workbench[data-compact=true] .builder-toolbelt {
+  display: flex; left: 8px; right: 8px; bottom: 100px; transform: none;
+  width: auto; max-width: none; gap: 2px; padding: 6px; border-radius: var(--u-pill);
+  flex-wrap: nowrap; overflow: visible;
+}
+#editor.editor-workbench[data-compact=true] .builder-toolbelt > button {
+  flex: 1 1 0; min-width: 44px; min-height: 48px; margin: 0;
+  padding: 6px 3px; font-size: 11px; line-height: 1.2; white-space: normal;
+}
+#editor.editor-workbench[data-compact=true] .builder-more { background: var(--u-secondary); border-color: var(--u-secondary-border); }
+#editor.editor-workbench[data-compact=true] :is(.builder-tray,.builder-terrain,.builder-inspector,.builder-tools) {
+  position: absolute; display: flex; flex-direction: column;
+  top: var(--builder-sheet-top); bottom: var(--builder-sheet-bottom); left: 8px; right: 8px;
+  width: auto; max-width: none; max-height: none; transform: none; padding: 0;
+  overflow: hidden; border-radius: 14px; background: var(--u-surface-raised);
+  box-shadow: var(--u-shadow-raised); backdrop-filter: var(--u-backdrop);
+}
+#editor.editor-workbench[data-compact=true] :is(.builder-tray-top,.builder-inspector-heading) {
+  flex: 0 0 auto; min-height: 56px; margin: 0; padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--u-secondary-border);
+}
+#editor.editor-workbench[data-compact=true] :is(.builder-tray-top,.builder-inspector-heading) strong { font-size: 12px; }
+#editor.editor-workbench[data-compact=true] :is(.builder-tray-top,.builder-inspector-heading) button { min-width: 48px; min-height: 48px; }
+#editor.editor-workbench[data-compact=true] :is(.builder-sheet-body,.inspector) {
+  flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--u-text-muted) transparent;
+  padding: 10px 12px 14px; scroll-padding-block: 10px;
+}
+#editor.editor-workbench[data-compact=true] .catalog { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; }
+#editor.editor-workbench[data-compact=true] .catalog button { min-width: 44px; min-height: 58px; }
+#editor.editor-workbench[data-compact=true] .builder-search { min-height: 44px; }
+#editor.editor-workbench[data-compact=true] .terrain-materials { grid-template-columns: repeat(5,minmax(0,1fr)); }
+#editor.editor-workbench[data-compact=true] .terrain-materials button { min-height: 58px; min-width: 44px; padding: 5px 2px; }
+#editor.editor-workbench[data-compact=true] .terrain-actions { flex-wrap: wrap; }
+#editor.editor-workbench[data-compact=true] .terrain-actions button { min-height: 48px; }
+#editor.editor-workbench[data-compact=true] .terrain-blocking { min-height: 48px; margin-left: 0; }
+#editor.editor-workbench[data-compact=true] .inspector :is(input,select,textarea,button) { min-height: 44px; }
+#editor.editor-workbench[data-compact=true] .builder-extra-tools {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; gap: 8px;
+}
+#editor.editor-workbench[data-compact=true] .builder-extra-tools > button { min-height: 48px; white-space: normal; }
+#editor.editor-workbench[data-compact=true] .builder-extra-tools .builder-keyhelp {
+  position: static; grid-column: 1/-1; max-width: none; font-size: 11px;
+}
+#editor.editor-workbench[data-compact=true] .builder-hint { bottom: 174px; max-width: calc(100% - 24px); }
+#editor.editor-workbench[data-compact=true]:not([data-sheet=none]) .builder-hint { display: none; }
+#editor.editor-workbench[data-compact=true] .builder-recovery { top: 184px; left: 8px; right: 8px; z-index: 2; max-height: calc(100% - 360px); overflow: auto; }
+
+/* On a short screen the editor occupies one side; the remaining world is an
+   uninterrupted pointer/touch region. Close any sheet to reveal its tool row. */
+#editor.editor-workbench[data-short=true] {
+  --builder-sheet-top: 94px; --builder-sheet-bottom: 8px;
+  --builder-side-width: min(330px,58%);
+}
+#editor.editor-workbench[data-short=true] .builder-heading {
+  top: 8px; left: auto; right: 8px; width: var(--builder-side-width);
+}
+#editor.editor-workbench[data-short=true] :is(.builder-tray,.builder-terrain,.builder-inspector,.builder-tools) {
+  left: auto; right: 8px; width: var(--builder-side-width);
+}
+#editor.editor-workbench[data-short=true] .builder-toolbelt {
+  left: auto; right: 8px; bottom: 8px; width: var(--builder-side-width);
+}
+#editor.editor-workbench[data-short=true]:not([data-sheet=none]) .builder-toolbelt { visibility: hidden; }
+#editor.editor-workbench[data-short=true] .builder-hint {
+  left: auto; right: 8px; bottom: 78px; width: var(--builder-side-width); transform: none;
+}
+#editor.editor-workbench[data-short=true] .builder-recovery { top: 94px; left: auto; right: 8px; width: var(--builder-side-width); max-height: calc(100% - 102px); }
+/* A narrow available lane cannot support a second map column. Its temporary
+   sheet still gets the full height and stable editor controls. */
+@media (max-width: 420px) {
+  #editor.editor-workbench[data-short=true] { --builder-side-width: calc(100% - 16px); }
+}
+
+.builder-toolbelt .builder-extra-label { display: none; }
+.builder-extra-tools > button { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.builder-extra-tools .u-icon { width: 18px; height: 18px; flex-shrink: 0; }
+/* Save feedback is a live status, not an input surface. It must not swallow
+   the next furniture choice while a short sheet is open. */
+body:has(#editor.editor-workbench:not([hidden])) #toast { pointer-events: none; }

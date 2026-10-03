@@ -9,6 +9,8 @@
   padding: 24px;
   color: var(--text,#f1edf9);
   font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.4;
 }
 .avatar-creator[hidden] {
   display: none;
@@ -30,8 +32,11 @@
   gap: 20px;
   padding: 22px 28px 18px;
 }
+.avatar-header > div {
+  min-width: 0;
+}
 .avatar-eyebrow {
-  font-size: 10px;
+  font-size: 0.7143rem;
   font-weight: 800;
   letter-spacing: .18em;
   color: var(--u-text-muted);
@@ -41,7 +46,7 @@
     Space,
     Arial,
     sans-serif;
-  font-size: 27px;
+  font-size: 1.9286rem;
   font-weight: 700;
   letter-spacing: -.045em;
   margin: 6px 0;
@@ -50,7 +55,7 @@
 .avatar-header p {
   margin: 0;
   color: var(--u-text-muted);
-  font-size: 12px;
+  font-size: 0.8571rem;
 }
 .avatar-creator button {
   font: inherit;
@@ -73,7 +78,7 @@
   border-radius: 50%;
   width: var(--u-control-size,48px);
   height: var(--u-control-size,48px);
-  font-size: 24px !important;
+  font-size: 1.7143rem !important;
   flex: none;
 }
 .avatar-workspace {
@@ -104,7 +109,7 @@
   right: 0;
   text-align: center;
   color: #685275;
-  font-size: 9px;
+  font-size: 0.6429rem;
   letter-spacing: .10em;
   text-transform: uppercase;
   pointer-events: none;
@@ -119,7 +124,7 @@
   outline-offset: -5px !important;
 }
 .avatar-drag-hint {
-  font-size: 10px;
+  font-size: 0.7143rem;
   color: #6f5a82;
   margin-bottom: 12px;
   pointer-events: none;
@@ -130,6 +135,8 @@
   justify-content: center;
   gap: 5px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 .avatar-orbit-controls button {
   border: 1px solid #ffffffa0;
@@ -137,7 +144,7 @@
   border-radius: 8px;
   min-width: 40px;
   min-height: 32px;
-  font-size: 11px;
+  font-size: 0.7857rem;
   color: #655171;
 }
 .avatar-animation-controls {
@@ -149,7 +156,7 @@
 .avatar-animation-controls button {
   border: 0;
   color: #756283;
-  font-size: 11px;
+  font-size: 0.7857rem;
   background: transparent;
   padding: 7px 12px;
   border-radius: 7px;
@@ -163,7 +170,7 @@
   position: absolute;
   inset: 50px 20px auto;
   color: #715263;
-  font-size: 13px;
+  font-size: 0.9286rem;
   text-align: center;
 }
 .avatar-edit-panel {
@@ -173,7 +180,7 @@
   overscroll-behavior: contain;
 }
 .avatar-preset-title {
-  font-size: 11px;
+  font-size: 0.7857rem;
   color: var(--u-text-muted);
   margin-bottom: 11px;
 }
@@ -184,7 +191,7 @@
   margin-bottom: 18px;
 }
 .avatar-preset {
-  font-size: 10px !important;
+  font-size: 0.7143rem !important;
   font-weight: 600;
   color: var(--u-text-soft);
   background: var(--u-secondary);
@@ -210,6 +217,7 @@
 }
 .avatar-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 3px;
   border-bottom: 1px solid #a78bfa30;
   position: sticky;
@@ -219,14 +227,14 @@
   z-index: 2;
 }
 .avatar-tabs button {
-  font-size: 12px;
+  font-size: 0.8571rem;
   font-weight: 600;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--u-text-muted);
   padding: 10px 13px 12px;
-  flex: 1;
+  flex: 1 1 3.5em;
 }
 .avatar-tabs button[aria-selected=true] {
   color: #fff;
@@ -248,7 +256,7 @@
   padding: 0;
   margin-bottom: 10px;
   color: var(--u-text-muted);
-  font-size: 11px;
+  font-size: 0.7857rem;
   font-weight: 650;
 }
 .avatar-choices {
@@ -257,7 +265,7 @@
   gap: 6px;
 }
 .avatar-choices button {
-  font-size: 11px;
+  font-size: 0.7857rem;
   padding: 8px 11px;
   min-height: 34px;
   border-radius: var(--u-pill);
@@ -306,18 +314,19 @@
   padding: 17px 23px;
   border-top: 1px solid #a78bfa30;
   background: #17131f;
+  flex-wrap: wrap;
 }
 .avatar-footer-copy {
   min-width: 0;
 }
 .avatar-save-status {
   color: var(--u-text-muted);
-  font-size: 10px;
+  font-size: 0.7143rem;
   margin: 0;
   line-height: 1.5;
 }
 .avatar-save-error {
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: #ffb3c5;
   margin: 0 0 5px;
 }
@@ -328,13 +337,15 @@
   display: flex;
   gap: 9px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 .avatar-cancel,
 .avatar-save {
   padding: 11px 19px;
   border-radius: var(--u-pill);
   font-weight: 600 !important;
-  font-size: 12px !important;
+  font-size: 0.8571rem !important;
   min-height: var(--u-decision-size,44px);
 }
 .avatar-cancel {
@@ -364,65 +375,70 @@
     padding: 0;
   }
   .avatar-dialog {
+    display: block;
     border-radius: 0;
     width: 100%;
     height: 100dvh;
     max-height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .avatar-header {
     padding: 15px 18px 12px;
   }
   .avatar-header h2 {
-    font-size: 23px;
+    font-size: 1.6429rem;
   }
+  .avatar-eyebrow,
   .avatar-header p {
-    font-size: 11px;
+    display: none;
   }
   .avatar-workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(210px, 37dvh) minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
   }
   .avatar-stage {
     min-height: 0;
+    flex: none;
+    padding-bottom: 10px;
   }
   .avatar-preview {
     min-height: 0;
-    height: 100%;
+    height: clamp(180px, 32dvh, 240px);
+    flex: none;
+    /* The full sheet scrolls vertically; a horizontal drag still turns the rig. */
+    touch-action: pan-y;
   }
   .avatar-stage-label {
     top: 10px;
-    font-size: 8px;
+    font-size: 0.5714rem;
   }
   .avatar-drag-hint {
     display: none;
   }
   .avatar-orbit-controls {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    margin: 0;
+    margin: 0 8px 8px;
     gap: 3px;
   }
   .avatar-orbit-controls button {
     min-width: 32px;
-    font-size: 10px;
+    font-size: 0.7143rem;
     padding: 0 6px;
     min-height: 30px;
   }
   .avatar-animation-controls {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
     margin: 0;
     padding: 3px;
     gap: 1px;
   }
   .avatar-animation-controls button {
-    font-size: 9px;
+    font-size: 0.6429rem;
     padding: 7px;
   }
   .avatar-edit-panel {
     padding: 14px 18px 20px;
+    overflow: visible;
   }
   .avatar-presets {
     margin-bottom: 12px;
@@ -433,10 +449,10 @@
   .avatar-preset {
     min-height: 36px;
     padding: 7px 5px;
-    font-size: 10px !important;
+    font-size: 0.7143rem !important;
   }
   .avatar-tabs {
-    top: -14px;
+    position: static;
     padding-top: 3px;
   }
   .avatar-tabs button {
@@ -450,22 +466,35 @@
     padding: 12px 15px;
     gap: 10px;
     padding-bottom: max(12px, env(safe-area-inset-bottom));
+    position: sticky;
+    bottom: 0;
   }
   .avatar-save-status {
-    font-size: 9px;
-    max-width: 165px;
+    font-size: 0.6429rem;
   }
   .avatar-cancel,
   .avatar-save {
     padding: 10px 12px;
-    font-size: 11px !important;
+    font-size: 0.7857rem !important;
   }
   .avatar-save-error {
-    font-size: 10px;
+    font-size: 0.7143rem;
   }
   .avatar-swatch {
     height: 32px;
     width: 32px;
+  }
+  .avatar-footer-copy {
+    flex: 1 1 10rem;
+  }
+  .avatar-footer-actions {
+    flex: 1 1 auto;
+  }
+  .avatar-footer-actions button {
+    flex: 1 1 auto;
+  }
+  .avatar-presets {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 5rem), 1fr));
   }
 }
 @media (max-height: 540px) and (min-width: 650px) {
@@ -479,7 +508,7 @@
     padding: 12px 22px;
   }
   .avatar-header h2 {
-    font-size: 22px;
+    font-size: 1.5714rem;
   }
   .avatar-header p {
     display: none;
@@ -507,7 +536,7 @@
     margin: 0;
   }
   .avatar-animation-controls button {
-    font-size: 9px;
+    font-size: 0.6429rem;
     padding: 7px;
   }
   .avatar-footer {
