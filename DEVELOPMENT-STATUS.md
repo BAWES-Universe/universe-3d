@@ -1,6 +1,39 @@
-# Development status · 2026-10-03 09:15 UTC
+# Development status · 2026-10-03 16:27 UTC
 
-## Current increment: native named arrivals (separate development work)
+## Current increment: independent audit corrections
+
+The supplied friends-preview and feel/performance audits used `f534ad2`.
+Reproduction for this increment starts from published development head
+`92fc8b6b516d631162df683e3f8dffe6d46b720d`, which passed all fourteen jobs in
+CI run `37112590941`. The operator RC remains `76b83c34`; no running deployment
+is changed by this source work.
+
+The first corrections repair missed-revocation recovery, the nonempty legacy
+grant review panel, and keyboard ownership when opening Chat or focusing the
+world. Actual missed-SSE testing destroys the existing socket, blocks retries,
+revokes membership, then reconnects. The client now clears room authority and
+private directory state, closes Build and retains a byte-exact exportable
+draft. Nine missed-event and nine connected-revocation checks pass, including delayed
+old directory responses and exact native draft exports. All four ordinary
+retained-reconnect/Silent replays pass too. No browser page exceptions were
+recorded. The combined source passes 1,376 CPU/API tests with the same historical
+skip, 294 syntax checks and build. Its five native input-ownership checks pass
+again; full remote CI is pending.
+
+Legacy review passes seventeen real-service Places browser checks and eleven
+hierarchy/migration API checks; no backend permission rules changed. Five
+actual-game input checks and all eighteen social browser regressions pass for
+desktop composer focus, touch non-text focus, retained drafts, intentional
+world movement and visible native keyboard focus. The focused arrival/typing
+unit and HTTP set passes 207 checks. The full remote regression run is pending.
+
+Short-screen editor layout, render-resolution/text scaling and static delivery
+are separate fixes under verification. Whole-scene concurrent editing still
+conflicts; `docs/collaborative-editing-plan.md` is a proposed proper operation
+protocol and merge workflow, not implemented functionality. The findings and
+evidence boundaries are tracked in `docs/external-audit-followup.md`.
+
+## Prior increment: native named arrivals (separate development work)
 
 Room editors can mark rectangular areas as named or default arrivals and choose destination entries on item/area doorways. The server authorizes the committed action and destination, chooses a collision-safe bounded landing, and returns one accepted pose plus placement identity. The client integration carries that authority through movement, reload, same-room travel and history; ordinary shared links choose an entry without granting private access. Arrival landing suppresses automatic doorway loops until the person leaves that area. This is a native adaptation of the pinned inline start/exit contracts, not Tiled import or infinite-world support.
 

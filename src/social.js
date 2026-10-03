@@ -214,6 +214,16 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (isPanelReadable() && tab === 'chat' && chatMode !== 'inbox') unread.delete(channelKey());
     if (isPanelReadable() && tab === 'chat' && chatMode === 'nearby') nearby.markRead();
     render();
+    focusPanel();
+  }
+  // Only explicit opening/navigation transfers keyboard ownership. Live
+  // messages and presence can render without stealing focus from the world.
+  function focusPanel() {
+    if (!isPanelReadable()) return;
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+    const target = activeTab === 'chat' && !coarse && composer && !composer.disabled
+      ? composer : tabs.get(activeTab);
+    target?.focus({preventScroll: true});
   }
   function render() {
     if (destroyed) return;
@@ -443,7 +453,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     selectedPeer = { ...peer }; chatMode = 'dm'; activeTab = 'chat'; root.hidden = false;
     if (isPanelReadable()) unread.delete(channelKey());
     resetView();
-    composer?.focus();
+    focusPanel();
   }
   function buildInbox() {
     const toolbar = el('div', { class: 'social-toolbar' }, button('← Room chat', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small social-btn-quiet' }), button('Find someone', () => setTab('people'), { class: 'button social-btn social-btn-small' }));

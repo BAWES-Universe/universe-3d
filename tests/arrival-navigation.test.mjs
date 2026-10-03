@@ -70,6 +70,27 @@ test('resume race rereads authority and cannot pull a sibling back into a prior 
  (await h.next()).resolve({user:{id:'actor'},currentRoomId:'b'});const fresh=await h.next();assert.equal(fresh.url,'/api/rooms/b/join');fresh.resolve(response('b',placement('b2',2)));await promise;assert.equal(h.state.roomId,'b');
 });
 
+test('reconnect without a current session room retires admission without replaying travel',async()=>{
+ const h=harness();await h.admit();const promise=h.nav.navigate('a',{mode:'resume',reconcile:true});
+ const session=await h.next();assert.equal(session.url,'/api/session');session.resolve({user:{id:'actor'},currentRoomId:null});
+ assert.equal(await promise,false);assert.equal(h.state.ready,false);assert.equal(h.state.identity,null);
+ assert.deepEqual(h.lost,['no-current-room']);assert.equal(h.nav.snapshot().needsAuthority,true);assert.equal(h.requests.length,0);
+});
+
+for(const status of [403,404,410])test(`definitive ${status} on fresh reconnect resume retires source access without an old revocation event`,async()=>{
+ const h=harness();await h.admit();const promise=h.nav.navigate('a',{mode:'resume',reconcile:true}),rejection=assert.rejects(promise,/ROOM_ACCESS_ENDED/);
+ (await h.next()).resolve({user:{id:'actor'},currentRoomId:'a'});
+ const resume=await h.next();assert.equal(resume.url,'/api/rooms/a/join');assert.deepEqual(resume.options.body,{mode:'resume'});resume.reject(failure(status,'ROOM_ACCESS_ENDED'));
+ await rejection;assert.equal(h.state.ready,false);assert.equal(h.state.identity,null);assert.deepEqual(h.lost,['source-access-changed']);assert.equal(h.nav.snapshot().needsAuthority,true);assert.equal(h.requests.length,0);
+});
+
+test('temporary reconnect failure does not report revoked access and a fresh resume preserves admission',async()=>{
+ const h=harness();await h.admit();h.state.pose={x:7,z:8};const promise=h.nav.navigate('a',{mode:'resume',reconcile:true});
+ (await h.next()).resolve({user:{id:'actor'},currentRoomId:'a'});(await h.next()).reject(failure(503,'TEMPORARY'));
+ (await h.next()).resolve({user:{id:'actor'},currentRoomId:'a'});(await h.next()).resolve(response());
+ assert.equal(await promise,true);assert.deepEqual(h.lost,[]);assert.equal(h.state.ready,true);assert.deepEqual(h.state.pose,{x:7,z:8});assert.equal(h.commits.at(-1).decision.kind,'retain');
+});
+
 test('repeated identical intent shares one POST; newer queued intent supersedes intermediate queued travel',async()=>{
  const h=harness();await h.admit();const first=h.nav.navigate('b',{entry:'cafe'}),firstDuplicate=h.nav.navigate('b',{entry:'cafe'});assert.equal(first,firstDuplicate);const request=await h.next();
  const middle=h.nav.navigate('c'),last=h.nav.navigate('d');request.resolve(response('b',placement('b2',2)));

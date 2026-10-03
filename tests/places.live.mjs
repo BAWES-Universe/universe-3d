@@ -76,11 +76,89 @@ try{
     await alice.getByLabel('Local account',{exact:true}).fill('ari');await alice.getByRole('button',{name:'Find account',exact:true}).click();await alice.getByRole('button',{name:'Select account ari',exact:true}).click();await alice.getByLabel('World-local tags',{exact:true}).fill('hosts');await alice.getByRole('button',{name:'Add member now',exact:true}).click();await alice.getByRole('alertdialog').getByRole('button',{name:'Add member',exact:true}).click();const target=(await call(bob,'/api/session')).user.id;assert.deepEqual((await call(bob,'/api/memberships')).memberships.find(m=>m.worldId===worldId).tags,['hosts']);
     await call(alice,`/api/worlds/w1/members/${target}`,'PUT',{role:'member',tags:['elsewhere']});await alice.getByRole('button',{name:'Remove world membership for Ari',exact:true}).click();await alice.getByRole('alertdialog').getByRole('button',{name:'Remove membership',exact:true}).click();await alice.getByText('World membership removed.',{exact:true}).waitFor();const memberships=(await call(bob,'/api/memberships')).memberships;assert(!memberships.some(m=>m.worldId===worldId));assert.deepEqual(memberships.find(m=>m.worldId==='w1').tags,['elsewhere']);await call(alice,`/api/worlds/w1/members/${target}`,'DELETE',{});
   });
-  await check('manager reviews a seeded legacy room grant before explicitly granting world-wide access',async()=>{
-    const target=(await call(bob,'/api/session')).user.id;
-    // Seed a migrated needs_review record; the separate backend suite verifies migration itself.
-    app.store.run('INSERT INTO members(room_id,user_id,role,granted,needs_review) VALUES(?,?,?,?,?) ON CONFLICT(room_id,user_id) DO UPDATE SET role=excluded.role,granted=1,needs_review=1',roomId,target,'editor',1,1);
-    await alice.evaluate(()=>window.places.refresh());await alice.getByRole('heading',{name:'Previous room grants need review',exact:true}).waitFor();await alice.getByRole('button',{name:'Review previous access for Ari in Design draft',exact:true}).click();assert.equal(await alice.getByLabel('World role',{exact:true}).inputValue(),'member');await alice.getByRole('button',{name:'Add member now',exact:true}).click();await alice.getByRole('alertdialog').getByText(/including access to all its private rooms/).waitFor();await alice.getByRole('alertdialog').getByRole('button',{name:'Add member',exact:true}).click();await alice.getByText('World member added.',{exact:true}).waitFor();assert.equal((await call(alice,`/api/worlds/${worldId}/legacy-grants`)).grants.length,0);assert.equal((await call(bob,'/api/memberships')).memberships.find(m=>m.worldId===worldId).role,'member');await call(alice,`/api/worlds/${worldId}/members/${target}`,'DELETE',{});
+  let legacyTarget,siblingId,otherWorldId,otherRoomId;
+  const seedLegacy=room=>app.store.run('INSERT INTO members(room_id,user_id,role,granted,needs_review) VALUES(?,?,?,?,?) ON CONFLICT(room_id,user_id) DO UPDATE SET role=excluded.role,granted=1,needs_review=1',room,legacyTarget,'editor',1,1);
+  const status=async(page,path,method='GET',body)=>page.evaluate(async args=>{const response=await fetch(args.path,{method:args.method,headers:{'Content-Type':'application/json'},body:args.body===undefined?undefined:JSON.stringify(args.body)});return response.status;},{path,method,body});
+  const assertInactiveLegacy=async()=>{
+    assert(!(await call(bob,'/api/memberships')).memberships.some(m=>m.worldId===worldId));
+    assert.equal((await call(alice,`/api/worlds/${worldId}/legacy-grants`)).grants.length,1);
+    assert.equal(app.store.membership(roomId,legacyTarget).needs_review,1);
+    for(const id of [roomId,siblingId,otherRoomId]){
+      assert.equal(await status(bob,`/api/rooms/${id}`),404);
+      assert.equal(await status(bob,`/api/rooms/${id}/files`),404);
+      assert.equal(await status(bob,`/api/rooms/${id}/join`,'POST',{}),404);
+    }
+    for(const suffix of ['', '/members', '/legacy-grants', '/invitations'])assert.equal(await status(bob,`/api/worlds/${worldId}${suffix}`),404);
+    assert(!(await call(bob,'/api/universes')).universes.some(u=>u.id===universeId));
+  };
+  await check('nonempty private-world legacy review renders current members and invitations without granting access',async()=>{
+    legacyTarget=(await call(bob,'/api/session')).user.id;
+    await call(alice,`/api/worlds/${worldId}`,'PATCH',{public:false});
+    await call(alice,`/api/rooms/${roomId}`,'PATCH',{public:false});
+    siblingId=(await call(alice,'/api/rooms','POST',{worldId,name:'Private sibling',public:false})).room.id;
+    otherWorldId=(await call(alice,'/api/worlds','POST',{universeId,name:'Other private world',public:false})).world.id;
+    otherRoomId=(await call(alice,'/api/rooms','POST',{worldId:otherWorldId,name:'Other private room',public:false})).room.id;
+    // Synthetic post-migration records; hierarchy-migration.test.mjs verifies the migration itself.
+    seedLegacy(roomId);seedLegacy(otherRoomId);
+    await alice.evaluate(()=>window.places.refresh());
+    assert.equal(await alice.getByText('child is not defined',{exact:true}).count(),0);
+    await alice.getByRole('heading',{name:'Previous room grants need review',exact:true}).waitFor();
+    await alice.getByText('Protected owner',{exact:true}).waitFor();
+    await alice.getByText('World: admin',{exact:true}).waitFor();
+    await alice.getByRole('heading',{name:'World invitations',exact:true}).waitFor();
+    assert.equal(await alice.getByLabel('Local account',{exact:true}).isVisible(),true);
+    assert.equal(await alice.getByRole('button',{name:'Find account',exact:true}).isEnabled(),true);
+    await assertInactiveLegacy();
+    await alice.getByRole('button',{name:'Review previous access for Ari in Design draft',exact:true}).click();
+    assert.equal(await alice.getByLabel('World role',{exact:true}).inputValue(),'member');
+    assert.equal(await alice.getByRole('button',{name:'Send invitation',exact:true}).isEnabled(),true);
+    await assertInactiveLegacy();
+    await alice.getByRole('button',{name:'Add member now',exact:true}).click();
+    await alice.getByRole('alertdialog').getByText(/including access to all its private rooms/).waitFor();
+    await alice.getByRole('alertdialog').getByRole('button',{name:'Cancel',exact:true}).click();
+    await alice.getByRole('button',{name:'Close places',exact:true}).click();
+    await alice.getByRole('button',{name:'Open places',exact:true}).click();
+    await alice.getByRole('heading',{name:'Previous room grants need review',exact:true}).waitFor();
+    await assertInactiveLegacy();
+  });
+  await check('explicit legacy approval clears only its world queue and retains manager and child-room authority',async()=>{
+    await alice.getByRole('button',{name:'Add member now',exact:true}).click();
+    await alice.getByRole('alertdialog').getByRole('button',{name:'Add member',exact:true}).click();
+    await alice.getByText('World member added.',{exact:true}).waitFor();
+    assert.equal((await call(alice,`/api/worlds/${worldId}/legacy-grants`)).grants.length,0);
+    assert.equal(await alice.getByRole('heading',{name:'Previous room grants need review',exact:true}).count(),0);
+    assert.equal((await call(bob,'/api/memberships')).memberships.find(m=>m.worldId===worldId).role,'member');
+    assert.equal(app.store.membership(roomId,legacyTarget).needs_review,0);
+    assert.equal((await call(bob,`/api/rooms/${roomId}`)).room.role,'editor');
+    assert.equal((await call(bob,`/api/rooms/${siblingId}`)).room.role,'member');
+    for(const suffix of ['/members','/legacy-grants','/invitations'])assert.equal(await status(bob,`/api/worlds/${worldId}${suffix}`),403);
+    assert.equal(await status(bob,`/api/worlds/${worldId}/members/${legacyTarget}`,'PUT',{role:'admin'}),403);
+    assert.equal(await status(bob,`/api/rooms/${siblingId}`,'PATCH',{name:'No permission expansion'}),403);
+    assert.equal(await status(bob,`/api/rooms/${otherRoomId}`),404);
+    assert.equal(app.store.membership(otherRoomId,legacyTarget).needs_review,1);
+    assert.equal((await call(alice,`/api/worlds/${otherWorldId}/legacy-grants`)).grants.length,1);
+    await call(alice,`/api/worlds/${worldId}/members/${legacyTarget}`,'DELETE',{});
+  });
+  await check('review invitation leaves legacy access inactive until acceptance and then clears the owner queue',async()=>{
+    seedLegacy(roomId);
+    await alice.evaluate(()=>window.places.refresh());
+    await alice.getByRole('button',{name:'Review previous access for Ari in Design draft',exact:true}).click();
+    await alice.getByRole('button',{name:'Send invitation',exact:true}).click();
+    await alice.getByText('Invitation sent to their local account inbox.',{exact:true}).waitFor();
+    await alice.getByRole('heading',{name:'Previous room grants need review',exact:true}).waitFor();
+    await assertInactiveLegacy();
+    const invitation=(await call(alice,`/api/worlds/${worldId}/invitations`)).invitations.find(i=>i.status==='pending');
+    assert.equal(invitation.role,'member');
+    await open(bob,'invitations');
+    await bob.locator(`[data-invitation-id="${invitation.id}"]`).getByRole('button',{name:'Accept invitation',exact:true}).click();
+    await bob.getByText('Invitation accepted. Your membership is ready.',{exact:true}).waitFor();
+    await alice.getByRole('heading',{name:'Previous room grants need review',exact:true}).waitFor({state:'detached'});
+    await alice.getByRole('button',{name:'Edit world membership for Ari',exact:true}).waitFor();
+    assert.equal((await call(alice,`/api/worlds/${worldId}/legacy-grants`)).grants.length,0);
+    assert.equal((await call(bob,`/api/rooms/${siblingId}`)).room.role,'member');
+    assert.equal(app.store.membership(otherRoomId,legacyTarget).needs_review,1);
+    assert.equal(await status(bob,`/api/rooms/${otherRoomId}`),404);
+    await call(alice,`/api/worlds/${worldId}/members/${legacyTarget}`,'DELETE',{});
   });
   await check('decline, manager cancellation and expiry render one terminal outcome without membership',async()=>{
     const target=(await call(bob,'/api/session')).user.id;

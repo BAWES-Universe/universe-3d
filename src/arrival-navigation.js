@@ -128,6 +128,10 @@ export function createArrivalNavigation({api,getContext,beforeStart=async()=>tru
     const known=operation.committed;
     if(error.status===401){
      invalidateAuthority('authentication-required');
+    }else if(current()&&options.reconcile&&[403,404,410].includes(error.status)){
+     // A fresh resume denial retires the displayed admission even when its
+     // revocation push was missed. Network/server failures remain unconfirmed.
+     invalidateAuthority('source-access-changed');
     }else if(known){
      // Rendering/access failure after commit cannot restore the retired source.
      onAuthorityLost('admission-not-presented');
