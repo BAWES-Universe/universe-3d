@@ -26,6 +26,23 @@ try{
   for(const p of[alice,bob]){assert.equal(await p.evaluate(()=>captureAttempts),0);assert.equal((await(await p.request.get(base+'/api/media')).json()).enabled,false);}
   await composer(alice).fill('');await clears(bob);await composer(bob).fill('Ari native activity');await shows(alice,'Ari');await composer(bob).fill('');await clears(alice);
  });
+ await pass('Reopened SSE reseeds typing after same-admission resume and never restarts a retained draft',async()=>{
+  await alice.bringToFront();await composer(alice).fill('Retained through reconnect');await shows(bob,'Mira');
+  const before=await alice.evaluate(()=>{const state=__universe.getState();return{admissionId:state.admissionId,position:state.position};});
+  const starts=requests.filter(r=>r.body.isTyping).length;
+  let block=true;const blockEvents=route=>block?route.abort('internetdisconnected'):route.continue();await alice.route('**/api/events',blockEvents);
+  app.server.closeAllConnections();
+  await alice.waitForFunction(()=>__universe.getState().online===false);
+  await alice.waitForFunction(()=>document.querySelector('[aria-label="Send nearby message"]')?.disabled===true);await clears(bob);
+  block=false;await alice.unroute('**/api/events',blockEvents);
+  await alice.waitForFunction(()=>__universe.getState().online===true,null,{timeout:15000});
+  await nearby(bob);await nearby(alice);
+  assert.deepEqual(await alice.evaluate(()=>{const state=__universe.getState();return{admissionId:state.admissionId,position:state.position};}),before);
+  assert.equal(await composer(alice).inputValue(),'Retained through reconnect');await composer(alice).focus();
+  assert.equal(requests.filter(r=>r.body.isTyping).length,starts,'Reconnect and focus must not restart typing');
+  await composer(alice).fill('New input after reconnect');await shows(bob,'Mira');await composer(alice).fill('');await clears(bob);
+  await bob.bringToFront();await composer(bob).fill('Peer input after reconnect');await shows(alice,'Ari');await composer(bob).fill('');await clears(alice);
+ });
  await pass('Incoming typing preserves the recipient composer, cursor, timeline, geometry and unread',async()=>{
   await bob.bringToFront();await composer(bob).fill('Keep this separate draft');await composer(bob).press('Home');await composer(bob).press('ArrowRight');await composer(bob).press('Shift+ArrowRight');const before=await composer(bob).evaluate(el=>{window.savedTypingComposer=el;window.savedTypingTimeline=document.querySelector('.social-timeline');return {value:el.value,start:el.selectionStart,end:el.selectionEnd,box:el.getBoundingClientRect().toJSON(),scroll:savedTypingTimeline.scrollTop,rows:savedTypingTimeline.children.length,unread:document.querySelector('#unread').textContent};});
   await alice.bringToFront();await composer(alice).fill('New native typing activity');await shows(bob,'Mira');const after=await composer(bob).evaluate(el=>({same:el===savedTypingComposer,timeline:document.querySelector('.social-timeline')===savedTypingTimeline,focus:document.activeElement===el,value:el.value,start:el.selectionStart,end:el.selectionEnd,box:el.getBoundingClientRect().toJSON(),scroll:savedTypingTimeline.scrollTop,rows:savedTypingTimeline.children.length,unread:document.querySelector('#unread').textContent}));assert.equal(after.same,true);assert.equal(after.timeline,true);assert.equal(after.focus,true);delete after.same;delete after.timeline;delete after.focus;assert.deepEqual(after,before);await bob.screenshot({path:out+'/typing-desktop.png',timeout:60000});

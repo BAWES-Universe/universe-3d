@@ -178,7 +178,13 @@ function connectEvents(){
  source.onerror=()=>{if(!isCurrent())return;streamOpen=false;pendingNearbyContext=null;pendingGroupContext=null;groupControls?.resetConnection('disconnected');followMotion.clear(motion,{path});social?.resetNearbyConnection('disconnected');setOnline(false);};
  for(const type of ['hello','presence','scene','message','dm','members','role','room','moderation','media-policy','media-signal','quest','catalog','access-revoked','membership','invitation','expression','expression-clear','bots','image-assets','proximity-text-context','proximity-text-message','proximity-typing','proximity-controls'])source.addEventListener(type,event=>{
   if(!isCurrent()||!streamOpen)return;let data;try{data=JSON.parse(event.data);}catch{return;}
-  if(type==='hello'){const decision=arrivalNavigation.hello(data.arrivalEpoch,sourceGeneration);if(decision.kind==='refresh-required'&&!navigating)void reconcileArrival();return;}
+  if(type==='hello'){
+   const decision=arrivalNavigation.hello(data.arrivalEpoch,sourceGeneration);
+   // Arrival fencing runs first, but every current transport hello must still
+   // reach consumers (including Nearby typing's server-clock anchor).
+   handleEvent({type,data,actorId:eventActorId});
+   if(decision.kind==='refresh-required'&&!navigating)void reconcileArrival();return;
+  }
   const envelope={type,data,actorId:eventActorId};const observation=arrivalNavigation.observe(envelope,sourceGeneration);
   if(observation.decision?.kind==='refresh-required'&&!navigating)void reconcileArrival();
   if(observation.buffered&&data.roomId===state.room?.id){

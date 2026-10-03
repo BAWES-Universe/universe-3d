@@ -1,4 +1,4 @@
-# Development status · 2026-10-03 08:03 UTC
+# Development status · 2026-10-03 08:48 UTC
 
 ## Current increment: native named arrivals (separate development work)
 
@@ -8,7 +8,15 @@ The operator release candidate remains `76b83c34cb2d461523ccb1b3b065c3030104fd28
 
 The final integrated source passes 1,370 CPU/API tests, zero failures and the same historical skip; all 291 source files pass syntax checks. Build, package startup/static serving and Dockerfile-copy reconstruction pass. All five new browser suites pass on the final bundle: native editor/markers/Share, twelve actual travel flows and four actual reconnect flows. They cover held newer scene/revocation, failed automatic doorway recovery, exact accepted placement/history, retained dirty Build and iframe/form/focus, and immediate committed Silent/media denial during held resume. The media fixture uses inert JavaScript audio tracks, not real device capture or AV packets.
 
-The existing separate-login observer and same-cookie/touch regressions also pass on this exact final bundle, including 320px portrait and short landscape. Both replays report unchanged source/bundle hashes and zero page exceptions. Every default groupplay assertion remains in CI. The source checkpoint and exact-head remote CI are pending publication. Final bundle SHA-256: main `cc19596ea337790da2bf53793326eff5a21fd621ef8d5eda98579f43a248c57d`, CSS `26e371387d5773ab891e0db08c83a2184b8be16238a41c6b718cbe3c4695039c`. See `docs/NAMED-ARRIVALS.md`, `docs/named-arrival-authoring.md` and `docs/ARRIVAL-INTEGRATION-STATUS.md` for the precise boundary.
+The existing separate-login observer and same-cookie/touch regressions also pass on this exact final bundle, including 320px portrait and short landscape. Both replays report unchanged source/bundle hashes and zero page exceptions. Every default groupplay assertion remains in CI. The source checkpoint is published as `60b1ce5001d9d3ddb5f5cc24d1c65b2870b9904a`; its CI findings and correction status are recorded below. Initial bundle SHA-256: main `cc19596ea337790da2bf53793326eff5a21fd621ef8d5eda98579f43a248c57d`, CSS `26e371387d5773ab891e0db08c83a2184b8be16238a41c6b718cbe3c4695039c`. See `docs/NAMED-ARRIVALS.md`, `docs/named-arrival-authoring.md` and `docs/ARRIVAL-INTEGRATION-STATUS.md` for the precise boundary.
+
+### Arrivals CI corrections
+
+The initial published arrival head `60b1ce5001d9d3ddb5f5cc24d1c65b2870b9904a` exposed three failures. One authoring fixture still filled the destination as text after it became a native selector. A real typing regression consumed transport hello before the server-clock consumer; the correction restores normal event fan-out after arrival fencing and keeps the clock through authority-only resets while clearing activity and recipients. The observer fixture sampled one zero-speed frame while following could still resume after a late leader update. A controlled delayed-update replay reproduced its false failure while the actual entry preserved the current pose and identity.
+
+The corrected observer case pauses through native Chat, waits for a stable acknowledged pose, and verifies exact HTTP pose/admission preservation alongside the original movement and lease assertions. Every default groupplay assertion remains enabled. This is a test precondition correction, not a change to movement or admission authority.
+
+The combined selector/typing source passes 1,371 CPU/API checks with the existing historical skip, syntax and build. All four authoring suites pass on the original published runtime with the selector interaction corrected. All four Nearby suites pass on the repaired runtime, including unchanged first-input deadlines and a new actual reconnect case. The corrected observer, same-cookie secondary-session and compact-touch replays all pass, with zero page exceptions and unchanged source/bundle hashes in their recorded runs. Remote full CI remains pending for the combined correction. Repaired main bundle SHA-256: `6b14ab7cb4a8e7c3e8934f1380e2540f56a4777ef19b15583b4586df2f1af2f1`; CSS remains `26e371387d5773ab891e0db08c83a2184b8be16238a41c6b718cbe3c4695039c`. The operator release pin remains `76b83c34cb2d461523ccb1b3b065c3030104fd28`.
 
 ## Prior increment: mobile away media privacy
 

@@ -857,5 +857,5 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     root.replaceChildren(); root.classList.remove('social-shell');
   }
   render();
-  return { render, onEvent, destroy, setTab, openDm, resetNearbyConnection: reason => { typing.reset({preserveClock: ['travelling', 'access-changed'].includes(reason)}); nearby.resetConnection(reason); }, getNearbyStatus: () => nearby.snapshot() };
+  return { render, onEvent, destroy, setTab, openDm, resetNearbyConnection: reason => { typing.reset({preserveClock: ['travelling', 'access-changed', 'arrival-unconfirmed'].includes(reason)}); nearby.resetConnection(reason); }, getNearbyStatus: () => nearby.snapshot() };
 }
