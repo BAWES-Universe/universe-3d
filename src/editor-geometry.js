@@ -53,6 +53,10 @@ export function validateTerrainEdit(scene,rect,options,{position=null}={}){
  const blockers=terrainCollisionBoxes(terrain).filter(box=>!previous.has((box.x-.5)+','+(box.z-.5)));
  if(scene.spawn&&blockers.some(box=>contains(box,scene.spawn.x,scene.spawn.z,.75)))return {valid:false,reason:'Leave a clear space around the arrival point'};
  if(position&&blockers.some(box=>contains(box,position.x,position.z,.4)))return {valid:false,reason:'Move this away from where you’re standing'};
+ if(blockers.length){
+  let collision;try{collision=scene.objects.find(object=>collisionBoxes(scene,object).some(cell=>blockers.some(box=>overlaps(cell,box))));}catch{return {valid:false,reason:'Resolve every image version before editing this scene'};}
+  if(collision)return {valid:false,reason:'Overlaps '+(collision.name||CATALOG[collision.type]?.name||'another item')};
+ }
  const next=inheritImageDefinitions(scene,{...scene,terrain});
  if(blockers.length&&canLeaveArrival(scene)&&!canLeaveArrival(next))return {valid:false,reason:'Leave a walking route out of the arrival point'};
  return {valid:true,reason:options.erase?'Restore the original ground':options.blocked?'Blocks walking':'Walkable terrain',terrain};

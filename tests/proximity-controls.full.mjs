@@ -55,15 +55,16 @@ async function gameplay(page){await page.bringToFront();await page.locator('#gam
 async function nativeInvite(leader,follower,leaderName){await readyControls(leader);await leader.getByRole('button',{name:'Follow me',exact:true}).click();await follower.waitForFunction(name=>__universe.getProximityControls().invitations.some(invitation=>invitation.leaderName===name),leaderName);}
 async function nativeAccept(follower,leaderName){await acceptButton(follower,leaderName).click();await follower.waitForFunction(()=>!!__universe.getProximityControls().motion);await gameplay(follower);await follower.waitForFunction(()=>__universe.getFollowMotion().armed);}
 async function nativeStop(page){
- const stopped=s=>!s.context?.following&&!s.canStop&&!s.operation;
+ const start=requests.length,label=pages.find(entry=>entry.page===page).label;
  if((await controls(page)).canStop){
-  // Expiry can retire Stop after this read, before Playwright dispatches input.
-  // Resolve only the current Stop action; never click a node now labelled Invite.
-  try{await page.getByRole('button',{name:/^Stop(?: following| leading)?$/}).click({timeout:5000});}
-  catch(error){if(error.name!=='TimeoutError'||!stopped(await controls(page)))throw error;}
+  // A role locator retains its node during click actionability checks; expiry
+  // can relabel it Invite before pointerdown. Native Escape in this strip is
+  // cancellation even if that label changes before the key is dispatched.
+  await followButton(page).press('Escape',{timeout:5000});
   await page.waitForFunction(()=>{const s=__universe.getProximityControls();return !s.context?.following&&!s.canStop&&!s.operation;});
  }
  await settled(page);
+ assert(!requests.slice(start).some(request=>request.label===label&&request.body?.action==='invite'),'Case cleanup must never create a new invitation');
 }
 async function freshNativeInvite(leader,follower,leaderName){
  // An earlier case may have left a pending invitation or outlived its normal TTL.
