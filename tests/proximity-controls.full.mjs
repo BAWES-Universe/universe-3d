@@ -52,9 +52,19 @@ async function frames(page,count=6){await page.evaluate(count=>new Promise(resol
 async function settled(page){await page.waitForFunction(()=>__universe.getMotion().speed<.02,null,{timeout:15000});}
 async function readyControls(page,count=2){await page.waitForFunction(count=>{const s=__universe.getProximityControls();return s.canAct&&!s.operation&&s.context?.participants.length===count;},count,{timeout:20000});}
 async function gameplay(page){await page.bringToFront();await page.locator('#game').focus();await frames(page,3);}
-async function nativeInvite(leader,follower,leaderName){await readyControls(leader);await followButton(leader).click();await follower.waitForFunction(name=>__universe.getProximityControls().invitations.some(invitation=>invitation.leaderName===name),leaderName);}
+async function nativeInvite(leader,follower,leaderName){await readyControls(leader);await leader.getByRole('button',{name:'Follow me',exact:true}).click();await follower.waitForFunction(name=>__universe.getProximityControls().invitations.some(invitation=>invitation.leaderName===name),leaderName);}
 async function nativeAccept(follower,leaderName){await acceptButton(follower,leaderName).click();await follower.waitForFunction(()=>!!__universe.getProximityControls().motion);await gameplay(follower);await follower.waitForFunction(()=>__universe.getFollowMotion().armed);}
-async function nativeStop(page){const s=await controls(page);if(s.canStop){await followButton(page).click();await page.waitForFunction(()=>!__universe.getProximityControls().context?.following&&!__universe.getProximityControls().canStop&&!__universe.getProximityControls().operation);}await settled(page);}
+async function nativeStop(page){
+ const stopped=s=>!s.context?.following&&!s.canStop&&!s.operation;
+ if((await controls(page)).canStop){
+  // Expiry can retire Stop after this read, before Playwright dispatches input.
+  // Resolve only the current Stop action; never click a node now labelled Invite.
+  try{await page.getByRole('button',{name:/^Stop(?: following| leading)?$/}).click({timeout:5000});}
+  catch(error){if(error.name!=='TimeoutError'||!stopped(await controls(page)))throw error;}
+  await page.waitForFunction(()=>{const s=__universe.getProximityControls();return !s.context?.following&&!s.canStop&&!s.operation;});
+ }
+ await settled(page);
+}
 async function freshNativeInvite(leader,follower,leaderName){
  // An earlier case may have left a pending invitation or outlived its normal TTL.
  // Retire that case's consent through the product before creating this case's own.

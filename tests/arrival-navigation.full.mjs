@@ -8,7 +8,7 @@ import {launch} from '../scripts/browser.mjs';
 const start=(key,x,extra={})=>({id:key,name:key==='cafe'?'Café welcome':'Stage doors',x,z:0,width:1.6,depth:1.6,action:'welcome',start:{key,isDefault:key==='cafe'},...extra});
 const scene=id=>({version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:8},areas:[start('cafe',-6,id==='a'?{action:'teleport',target:'b',entry:'cafe'}:{}),start('stage',6)],objects:[{id:'door',type:'board',name:'Travel board',x:-6,z:-1.8,rotation:0,actions:[{id:'cross',type:'teleport',name:id==='a'?'Travel to Garden':'Travel to Café',target:id==='a'?'b':'a',entry:'cafe'},{id:'same',type:'teleport',name:'Travel to stage',target:id,entry:'stage'}]}]});
 const app=createGameServer({database:':memory:',seeds:[{id:'world',name:'Arrival world',rooms:[{id:'a',name:'Café room',scene:scene('a')},{id:'b',name:'Garden room',scene:scene('b')}]}],dist:new URL('../dist',import.meta.url).pathname,questsEnabled:false});
-const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1365,height:960},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[],joins=[],presence=[],movement=[];
+const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1365,height:960},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[],joins=[],presence=[],movement=[],retirement=[];
 page.setDefaultTimeout(60000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',error=>errors.push(error.message));
 page.on('request',request=>{if(request.url().endsWith('/api/presence'))presence.push(request.postDataJSON());});
 page.on('response',async res=>{if(/\/api\/rooms\/[^/]+\/join$/.test(new URL(res.url()).pathname)){const body=await res.json().catch(()=>null);joins.push({url:res.url(),request:res.request().postDataJSON(),status:res.status(),body});}});
@@ -65,6 +65,35 @@ try{
  const beforeRoom=(await (await context.request.get(base+'/api/rooms/b')).json()).room,nextScene=structuredClone(beforeRoom.scene);nextScene.areas[1].name='Newest stage sign';const saved=await context.request.put(base+'/api/rooms/b/scene',{data:{revision:beforeRoom.revision,scene:nextScene}});assert.equal(saved.status(),200);const changed=await saved.json();await page.waitForTimeout(100);assert.equal((await read()).room.id,'a');
  await held.route.fulfill({response:held.upstream});await ready('b');state=await read();assert.equal(state.room.revision,changed.room.revision);assert.equal(state.scene.areas[1].name,'Newest stage sign');await context.unroute('**/api/rooms/b/join',hold);check('Real target scene SSE received before held join response wins before destination render');
  await page.screenshot({path:'evidence/arrival-navigation-destination.png'});
- held=null;await context.route('**/api/rooms/a/join',hold);await travel('Travel to Café');for(let i=0;!held&&i<100;i++)await page.waitForTimeout(20);assert(held);const archived=await context.request.delete(base+'/api/rooms/a');assert.equal(archived.status(),200);await page.waitForTimeout(100);await held.route.fulfill({response:held.upstream});await page.waitForFunction(()=>!window.__universe.getState().ready);await page.waitForTimeout(150);state=await read();assert.equal(state.room.id,'b');assert.equal(state.admissionId,null);const session=await (await context.request.get(base+'/api/session')).json();assert.equal(session.currentRoomId,null);check('Real target access revocation during held join never displays target or restores retired source authority');
+ // Observe rendered frames and heading changes without changing application
+ // state, so a transient target display or post-retirement regrant also fails.
+ const retirementWatch=await page.evaluateHandle(()=>{
+  const samples=[];let frame;
+  const sample=()=>{const s=window.__universe.getState(),value={roomId:s.room?.id??null,ready:s.ready,admissionId:s.admissionId,admissionEpoch:s.admissionEpoch,admissionRevision:s.admissionRevision,title:document.querySelector('#room-name').textContent};if(JSON.stringify(value)!==JSON.stringify(samples.at(-1)))samples.push(value);};
+  const observeFrame=()=>{sample();frame=requestAnimationFrame(observeFrame);};
+  const observer=new MutationObserver(sample);observer.observe(document.querySelector('#room-name'),{childList:true,characterData:true,subtree:true});observeFrame();
+  return {stop(){sample();cancelAnimationFrame(frame);observer.disconnect();return samples;}};
+ });
+ const joinsBeforeRevocation=joins.length;
+ held=null;await context.route('**/api/rooms/a/join',hold);await travel('Travel to Café');for(let i=0;!held&&i<100;i++)await page.waitForTimeout(20);assert(held);
+ const archived=await context.request.delete(base+'/api/rooms/a');assert.equal(archived.status(),200);await page.waitForTimeout(100);await held.route.fulfill({response:held.upstream});
+ // Unconfirmed authority is only an intermediate state. Wait for the empty
+ // server session to retire the room completely and navigation to settle.
+ await page.waitForFunction(()=>{const s=window.__universe.getState();return !s.ready&&s.room===null&&s.destination===null&&s.admissionId===null&&s.admissionEpoch===null&&s.admissionRevision===null&&!document.querySelector('#editor').inert;});
+ state=await read();assert.equal(state.ready,false);assert.equal(state.room,null);assert.equal(state.destination,null);
+ for(const field of ['admissionId','admissionEpoch','admissionRevision'])assert.equal(state[field],null,field+' remains retired');
+ assert.equal(await page.locator('#dock-build').isDisabled(),true);assert.equal(await page.locator('#editor').isVisible(),false);assert.equal(await page.locator('#dock-build').evaluate(node=>node.classList.contains('active')),false);
+ assert.equal(await page.locator('#room-name').textContent(),'Find your place');await page.getByRole('dialog',{name:'You’ve left this room',exact:true}).waitFor();
+ const browse=page.getByRole('button',{name:'Browse accessible places',exact:true});assert.equal(await browse.isEnabled(),true);
+ const session=await (await context.request.get(base+'/api/session')).json();assert.equal(session.currentRoomId,null);
+ await browse.click();await page.locator('#places').waitFor({state:'visible'});await page.getByRole('searchbox',{name:'Find a place',exact:true}).waitFor();
+ assert.equal(await page.getByRole('tab',{name:'Places',exact:true}).getAttribute('aria-selected'),'true');
+ retirement.push(...await retirementWatch.evaluate(watch=>watch.stop()));await retirementWatch.dispose();
+ assert(retirement.every(sample=>sample.roomId!=='a'&&sample.title!=='Café room'),'Revoked target never becomes the displayed room');
+ const retiredAt=retirement.findIndex(sample=>sample.roomId===null);assert(retiredAt>=0,'Complete room retirement was observed');
+ assert(retirement.slice(retiredAt).every(sample=>sample.roomId===null&&!sample.ready&&sample.admissionId===null&&sample.admissionEpoch===null&&sample.admissionRevision===null),'Retired source authority is never restored');
+ assert.equal(joins.length,joinsBeforeRevocation+1,'Recovery never silently rejoins either room');
+ assert.equal((await (await context.request.get(base+'/api/session')).json()).currentRoomId,null);await context.unroute('**/api/rooms/a/join',hold);
+ check('Real target access revocation during held join never displays target or restores retired source authority');
  assert.deepEqual(errors,[]);
-}catch(error){console.error(error);checks.push({name:'failure',status:'failed',error:error.stack});await mkdir('evidence',{recursive:true});await page.screenshot({path:'evidence/arrival-navigation-failure.png'}).catch(()=>{});process.exitCode=1;}finally{await mkdir('evidence',{recursive:true});await writeFile('evidence/arrival-navigation-full.json',JSON.stringify({checks,errors,joins,movement,limits:['Local real server and browser only; no remote services, devices, deployment or production configuration']},null,2));await context.close();await browser.close();await app.close();}
+}catch(error){console.error(error);checks.push({name:'failure',status:'failed',error:error.stack});await mkdir('evidence',{recursive:true});await page.screenshot({path:'evidence/arrival-navigation-failure.png'}).catch(()=>{});process.exitCode=1;}finally{await mkdir('evidence',{recursive:true});await writeFile('evidence/arrival-navigation-full.json',JSON.stringify({checks,errors,joins,movement,retirement,limits:['Local real server and browser only; no remote services, devices, deployment or production configuration']},null,2));await context.close();await browser.close();await app.close();}

@@ -17,7 +17,7 @@ function button(text, action, glyph) {
   const n = element('button', 'proximity-control'); n.type = 'button';
   if (glyph) n.append(icon(glyph));
   const label = element('span', 'proximity-control-label', text); n.append(label);
-  n.addEventListener('click', () => { if (n.getAttribute('aria-disabled') !== 'true') void action(); });
+  n.addEventListener('click', event => { if (n.getAttribute('aria-disabled') !== 'true') void action(event); });
   return {node:n,label};
 }
 const attr = (node,key,value) => { const text = String(value); if (node.getAttribute(key) !== text) node.setAttribute(key,text); };
@@ -33,7 +33,41 @@ export function mountProximityControls({root, controller, onReturnFocus = () => 
   const strip = element('div','proximity-control-strip');
   const lock = button('Lock', () => controller.lock(!controller.snapshot().context?.locked), 'unlock');
   lock.node.dataset.control = 'lock';
-  const follow = button('Follow me', () => controller.followAction(), 'follow'); follow.node.dataset.control = 'follow';
+  // This node survives live updates. Bind native activation to the action and
+  // audience shown when the gesture starts, then recheck current authority.
+  const followAuthority = c => JSON.stringify([c?.accountId,c?.roomId,c?.connectionId,c?.memberId,c?.bubbleId,c?.membershipRevision]);
+  let renderedFollow = null, pointerIntent = null, keyIntent = null;
+  const captureFollow = () => renderedFollow && follow.node.getAttribute('aria-disabled') !== 'true' ? {...renderedFollow} : null;
+  const cancelFollow = () => { pointerIntent = keyIntent = null; };
+  const follow = button('Follow me', event => {
+    // Detail-zero clicks without a key gesture are accessible activation (AT).
+    const intent = event.detail === 0 ? keyIntent || renderedFollow : pointerIntent;
+    pointerIntent = null;
+    if (keyIntent?.key === 'Enter') { if (keyIntent.consumed) return; keyIntent.consumed = true; }
+    else keyIntent = null;
+    if (!intent) return;
+    const current = controller.snapshot();
+    if (intent.authority !== followAuthority(current.context) || (intent.action === 'stop') !== current.canStop) return;
+    if (intent.action === 'stop') return controller.stop();
+    if (current.canAct && current.context?.canInvite && !current.operation) return controller.invite();
+  }, 'follow'); follow.node.dataset.control = 'follow';
+  follow.node.addEventListener('pointerdown', event => { pointerIntent = event.isPrimary && event.button === 0 ? captureFollow() : null; keyIntent = null; });
+  follow.node.addEventListener('pointercancel', cancelFollow);
+  follow.node.addEventListener('blur', cancelFollow);
+  const visibilityChanged = () => { if (document.hidden) cancelFollow(); };
+  window.addEventListener('blur', cancelFollow); document.addEventListener('visibilitychange', visibilityChanged);
+  follow.node.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { cancelFollow(); return; }
+    if (!['Enter',' '].includes(event.key)) return;
+    if (event.isComposing || event.keyCode === 229) { cancelFollow(); event.preventDefault(); return; }
+    if (event.repeat) { event.preventDefault(); return; }
+    pointerIntent = null; const intent = captureFollow(); keyIntent = intent ? {...intent,key:event.key} : null;
+    if (!keyIntent) event.preventDefault();
+  });
+  follow.node.addEventListener('keyup', event => {
+    if (event.key === 'Enter') keyIntent = null;
+    if (event.key === ' ' && keyIntent?.key !== ' ') event.preventDefault();
+  });
   const ignore = button('Invites on', () => controller.setIgnoreRequests(!controller.snapshot().ignoreRequests)); ignore.node.dataset.control = 'ignore';
   attr(ignore.node,'aria-label','Ignore follow invitations'); ignore.node.title = 'Ignore follow invitations';
   strip.append(lock.node, follow.node, ignore.node);
@@ -50,7 +84,7 @@ export function mountProximityControls({root, controller, onReturnFocus = () => 
     const s = controller.snapshot(), c = s.context;
     const visible = s.available && (!!c?.memberId || s.stopUnconfirmed);
     const hadFocus = root.contains(document.activeElement); root.hidden = !visible;
-    if (!visible) { if (hadFocus) onReturnFocus(); return; }
+    if (!visible) { renderedFollow = null; cancelFollow(); if (hadFocus) onReturnFocus(); return; }
     setText(count,c.bubbleId ? `${c.participants.length} nearby` : 'Nearby');
     count.title = c.participants.map(p => p.name).join(', ');
     setText(detail,c.bubbleId ? [c.locked ? 'Locked' : 'Open', c.full ? 'Full' : ''].filter(Boolean).join(' · ') : 'Outside a conversation');
@@ -59,6 +93,8 @@ export function mountProximityControls({root, controller, onReturnFocus = () => 
     const glyph = c.locked ? 'lock' : 'unlock'; if (lock.node.dataset.glyph !== glyph) { lock.node.querySelector('svg').replaceWith(icon(glyph)); lock.node.dataset.glyph = glyph; }
     hide(lock.node,!c.bubbleId); unavailable(lock.node,!s.canAct || !c.canLock || !!s.operation);
     const following = !!c.following;
+    renderedFollow = {action:s.canStop ? 'stop' : 'invite',authority:followAuthority(c)};
+    for (const intent of [pointerIntent,keyIntent]) if (intent && (intent.action !== renderedFollow.action || intent.authority !== renderedFollow.authority)) { cancelFollow(); break; }
     setText(follow.label,s.canStop ? following ? 'Stop following' : 'Stop leading' : 'Follow me');
     if (s.canStop && !following && !s.serverLeading) setText(follow.label,'Stop');
     attr(follow.node,'aria-label',follow.label.textContent); attr(follow.node,'aria-pressed',String(s.canStop));
@@ -109,5 +145,5 @@ export function mountProximityControls({root, controller, onReturnFocus = () => 
   const stopKeys = event => event.stopPropagation();
   root.addEventListener('keydown',keydown); root.addEventListener('keyup',stopKeys);
   const unsubscribe = controller.subscribe(render), timer = setInterval(render,interval); render();
-  return {render, destroy() { destroyed = true; clearInterval(timer); unsubscribe(); root.removeEventListener('keydown',keydown); root.removeEventListener('keyup',stopKeys); root.replaceChildren(); root.hidden = true; }};
+  return {render, destroy() { destroyed = true; clearInterval(timer); unsubscribe(); window.removeEventListener('blur',cancelFollow); document.removeEventListener('visibilitychange',visibilityChanged); root.removeEventListener('keydown',keydown); root.removeEventListener('keyup',stopKeys); root.replaceChildren(); root.hidden = true; }};
 }
