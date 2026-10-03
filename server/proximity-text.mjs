@@ -1,5 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
 import * as v from './validation.mjs';
+import {createProximityTyping,PROXIMITY_TYPING} from './proximity-typing.mjs';
 
 export const PROXIMITY_TEXT_LIMITS=Object.freeze({maxCodePoints:2000,maxBytes:8192,burst:5,refillPerSecond:1,history:200});
 const PROTOCOL='proximity-text-v1',MAX_RECEIPTS=8192,MAX_EPOCH_RECEIPTS=128,MAX_RATES=4096,EPOCH_MS=120000;
@@ -40,13 +41,14 @@ export function validateProximityTextRequest(value){
  * Connections and authority are host-owned objects, never HTTP-selected peers.
  * An epoch is a particular SSE connection in one continuous room/bubble stay.
  */
-export function createProximityText({store,media,connections,sse,now}){
-  const receipts=new Map(),rates=new Map(),batches=new WeakSet();let closed=false,contextRevision=0,refreshRevision=0;
+export function createProximityText({store,media,connections,sse,now,typingTimers}){
+  const receipts=new Map(),rates=new Map(),batches=new WeakSet();let closed=false,contextRevision=0,refreshRevision=0,requestOrder=0;
+  const typing=createProximityTyping({store,connections,sse,now,timers:typingTimers,authority:{begin,capture,current,contextFor,order:()=>requestOrder}});
   const active=client=>!client.res.destroyed&&!client.res.writableEnded;
   const live=token=>store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
-  function guarded(fn){try{if(closed)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return fn();}catch(error){if(error.status)throw error;v.fail(503,'PROXIMITY_TEXT_AUTHORITY_UNAVAILABLE');}}
-  function rotate(client,key=null){client.proximityText={epoch:randomUUID(),key,startedAt:now(),count:0};}
-  function retire(token){refreshRevision++;for(const client of connections.get(token)??[])rotate(client);prune();}
+  function guarded(fn){try{if(closed)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return fn();}catch(error){if(error.status)throw error;v.fail(503,'PROXIMITY_TEXT_AUTHORITY_UNAVAILABLE');}finally{typing.flush();}}
+  function rotate(client,key=null){typing.retireClient(client);client.proximityText={epoch:randomUUID(),key,startedAt:now(),count:0};}
+  function retire(token){refreshRevision++;for(const client of connections.get(token)??[])rotate(client);prune();typing.flush();}
   function prune(){
     const epochs=new Set();for(const clients of connections.values())for(const client of clients)if(active(client)&&client.proximityText)epochs.add(client.proximityText.epoch);
     for(const[key,receipt]of receipts)if(!epochs.has(receipt.connectionEpoch)||now()-receipt.recordedAt>=EPOCH_MS)receipts.delete(key);
@@ -58,17 +60,19 @@ export function createProximityText({store,media,connections,sse,now}){
     if(!client.proximityText||client.proximityText.key!==key||now()-client.proximityText.startedAt>=EPOCH_MS||client.proximityText.count>=MAX_EPOCH_RECEIPTS)rotate(client,key);
     const eligible=p?.context.kind==='proximity'&&!!p.bubbleId&&!!p.memberId&&p.conversationRecipients.length>0;
     const muted=eligible&&store.authorize(p.roomId,s.user_id).member?.muted_until>now();
-    return {protocol:PROTOCOL,contextRevision:++contextRevision,available:true,canSend:!!eligible&&!muted,reason:muted?'muted':eligible?null:'no-active-bubble',selfId:s.user_id,roomId:s.current_room_id,connectionEpoch:client.proximityText.epoch,bubbleId:p?.bubbleId??null,memberId:p?.memberId??null,membershipRevision:p?.membershipRevision??null,conversationRecipients:eligible?p.conversationRecipients:[],recipientCount:eligible?p.conversationRecipients.length:0,limits:PROXIMITY_TEXT_LIMITS};
+    const value={protocol:PROTOCOL,typing:PROXIMITY_TYPING,contextRevision:++contextRevision,available:true,canSend:!!eligible&&!muted,reason:muted?'muted':eligible?null:'no-active-bubble',selfId:s.user_id,roomId:s.current_room_id,connectionEpoch:client.proximityText.epoch,bubbleId:p?.bubbleId??null,memberId:p?.memberId??null,membershipRevision:p?.membershipRevision??null,conversationRecipients:eligible?p.conversationRecipients:[],recipientCount:eligible?p.conversationRecipients.length:0,limits:PROXIMITY_TEXT_LIMITS};
+    typing.observe(client,value);return value;
   }
   function findClient(s,epoch){const client=[...(connections.get(s.token_hash)??[])].find(c=>active(c)&&c.proximityText?.epoch===epoch);if(!client)v.fail(409,'STALE_PROXIMITY_TEXT_CONNECTION');return client;}
   function current(accepted){const s=live(accepted.token_hash);if(!s||s.user_id!==accepted.user_id||s.current_room_id!==accepted.current_room_id)v.fail(401,'AUTH_REQUIRED');return s;}
-  function context(accepted,epoch){return guarded(()=>{const s=current(accepted),client=findClient(s,epoch),p=contextFor(s,client);sse(client.res,'proximity-text-context',p);return p;});}
+  function context(accepted,epoch){return guarded(()=>{const s=current(accepted),client=findClient(s,epoch),p=contextFor(s,client);sse(client.res,'proximity-text-context',p);typing.flush();return p;});}
   function push(token,client,refreshBatch,accepted,revision){
     const superseded=()=>revision!==undefined&&revision!==refreshRevision;
-    let value;try{const s=accepted?current(accepted):live(token);if(!s||superseded())return;value=guarded(()=>contextFor(s,client,refreshBatch));}catch{if(superseded())return;rotate(client);value={protocol:PROTOCOL,contextRevision:++contextRevision,available:true,canSend:false,reason:'authority-unavailable',selfId:client.userId,connectionEpoch:client.proximityText.epoch,roomId:null,bubbleId:null,memberId:null,membershipRevision:null,conversationRecipients:[],recipientCount:0,limits:PROXIMITY_TEXT_LIMITS};}
+    let value;try{const s=accepted?current(accepted):live(token);if(!s||superseded())return;value=guarded(()=>contextFor(s,client,refreshBatch));}catch{if(superseded())return;rotate(client);value={protocol:PROTOCOL,typing:PROXIMITY_TYPING,contextRevision:++contextRevision,available:true,canSend:false,reason:'authority-unavailable',selfId:client.userId,connectionEpoch:client.proximityText.epoch,roomId:null,bubbleId:null,memberId:null,membershipRevision:null,conversationRecipients:[],recipientCount:0,limits:PROXIMITY_TEXT_LIMITS};}
     if(!superseded()&&active(client))sse(client.res,'proximity-text-context',value);
   }
   function refresh(roomId){
+    typing.defer();try{
     const revision=++refreshRevision,rooms=new Map();
     for(const[token,clients]of connections){
       let s;try{s=live(token);}catch{continue;}if(!s||roomId&&s.current_room_id!==roomId)continue;
@@ -88,6 +92,7 @@ export function createProximityText({store,media,connections,sse,now}){
       }
     }
     prune();
+    }finally{typing.resume();}
   }
   function capture(accepted,b){
     const s=current(accepted),client=findClient(s,b.connectionEpoch),p=contextFor(s,client);
@@ -115,7 +120,7 @@ export function createProximityText({store,media,connections,sse,now}){
         if(matches(q,p,audience.get(target.user_id)))targets.push({token,client:other,session:target,epoch:q.connectionEpoch,memberId:q.memberId,ownAccountCopy:target.user_id===s.user_id});
       }
     }
-    const batch={token:s.token_hash,sourceEpochs:new Set(targets.filter(target=>target.token===s.token_hash).map(target=>target.epoch)),roomId:p.roomId,bubbleId:p.bubbleId,memberId:p.memberId,membershipRevision:p.membershipRevision,targets};batches.add(batch);return batch;
+    const batch={order:++requestOrder,token:s.token_hash,sourceEpochs:new Set(targets.filter(target=>target.token===s.token_hash).map(target=>target.epoch)),roomId:p.roomId,bubbleId:p.bubbleId,memberId:p.memberId,membershipRevision:p.membershipRevision,targets};batches.add(batch);typing.flush();return batch;
   });}
   function send(accepted,input,batch){return guarded(()=>{
     if(!batches.has(batch))v.fail(409,'STALE_PROXIMITY_TEXT_REQUEST');batches.delete(batch);
@@ -131,7 +136,7 @@ export function createProximityText({store,media,connections,sse,now}){
     takeToken(s.user_id);
     const meta={id:randomUUID(),requestId:b.requestId,createdAt:now(),roomId:b.roomId,bubbleId:b.bubbleId,membershipRevision:b.membershipRevision,fromMemberId:b.memberId,author:{id:author.id,name:author.name,appearance:author.appearance},recipient:{connectionEpoch:b.connectionEpoch,memberId:b.memberId},ownAccountCopy:false};
     // Insert before emitting: reentrant same-session retries cannot emit twice.
-    receipts.set(receiptKey,{hash,message:meta,connectionEpoch:b.connectionEpoch,recordedAt:now()});client.proximityText.count++;
+    receipts.set(receiptKey,{hash,message:meta,connectionEpoch:b.connectionEpoch,recordedAt:now()});client.proximityText.count++;typing.textAccepted(client,batch.order);
     for(const target of targets){
       if(target.client===client)continue;
       if(!connections.get(target.token)?.has(target.client)||!active(target.client)||target.client.proximityText?.epoch!==target.epoch)continue;
@@ -151,5 +156,5 @@ export function createProximityText({store,media,connections,sse,now}){
     const result={message:{...meta,text:b.text},duplicate:false};
     return result;
   });}
-  return {begin,context,send,retire,refresh,register(token,client){refreshRevision++;rotate(client);push(token,client);},close(){refreshRevision++;closed=true;receipts.clear();rates.clear();}};
+  return {begin,context,send,retire,refresh,typing,disconnect(client){refreshRevision++;typing.retireClient(client);typing.flush();},register(token,client){refreshRevision++;rotate(client);push(token,client);typing.flush();},close(){refreshRevision++;typing.close();closed=true;receipts.clear();rates.clear();}};
 }

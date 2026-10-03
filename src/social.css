@@ -755,3 +755,6 @@
     font-size: 16px !important;
   }
 }
+
+/* A reserved single line makes typing updates inert for composer and timeline geometry. */
+.social-nearby-typing { height: 1.5em; min-height: 1.5em; margin: 0 0 6px; font-size: 11px; line-height: 1.5; color: var(--s-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

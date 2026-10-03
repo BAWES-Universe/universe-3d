@@ -1,5 +1,6 @@
 import {roomAllows} from './permissions.js';
 import {createNearbyText, validateNearbyText} from './proximity-text.js';
+import {createNearbyTyping} from './proximity-typing.js';
 /**
  * Universe's standalone social client. Identity, message ownership, room access,
  * reactions and moderation are validated by the server; UI gates are only affordances.
@@ -90,6 +91,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   const nearby = createNearbyText({ api, getState, onChange: nearbyChanged, onMessage: ({stayId, own}) => {
     if (!own && (root.hidden || activeTab !== 'chat' || chatMode !== 'nearby' || nearby.snapshot().selectedId !== stayId)) nearby.markUnread(stayId);
   }});
+  const typing = createNearbyTyping({ api, getNearby: () => nearby.snapshot(), getPresence: () => ({
+    visible: !destroyed && !root.hidden && !document.hidden && activeTab === 'chat' && chatMode === 'nearby' && !!composer?.isConnected,
+    focused: document.activeElement === composer
+  }), onChange: renderNearbyTyping });
   const channelPath = (key) => key.startsWith('dm:') ? `/api/dm/${enc(key.slice(3))}/messages` : `/api/rooms/${enc(key.slice(5))}/messages`;
   const getChannel = (key) => {
     if (!cache.has(key)) cache.set(key, { messages: [], loaded: false, loading: false, error: '', request: 0, liveDuringLoad: new Set(), hasOlder: false, nextCursor: null, loadingOlder: false });
@@ -139,6 +144,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   const title = el('h2', { class: 'social-title' });
   const subtitle = el('p', { class: 'social-subtitle' });
   const close = button('×', () => {
+    typing.stop();
     dismissConfirm();
     root.hidden = true;
     root.dispatchEvent(new CustomEvent('social-close', { bubbles: true }));
@@ -172,6 +178,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   root.addEventListener('keydown', stopGameKeys);
   root.addEventListener('keyup', stopGameKeys);
   root.replaceChildren(header, tabBar, panel);
+  const hiddenObserver = new MutationObserver(records => { if (root.hidden || records.some(record => record.oldValue === null)) typing.stop(); });
+  hiddenObserver.observe(root, {attributes: true, attributeFilter: ['hidden'], attributeOldValue: true});
+  const visibilityChanged = () => { if (document.hidden) typing.stop(); };
+  document.addEventListener('visibilitychange', visibilityChanged);
 
   function syncHeader() {
     const peerName = selectedPeer?.name || 'Direct message';
@@ -191,7 +201,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     panel.setAttribute('aria-labelledby', `social-tab-${activeTab}`);
   }
   function setTab(tab) {
-    if(tab==='explore'&&onExplore){root.hidden=true;onExplore();return;}
+    if(tab==='explore'&&onExplore){typing.stop();root.hidden=true;onExplore();return;}
     if (!TABS.includes(tab) || destroyed) return;
     root.hidden = false;
     dismissConfirm();
@@ -203,8 +213,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   function render() {
     if (destroyed) return;
     nearby.syncState();
+    typing.sync();
     const id = user().id || '';
     if (lastUser !== id) {
+      typing.reset();
       lastUser = id; cache.clear(); unread.clear(); drafts.clear(); sendOperations.clear(); selectedPeer = null; chatMode = 'room'; edit = null;
       localWorlds = null; conversations = []; conversationsLoaded = false; mountedKey = '';
     }
@@ -216,6 +228,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }
     const viewKey = `${activeTab}:${activeTab === 'chat' ? chatMode === 'inbox' ? 'inbox' : channelKey() : activeTab === 'explore' ? createMode : id}`;
     if (mountedKey !== viewKey) {
+      typing.stop();
       dismissConfirm();
       mountedKey = viewKey;
       root.scrollTop = 0;
@@ -467,6 +480,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   function nearbyChanged() {
     if (destroyed) return;
     const state = nearby.snapshot();
+    typing.sync();
     publishNearbyUnread();
     if (!state.available && chatMode === 'nearby') { chatMode = 'room'; resetView(); return; }
     if (activeTab === 'chat') {
@@ -479,6 +493,16 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     syncHeader();
     if (activeTab === 'chat' && chatMode === 'nearby') renderNearby();
   }
+  function renderNearbyTyping() {
+    if (!nearbyElements?.typingStatus) return;
+    const state = nearby.snapshot(), value = typing.snapshot();
+    const names = state.selectedId === state.activeId && !state.selected?.endedAt ? value.authors.map(author => author.name || 'Someone') : [];
+    const text = names.length === 1 ? `${names[0]} is typing…` : names.length === 2 ? `${names[0]} and ${names[1]} are typing…` : names.length > 2 ? `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…` : '';
+    nearbyElements.typingStatus.hidden = !value.enabled;
+    if (nearbyElements.typingStatus.textContent !== text) nearbyElements.typingStatus.textContent = text;
+    nearbyElements.typingStatus.title = text;
+  }
+  function sendNearby(retry = false) { typing.stop(); return nearby.send(retry); }
   function buildNearby() {
     const toolbar = el('div', { class: 'social-toolbar social-nearby-toolbar' },
       button('Room', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open room chat' }),
@@ -493,21 +517,27 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       el('details', { class: 'social-nearby-about' }, el('summary', { text: 'Live only · No missed-message replay' }), el('p', { text: 'The server relays readable plain text to this bubble. Up to 200 received or acknowledged messages and drafts stay in this tab; reload or account change clears them. Leaving keeps received stays read-only. Other signed-in sessions of your account may receive a labeled copy. Room chat and Direct keep their separate saved history.' })));
     timeline = el('div', { class: 'social-timeline social-scroll', role: 'log', 'aria-label': 'Nearby messages', 'aria-live': 'polite', 'aria-relevant': 'additions', tabindex: '0' });
     const error = el('div', { class: 'social-nearby-error', role: 'alert' });
-    const retry = button('Retry same message', () => nearby.send(true), { class: 'button social-btn social-btn-small', 'aria-label': 'Retry nearby message' });
+    const retry = button('Retry same message', () => sendNearby(true), { class: 'button social-btn social-btn-small', 'aria-label': 'Retry nearby message' });
     const refresh = button('Refresh Nearby', () => nearby.refresh(), { class: 'button social-btn social-btn-small' });
     const controls = el('div', { class: 'social-nearby-recovery' }, retry, refresh);
     composer = el('textarea', { class: 'input social-input', rows: '2', placeholder: 'Say hello to people in this bubble…', 'aria-label': 'Message nearby people', 'aria-describedby': 'nearby-composer-hint' });
     let composing = false;
-    composer.addEventListener('compositionstart', () => { composing = true; });
-    composer.addEventListener('compositionend', () => { composing = false; });
-    composer.addEventListener('input', () => nearby.setDraft(composer.value));
+    const nearbyComposer = composer;
+    const typingActivity = event => { if (event.isTrusted && composer === nearbyComposer && nearbyComposer.isConnected) typing.activity({hasText: nearbyComposer.value.length > 0, composing}); };
+    composer.addEventListener('compositionstart', event => { composing = true; typingActivity(event); });
+    composer.addEventListener('compositionupdate', typingActivity);
+    composer.addEventListener('compositionend', event => { composing = false; typingActivity(event); });
+    composer.addEventListener('focus', () => typing.focusIn());
+    composer.addEventListener('blur', () => typing.focusOut());
+    composer.addEventListener('input', event => { if (composer !== nearbyComposer || !nearbyComposer.isConnected) return; nearby.setDraft(nearbyComposer.value); typingActivity(event); });
     composer.addEventListener('keydown', event => {
-      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !composing && event.keyCode !== 229) { event.preventDefault(); nearby.send(); }
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !composing && event.keyCode !== 229) { event.preventDefault(); sendNearby(); }
     });
-    sendButton = button('Send ↗', () => nearby.send(), { class: 'button social-btn social-btn-primary', 'aria-label': 'Send nearby message' });
+    sendButton = button('Send ↗', () => sendNearby(), { class: 'button social-btn social-btn-primary', 'aria-label': 'Send nearby message' });
     const hint = el('span', { class: 'social-composer-hint', id: 'nearby-composer-hint', text: 'Enter to send · Shift + Enter for a new line\n2,000 characters · Plain text' });
-    const form = el('form', { class: 'social-composer social-nearby-composer', onsubmit: event => { event.preventDefault(); if (!composing) nearby.send(); } }, error, controls, composer, el('div', { class: 'social-composer-actions' }, hint, sendButton));
-    nearbyElements = { status, recipients, stays, live, error, retry, refresh, controls };
+    const typingStatus = el('p', {class: 'social-nearby-typing', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true'});
+    const form = el('form', { class: 'social-composer social-nearby-composer', onsubmit: event => { event.preventDefault(); if (!composing) sendNearby(); } }, error, controls, typingStatus, composer, el('div', { class: 'social-composer-actions' }, hint, sendButton));
+    nearbyElements = { status, recipients, stays, live, error, retry, refresh, controls, typingStatus };
     panel.append(toolbar, summary, timeline, form); renderNearby();
   }
   function renderNearby() {
@@ -551,6 +581,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     nodes.controls.hidden = nodes.retry.hidden && nodes.refresh.hidden;
     sendButton.disabled = !isLive || ended || !state.ready || !c?.canSend || state.navigating || state.connection !== 'connected' || !!stay?.operation || !stay?.draft.trim() || !!validation;
     sendButton.textContent = stay?.operation?.status === 'sending' ? 'Sending…' : 'Send ↗';
+    renderNearbyTyping();
   }
 
   function buildPeople() {
@@ -782,6 +813,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
     if (type === 'proximity-text-context') return nearby.acceptContext(data);
     if (type === 'proximity-text-message') return nearby.receive(data);
+    if (type === 'proximity-typing') { nearby.syncState(); return typing.receive(data); }
     if (type === 'message' || type === 'dm') {
       const message = data.message || data;
       let key;
@@ -802,6 +834,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       if (type === 'hello') { for (const bucket of cache.values()) bucket.loaded = false; conversationsLoaded = false; if (activeTab === 'chat' && !['inbox','nearby'].includes(chatMode)) loadMessages(channelKey(), true); }
       if (type === 'room') { localWorlds = null; if (activeTab === 'explore') loadWorlds(true); }
       render();
+      if (type === 'hello' && data.user?.id === user().id) typing.seedClock({serverTime: data.serverTime, accountId: user().id});
     } else if (type === 'moderation') {
       if ((data.userId || data.targetId) === user().id) {
         const messages = { mute: 'A moderator muted your room chat.', unmute: 'Your room chat is unmuted.', kick: 'A moderator removed you from the room.', ban: 'You can no longer enter this room.', unban: 'Your room ban has been lifted.' };
@@ -811,10 +844,11 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }
   }
   function destroy() {
-    destroyed = true; nearby.destroy(); dismissConfirm();
+    typing.destroy(); destroyed = true; nearby.destroy(); dismissConfirm();
+    hiddenObserver.disconnect(); document.removeEventListener('visibilitychange', visibilityChanged);
     root.removeEventListener('keydown', stopGameKeys); root.removeEventListener('keyup', stopGameKeys);
     root.replaceChildren(); root.classList.remove('social-shell');
   }
   render();
-  return { render, onEvent, destroy, setTab, openDm, resetNearbyConnection: reason => nearby.resetConnection(reason), getNearbyStatus: () => nearby.snapshot() };
+  return { render, onEvent, destroy, setTab, openDm, resetNearbyConnection: reason => { typing.reset({preserveClock: ['travelling', 'access-changed'].includes(reason)}); nearby.resetConnection(reason); }, getNearbyStatus: () => nearby.snapshot() };
 }

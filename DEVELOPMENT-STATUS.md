@@ -1,12 +1,22 @@
-# Development status · 2026-10-03 00:58 UTC
+# Development status · 2026-10-03 01:36 UTC
 
-## Current increment: bounded Nearby context refresh cost
+## Current increment: ephemeral human Nearby typing
+
+Optional Nearby text now shows live human typing in the current ordinary bubble. Fresh input or IME activity starts a bounded per-stream lease; focus, restored drafts, reopening or reconnecting do not. No draft body, history row, unread count, replay or text receipt is created. Mic consent remains independent. Room-muted members can still receive typing, while their own outgoing typing stops. Personal blocking, bot/script typing and named-meeting typing remain separate gaps.
+
+The server validates the current source and each captured recipient at delivery, preserves sequence high-water marks through stop/expiry, bounds state and quotas, and cleans up on session/room/authority changes. Same-account tabs aggregate without one stop erasing a sibling. The client uses an SSE server-time anchor plus monotonic time so device clock skew cannot suppress or extend indicators. A stale text acknowledgement cannot clear newer activity or replace a newer draft. The status line preserves native focus, cursor, transcript and layout. See `NEARBY-TYPING-CONTRACT.md` and the immutable source links in `NEARBY-TYPING-SOURCE.md`.
+
+Final local aggregate: 1,059 CPU/API passes and the same one historical skip; all 238 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. The final combined Nearby browser run passes all 27 native fixture cases and 13 actual-shell scenarios. It includes two clients with opposite 60-second device clock offsets, native keyboard/IME and doubled-text touch layouts, late text acknowledgement, room travel, and a real 12-second lost-stop expiry. The server suite also verifies muted-recipient start/renew/stop and sender-mute cleanup. All browser runs report no page exceptions. The final bundle hashes are main `b08e2a671b0399f05eeef89c6524efe9b496f2bd0d80df111273d5d1f7aae312`, CSS `cd4b8a966c37a65e3b9419ceb7cd25e89efb9ac109bf4c19d1da1e2361bd4f53`. No physical-device, successful AV packet or whole-source-contract certification follows from these checks.
+
+Baseline `71800a575aec7113c3de3de9c3f4003cf8d1c72c` passed all ten exact-head CI jobs. This typing increment is local; publication and its exact-head CI are pending. Optional membership/text stay off until explicitly configured, and no live host, environment or credential changed.
+
+## Prior increment: bounded Nearby context refresh cost
 
 Nearby context refresh now captures membership once per room, completes that room before capturing another, and rereads each accepted session and its ACL. Fresh text submission and recipient checks immediately before body emission are unchanged. Nested refresh, retirement, registration or close invalidates an older metadata refresh; failed/stale batches clear affected context instead of reusing prior authority. This changes synchronous metadata work, not cached message authorization.
 
 Real local HTTP/SQLite/SSE checks at 6, 20 and 50 accounts show that Nearby adds N membership session enumerations per presence update, replacing the prior N² overhead. Text-on total Store.all calls fell from 47/425/2,555 to 17/45/105. Bounded server-handler medians fell from 11.4/54.2/309.8ms to 9.1/30.6/92.5ms on the shared local host. Other handler work remains costly; these measurements do not establish production capacity. The exact fixture and limitations are described in `PROXIMITY-TEXT-CONTRACT.md`.
 
-The isolated exact-source aggregate passes 952 CPU/API checks with the same one historical skip. Syntax, build, package startup/static files and Dockerfile-copy reconstruction pass. Final integrated Nearby browser regression passes all 11 module-native and 7 actual-shell scenarios, including doubled-text native touch. The frontend bundle is unchanged. Publication and exact-head CI for this small performance correction are pending.
+The isolated exact-source aggregate passes 952 CPU/API checks with the same one historical skip. Syntax, build, package startup/static files and Dockerfile-copy reconstruction pass. Final integrated Nearby browser regression passes all 11 module-native and 7 actual-shell scenarios, including doubled-text native touch. The frontend bundle is unchanged. This refresh correction was published as `71800a575aec7113c3de3de9c3f4003cf8d1c72c` and passed all ten exact-head CI jobs.
 
 Baseline `70aa4377cbaf913d6f20270f1e96f19f3c3b8f77` passed all ten remote CI jobs. Optional membership/text remain off unless explicitly configured; no live values or credentials changed.
 
@@ -59,9 +69,9 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Publish this bounded refresh correction and verify its exact-head CI
+1. Publish this bounded typing increment and verify its exact-head CI
 2. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
 3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
-4. Add the audited ephemeral typing slice, then return to larger world-creation and social-play parity gaps
+4. Return to larger world-creation and social-play parity gaps, beginning with a bounded terrain-authoring design
 
 The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.

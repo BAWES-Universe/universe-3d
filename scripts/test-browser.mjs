@@ -2,7 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
- nearby:['proximity-text-client.browser.mjs','proximity-text.full.mjs'],
+ nearby:['proximity-text-client.browser.mjs','proximity-typing-client.browser.mjs','proximity-text.full.mjs','proximity-typing.full.mjs'],
  hud:['hud-availability.browser.mjs','hud-medium-header.browser.mjs','content-history.full.mjs'],
  presentation:['creator-render.actual-game.mjs'],
  residents:['resident-test-ui.browser.mjs','resident-turn.full.mjs'],

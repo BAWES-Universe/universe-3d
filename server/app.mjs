@@ -9,6 +9,7 @@ import { createMediaPolicy } from './media.mjs';
 import {validateProximityMembershipConfig} from './proximity-authority.mjs';
 import {createMediaIce,readIceRelayConfig,readIceBody} from './media-ice.mjs';
 import {createProximityText,validateProximityTextConfig,readProximityTextBody} from './proximity-text.mjs';
+import {readProximityTypingBody} from './proximity-typing.mjs';
 import { createQuestService } from './quests.mjs';
 import { createRoomFileService } from './files.mjs';
 import {validateAppearance} from '../src/avatar-spec.js';
@@ -34,7 +35,7 @@ const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','
 const STATUS = ['online','away','busy','dnd','invisible'];
 const MIME = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.mp4':'video/mp4' };
 
-export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig } = {}) {
+export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
@@ -129,6 +130,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   function dmMessage(row) { return { id:row.id,userId:row.sender_id,senderId:row.sender_id,recipientId:row.recipient_id,author:store.user(row.sender_id),text:row.text,createdAt:row.created_at }; }
   function emitMediaUser(userId,event,data) {
     if(event==='media-policy')ice.observe(userId,data);
+    if(event==='media-policy'&&data.proximityAuthorityUnavailable)proximityText?.typing.invalidateRoom(data.roomId);
     for(const [token,clients] of connections) {
       const session=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
       if(!session || session.user_id!==userId || session.current_room_id!==data.roomId)continue;
@@ -138,7 +140,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     }
   }
   const media=createMediaPolicy({store,presence,emitUser:emitMediaUser,now,proximityMembershipConfig});
-  const proximityText=proximityTextConfig?createProximityText({store,media,connections,sse,now}):null;
+  const proximityText=proximityTextConfig?createProximityText({store,media,connections,sse,now,typingTimers:proximityTypingTimers}):null;
   const ice=createMediaIce({config:iceRelayConfig,store,presence,media,now});
   const quests=createQuestService({store,presence,media,emitUser,now,enabled:questsEnabled});
   const expressions=createExpressionService({store,presence,emitRoom,now,limit});
@@ -320,6 +322,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       }
       if(path==='/api/proximity-text'&&method==='GET')return send(res,200,proximityText?proximityText.context(s,url.searchParams.get('connectionEpoch')):{protocol:'proximity-text-v1',available:false,canSend:false,reason:'disabled'});
       if(path==='/api/proximity-text/messages'&&method==='POST'){if(!proximityText)v.fail(404,'PROXIMITY_TEXT_DISABLED');const batch=proximityText.begin(s),b=await readProximityTextBody(req),live=session(req);if(live.token_hash!==s.token_hash||live.user_id!==userId||live.current_room_id!==s.current_room_id)v.fail(409,'STALE_PROXIMITY_TEXT_CONTEXT');const result=proximityText.send(live,b,batch);return send(res,result.duplicate?200:201,result);}
+      if(path==='/api/proximity-text/typing'&&method==='POST'){if(!proximityText)v.fail(404,'PROXIMITY_TEXT_DISABLED');const batch=proximityText.typing.begin(s),b=await readProximityTypingBody(req),live=session(req);if(live.token_hash!==s.token_hash||live.user_id!==userId||live.current_room_id!==s.current_room_id)v.fail(409,'STALE_PROXIMITY_TEXT_CONTEXT');return send(res,200,proximityText.typing.update(live,b,batch));}
       if(path==='/api/media'&&method==='GET')return send(res,200,ice.decorate(s,media.policy(userId,s.current_room_id,s)));
       if(path==='/api/media/state'&&method==='POST'){const b=await body(req);const live=session(req);v.boolean(b.enabled,'enabled');
         // A delayed body must not rebind an old gesture to the session's new room.
@@ -335,7 +338,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');
         const client={res,userId};clients.add(client);quests.disconnected(userId,s.current_room_id);sse(res,'hello',{user:store.user(userId),currentRoomId:s.current_room_id,serverTime:now()});const live=session(req);if(live.current_room_id){sessionRoles.set(live.token_hash,store.role(store.roomRow(live.current_room_id),userId));putPresence(userId,live.current_room_id);sse(res,'bots',{roomId:live.current_room_id,bots:bots.snapshot(live.current_room_id)});}
         proximityText?.register(s.token_hash,client);
-        req.on('close',()=>{quests.disconnected(userId,s.current_room_id);clients.delete(client);if(!clients.size)connections.delete(s.token_hash);});return;
+        req.on('close',()=>{proximityText?.disconnect(client);quests.disconnected(userId,s.current_room_id);clients.delete(client);if(!clients.size)connections.delete(s.token_hash);});return;
       }
       v.fail(404,'NOT_FOUND','API endpoint not found');
     } catch(e) { if(e.status)send(res,e.status,{error:e.code,code:e.code,message:e.message,...e.details});else{console.error('Request failed:',e);send(res,500,{error:'SERVER_ERROR',code:'SERVER_ERROR',message:'The server could not complete the request'});} }

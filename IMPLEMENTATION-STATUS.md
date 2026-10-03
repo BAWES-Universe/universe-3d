@@ -15,9 +15,9 @@
 - Fresh combined evidence:488 CPU/API pass,1 explicit historical-compatibility skip,7 component cases,6 actual-game private-test cases and9 resident-authoring cases. Remote CI for this source remains pending
 - Public resident conversation, historical-turn browsing, operational retention/reconciliation and external-provider rollout remain unfinished
 
-# Standalone implementation status · 2026-10-02
+# Standalone implementation status · 2026-10-03
 
-The current v0.6.9 increment exposes the optional all-member proximity and Nearby text policy through an explicit, strictly validated process configuration. Both remain off by default. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+The current v0.6.10 increment adds bounded ephemeral human typing to optional Nearby text. All-member proximity and Nearby text use explicit, strictly validated process configuration. Both remain off by default. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Latest verification
 
@@ -25,7 +25,7 @@ The current v0.6.9 increment exposes the optional all-member proximity and Nearb
 
 ## Integrated now
 
-- Opt-in plain Nearby text with current all-member bubble recipients, server-bound identity/3D appearance, stream freshness, bounded receipt reconciliation and tab-only received history/drafts; source attachments, typing, rich text and named-meeting text remain separate gaps
+- Opt-in plain Nearby text with current all-member bubble recipients, server-bound identity/3D appearance, stream freshness, bounded receipt reconciliation and tab-only received history/drafts; ephemeral human typing with per-stream sequence/lease and native composer lifecycle; source attachments, rich text, bot typing and named-meeting text remain separate gaps
 
 - Room-authorized PNG upload/search/reuse, immutable pinned versions, native floor/upright panels, alpha-aware picking, shared painted collision/full edit footprints and explicit resource/error lifecycle
 
