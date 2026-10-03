@@ -8,7 +8,7 @@ const groups={
  terrain:['terrain-editor.browser.mjs','terrain-renderer.browser.mjs','terrain.full.mjs','terrain-keyboard.full.mjs'],
  nearby:['proximity-text-client.browser.mjs','proximity-typing-client.browser.mjs','proximity-text.full.mjs','proximity-typing.full.mjs'],
  hud:['hud-availability.browser.mjs','hud-medium-header.browser.mjs','content-history.full.mjs','input-ownership.full.mjs'],
- presentation:['creator-render.actual-game.mjs'],
+ presentation:['creator-render.actual-game.mjs','static-delivery.browser.mjs'],
  residents:['resident-test-ui.browser.mjs','resident-turn.full.mjs'],
  framing:['panel-framing.browser.mjs','panel-framing-picking.browser.mjs','tranche-bots.browser.mjs'],
  core:['fallback.browser.mjs','camera-walkthrough.browser.mjs','editor-direct.browser.mjs','picking-dpr.browser.mjs','avatar-live.browser.mjs','avatar-layout-final.browser.mjs','express.full.mjs'],

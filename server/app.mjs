@@ -2,8 +2,8 @@ import {createArrivalService,readArrivalInput,readExpectedPlacement} from './arr
 import http from 'node:http';
 import { randomBytes, randomUUID, createHash, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { readFile, stat } from 'node:fs/promises';
-import { resolve, sep, extname } from 'node:path';
+import { resolve } from 'node:path';
+import {createStaticAssets} from './static-assets.mjs';
 import { Store } from './store.mjs';
 import * as v from './validation.mjs';
 import { createMediaPolicy } from './media.mjs';
@@ -36,7 +36,6 @@ const EDIT = ['owner', 'admin', 'editor'];
 const MODERATE = ['owner', 'admin', 'moderator'];
 const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','🤔','🙌','😮','😊','💜','✅','🎸','💃','🕺','🏳️'];
 const STATUS = ['online','away','busy','dnd','invisible'];
-const MIME = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.mp4':'video/mp4' };
 
 export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
@@ -48,6 +47,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const accessGate=createAccessGate({store,config:runtimeConfig});
   try{accessGate.assertReady();}catch(error){store.close();throw error;}
   const requestSecurity=createRequestSecurity(runtimeConfig,{listeningPort:()=>server.address()?.port});
+  const serveStatic=createStaticAssets({dist});
   const connections = new Map();
   const presence = new Map();
   const rates = new Map();
@@ -206,16 +206,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     try {
       const url=new URL(req.url,'http://127.0.0.1'); const path=url.pathname; const method=req.method;
       originCheck(req);
-      if (!path.startsWith('/api/')) {
-        if (!['GET','HEAD'].includes(method)) v.fail(405,'METHOD_NOT_ALLOWED');
-        const requested=decodeURIComponent(path), rel=requested==='/'?'index.html':requested.slice(1);
-        if (rel.split('/').some(part=>part==='..'||part.startsWith('.'))) v.fail(404,'NOT_FOUND');
-        let filename=resolve(dist,rel); if(filename!==resolve(dist) && !filename.startsWith(resolve(dist)+sep)) v.fail(404,'NOT_FOUND');
-        try { if (!(await stat(filename)).isFile()) v.fail(404,'NOT_FOUND'); } catch(e) { if(!extname(rel)) filename=resolve(dist,'index.html'); else v.fail(404,'NOT_FOUND'); }
-        const bytes=await readFile(filename);
-        res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; media-src 'self' blob: https:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
-        res.writeHead(200,{'Content-Type':MIME[extname(filename)] || 'application/octet-stream','Cache-Control':'no-cache'}); res.end(method==='HEAD'?undefined:bytes); return;
-      }
+      if (!path.startsWith('/api/')) return await serveStatic(req,res,path);
       if(path==='/api/health'&&method==='GET') return send(res,200,{ok:true,persistence:'sqlite',identity:'httpOnly-session',scope:runtimeConfig.mode==='public'?'standalone-private-preview':'standalone-local'});
       if(path==='/api/access'&&method==='GET')return send(res,200,accessGate.publicPolicy());
       if(path==='/api/session'&&method==='POST') {
