@@ -1,7 +1,7 @@
 import {createTerrainMask,subtractTerrainRect,terrainOverlapsRect} from './terrain-render.js';
 // Low terrain detail is deliberately walk-through. Tall, solid props are authored
 // in worlds.js so the rendered furniture and server collision always agree.
-export function buildEnvironment(world,root,{box,cylinder,sphere,ground,material,line}){
+export function buildEnvironment(world,root,{box,cylinder,sphere,ground,groundPieces,boxPieces,material,line}){
  const {width:w,depth:d}=world.bounds,theme=world.theme||'garden';
  if(world.terrain?.cells?.length){
   const mask=createTerrainMask(world.terrain),raw={box,cylinder,sphere,ground};
@@ -10,14 +10,12 @@ export function buildEnvironment(world,root,{box,cylinder,sphere,ground,material
    // are actually cut away. Picking uses the renderer's mathematical ground ray.
    let reference=null;if(name==='walkable-ground'){reference=raw.ground(name,x,y,z,width,depth,...rest);reference.isVisible=false;}
    const pieces=subtractTerrainRect(mask,{x,z,width,depth});
-   for(const [i,p]of pieces.entries()){const mesh=raw.ground(name+'-cut-'+i,p.x,y,p.z,p.width,p.depth,...rest.slice(0,3),false);if(!reference)reference=mesh;}
-   return reference;
+   const visible=groundPieces(name+'-cut',pieces,y,...rest.slice(0,3));
+   return reference||visible;
   };
   box=(name,x,y,z,width,height,depth,...rest)=>{
    if(y+height/2<=0)return raw.box(name,x,y,z,width,height,depth,...rest);
-   const pieces=subtractTerrainRect(mask,{x,z,width,depth});let reference=null;
-   for(const [i,p]of pieces.entries()){const mesh=raw.box(name+'-cut-'+i,p.x,y,p.z,p.width,height,p.depth,...rest);if(!reference)reference=mesh;}
-   return reference;
+   return boxPieces(name+'-cut',subtractTerrainRect(mask,{x,z,width,depth}),y,height,...rest);
   };
   sphere=(name,x,y,z,r,...rest)=>terrainOverlapsRect(mask,{x,z,width:r*2,depth:r*2})?null:raw.sphere(name,x,y,z,r,...rest);
   cylinder=(name,x,y,z,r,...rest)=>terrainOverlapsRect(mask,{x,z,width:r*2,depth:r*2})?null:raw.cylinder(name,x,y,z,r,...rest);

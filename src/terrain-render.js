@@ -71,3 +71,19 @@ export function terrainGhostLines(width,depth,height=.115){
  for(let z=z0;z<=z1+EPSILON;z+=1)lines.push([[x0,height,z],[x1,height,z]]);
  return lines;
 }
+
+// Build disconnected cut surfaces directly, without one Babylon mesh per piece.
+// Chunks stay within 16-bit indices, including fragmented six-face box borders.
+export const TERRAIN_BATCH_VERTEX_LIMIT=60000;
+export function* terrainCutGeometry(pieces,height,geometryForPiece){
+ let data={positions:[],normals:[],uvs:[],indices:[]};
+ for(const piece of pieces){
+  const part=geometryForPiece(piece),count=part.positions.length/3;
+  if(data.positions.length/3+count>TERRAIN_BATCH_VERTEX_LIMIT){yield data;data={positions:[],normals:[],uvs:[],indices:[]};}
+  const start=data.positions.length/3;
+  for(let i=0;i<part.positions.length;i+=3)data.positions.push(part.positions[i]+piece.x,part.positions[i+1]+height,part.positions[i+2]+piece.z);
+  data.normals.push(...part.normals);data.uvs.push(...part.uvs);
+  for(const index of part.indices)data.indices.push(start+index);
+ }
+ if(data.positions.length)yield data;
+}

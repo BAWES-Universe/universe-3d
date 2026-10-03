@@ -1,12 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {CreateBoxVertexData} from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
+import {CreateGroundVertexData} from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
+import {Vector4} from '@babylonjs/core/Maths/math.vector.js';
+import {emptyScene} from '../src/worlds.js';
+import {scene as encodeScene} from '../server/validation.mjs';
 import {buildEnvironment} from '../src/scene-layout.js';
-import {createTerrainMask,subtractTerrainRect,terrainOverlapsRect,terrainSurfaceGroups,terrainSurfaceGeometry,terrainGhostLines} from '../src/terrain-render.js';
+import {createTerrainMask,subtractTerrainRect,terrainOverlapsRect,terrainSurfaceGroups,terrainSurfaceGeometry,terrainGhostLines,terrainCutGeometry,TERRAIN_BATCH_VERTEX_LIMIT} from '../src/terrain-render.js';
 const terrain=cells=>({version:1,cells});
 const area=rectangles=>rectangles.reduce((n,r)=>n+r.width*r.depth,0);
 const overlap=(a,b)=>Math.max(0,Math.min(a.x+a.width/2,b.x+b.width/2)-Math.max(a.x-a.width/2,b.x-b.width/2))*Math.max(0,Math.min(a.z+a.depth/2,b.z+b.depth/2)-Math.max(a.z-a.depth/2,b.z-b.depth/2));
 function capture(value,theme='garden',bounds={width:32,depth:26}){
  const items=[],helpers={};for(const kind of ['box','ground','sphere','cylinder'])helpers[kind]=(...args)=>{const item={kind,args};items.push(item);return item;};helpers.material=()=>{};
+ helpers.groundPieces=(name,pieces,y,...rest)=>{for(const p of pieces)helpers.ground(name,p.x,y,p.z,p.width,p.depth,...rest);};
+ helpers.boxPieces=(name,pieces,y,height,...rest)=>{for(const p of pieces)helpers.box(name,p.x,y,p.z,p.width,height,p.depth,...rest);};
  buildEnvironment({bounds,theme,terrain:value},{},helpers);return items;
 }
 test('empty terrain preserves the unedited environment exactly, including erasure',()=>{
@@ -61,4 +68,32 @@ test('preview grid includes the exact footprint and every cell edge',()=>{
  const lines=terrainGhostLines(4,3);assert.equal(lines.length,9);
  assert.deepEqual(lines[0],[[-2,.115,-1.5],[-2,.115,1.5]]);assert.deepEqual(lines[4],[[2,.115,-1.5],[2,.115,1.5]]);
  assert.deepEqual(lines.at(-1),[[-2,.115,1.5],[2,.115,1.5]]);
+});
+
+test('legal sparse 4096-cell scene constructs cut surfaces in batches, not per rectangle',()=>{
+ const scene={...emptyScene(),bounds:{width:200,depth:200},spawn:{x:0,z:80},terrain:terrain([])};
+ for(let z=-64;z<64;z+=2)for(let x=-64;x<64;x+=2)scene.terrain.cells.push([x,z,'stone',false]);
+ assert.doesNotThrow(()=>encodeScene(scene));
+ const pieces=subtractTerrainRect(createTerrainMask(scene.terrain),{x:0,z:0,width:200,depth:200});assert.equal(pieces.length,4225);assert.equal(area(pieces),40000-4096);
+ const calls=[],helpers={};for(const kind of ['ground','box','groundPieces','boxPieces','sphere','cylinder'])helpers[kind]=(...args)=>{const item={kind,args};calls.push(item);return item;};
+ const floor=buildEnvironment(scene,{},helpers);assert.equal(floor.isVisible,false);assert.equal(floor.args[0],'walkable-ground');
+ assert.equal(calls.filter(c=>c.kind==='ground').length,1);assert.equal(calls.filter(c=>c.kind==='box').length,3);
+ assert.equal(calls.find(c=>c.kind==='groundPieces'&&c.args[0]==='walkable-ground-cut').args[1].length,4225);
+ assert(calls.length<400);
+});
+test('cut geometry preserves every native ground and box face, UV, normal and depth',()=>{
+ const pieces=[{x:-.3,z:.7,width:2.3,depth:3.7},{x:3.5,z:-1.25,width:1,depth:.5}],y=.008,height=.028,uv=(u,v)=>new Vector4(0,0,u,v);
+ const factories=[p=>{const g=CreateGroundVertexData({width:p.width,height:p.depth});for(let i=0;i<g.uvs.length/2;i++){g.uvs[2*i]=(g.positions[3*i]+p.x)/2;g.uvs[2*i+1]=(g.positions[3*i+2]+p.z)/2;}return g;},p=>CreateBoxVertexData({width:p.width,height,depth:p.depth,faceUV:[uv(p.width,height),uv(p.width,height),uv(p.depth,height),uv(p.depth,height),uv(p.width,p.depth),uv(p.width,p.depth)]})];
+ for(const factory of factories){
+  const [actual]=[...terrainCutGeometry(pieces,y,factory)],expected={positions:[],normals:[],uvs:[],indices:[]};
+  for(const p of pieces){const g=factory(p),offset=expected.positions.length/3;expected.positions.push(...g.positions.map((v,i)=>v+[p.x,y,p.z][i%3]));expected.normals.push(...g.normals);expected.uvs.push(...g.uvs);expected.indices.push(...g.indices.map(i=>i+offset));}
+  assert.deepEqual(actual,expected);
+ }
+ assert.deepEqual([...terrainCutGeometry([],y,factories[0])],[]);
+});
+test('fragmented decorative boxes retain all faces inside bounded 16-bit buffers',()=>{
+ const pieces=Array.from({length:8193},(_,i)=>({x:i,z:0,width:.5,depth:1})),chunks=[...terrainCutGeometry(pieces,.01,p=>CreateBoxVertexData({width:p.width,height:.028,depth:p.depth}))];
+ assert.equal(chunks.length,4);assert.equal(chunks.reduce((n,g)=>n+g.positions.length/3,0),pieces.length*24);
+ assert.equal(chunks.reduce((n,g)=>n+g.indices.length,0),pieces.length*36);
+ for(const g of chunks){assert(g.positions.length/3<=TERRAIN_BATCH_VERTEX_LIMIT);assert(Math.max(...g.indices)<65536);assert.equal(g.normals.length,g.positions.length);assert.equal(g.uvs.length/2,g.positions.length/3);}
 });

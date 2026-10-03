@@ -9,12 +9,12 @@ import {Color3,Color4} from '@babylonjs/core/Maths/math.color.js';
 import {Mesh} from '@babylonjs/core/Meshes/mesh.js';
 import {VertexData} from '@babylonjs/core/Meshes/mesh.vertexData.js';
 import {TransformNode} from '@babylonjs/core/Meshes/transformNode.js';
-import {CreateBox} from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
+import {CreateBox,CreateBoxVertexData} from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import {CreatePlane} from '@babylonjs/core/Meshes/Builders/planeBuilder.js';
 import {CreateCylinder} from '@babylonjs/core/Meshes/Builders/cylinderBuilder.js';
 import {CreateSphere} from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import {CreateTorus} from '@babylonjs/core/Meshes/Builders/torusBuilder.js';
-import {CreateGround} from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
+import {CreateGround,CreateGroundVertexData} from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
 import {CreateLines,CreateLineSystem} from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
 import {StandardMaterial} from '@babylonjs/core/Materials/standardMaterial.js';
 import {Texture} from '@babylonjs/core/Materials/Textures/texture.js';
@@ -32,7 +32,7 @@ import {frameInFreeArea,createFramingTransition,projectionShift} from './viewpor
 import {measurePanelOcclusion} from './panel-occlusion.js';
 import {createEnvironmentMaterials} from './environment-materials.js';
 import {buildEnvironment} from './scene-layout.js';
-import {TERRAIN_SURFACES,terrainSurfaceGroups,terrainSurfaceGeometry,terrainGhostLines} from './terrain-render.js';
+import {TERRAIN_SURFACES,terrainSurfaceGroups,terrainSurfaceGeometry,terrainGhostLines,terrainCutGeometry,TERRAIN_BATCH_VERTEX_LIMIT} from './terrain-render.js';
 import {labelFits,WORLD_LABEL_OCCLUDERS} from './label-layout.js';
 const hex=h=>Color3.FromHexString(h);
 
@@ -64,6 +64,26 @@ export async function createRenderer(canvas,labels){
  function cylinder(name,x,y,z,r,h,color,parent,top=r,opts={}){const m=CreateCylinder(name,{height:h,diameter:r*2,diameterTop:top*2,tessellation:opts.tessellation||12},scene);m.position.set(x,y,z);return finish(m,color,parent,opts);}
  function sphere(name,x,y,z,r,color,parent,sy=1,opts={}){const m=CreateSphere(name,{diameter:r*2,segments:opts.segments||4},scene);m.position.set(x,y,z);m.scaling.y=sy;return finish(m,color,parent,opts);}
  function ground(name,x,y,z,w,d,kind,tint,parent,pickable=false){const m=CreateGround(name,{width:w,height:d,subdivisions:1},scene);m.position.set(x,y,z);const u=m.getVerticesData('uv'),v=m.getVerticesData('position');for(let i=0;i<u.length/2;i++){u[i*2]=(v[i*3]+x)/2;u[i*2+1]=(v[i*3+2]+z)/2;}m.setVerticesData('uv',u);finish(m,tint,parent,{surface:kind,pickable});return m;}
+
+ function cutSurfaces(name,pieces,y,geometryForPiece,color,parent,opts){
+  let first=null,index=0;
+  for(const geometry of terrainCutGeometry(pieces,y,geometryForPiece)){
+   const mesh=new Mesh(name+'-'+index++,scene),data=new VertexData();Object.assign(data,geometry);data.applyToMesh(mesh);
+   finish(mesh,color,parent,opts);first??=mesh;
+  }
+  return first;
+ }
+ function groundPieces(name,pieces,y,kind,tint,parent){
+  return cutSurfaces(name,pieces,y,p=>{
+   const data=CreateGroundVertexData({width:p.width,height:p.depth,subdivisions:1});
+   for(let i=0;i<data.uvs.length/2;i++){data.uvs[i*2]=(data.positions[i*3]+p.x)/2;data.uvs[i*2+1]=(data.positions[i*3+2]+p.z)/2;}
+   return data;
+  },tint,parent,{surface:kind,pickable:false});
+ }
+ function boxPieces(name,pieces,y,height,color,parent,opts={}){
+  const uv=(u,v)=>new Vector4(0,0,u,v);
+  return cutSurfaces(name,pieces,y,p=>CreateBoxVertexData({width:p.width,height,depth:p.depth,faceUV:[uv(p.width,height),uv(p.width,height),uv(p.depth,height),uv(p.depth,height),uv(p.width,p.depth),uv(p.width,p.depth)]}),color,parent,opts);
+ }
 
  function addTerrain(terrain,parent){
   for(const {material:kind,rectangles}of terrainSurfaceGroups(terrain)){
@@ -138,7 +158,7 @@ export async function createRenderer(canvas,labels){
  }
  function sync(newWorld){
   if(!newWorld)return;world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
-  const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,material});floor.metadata={type:'ground'};addTerrain(world.terrain,root);
+  const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,groundPieces,boxPieces,material});floor.metadata={type:'ground'};addTerrain(world.terrain,root);
   for(const o of world.objects)if(o.type!=='image')addObject(o);syncImages();
   if(build)for(const a of world.areas){const col={silent:'#67bdae',meeting:'#b09add',stage:'#e0bd77',audience:'#bc9bca',welcome:'#9eccab',teleport:'#c3a8fa'}[a.action]||'#aa9cc2';box(a.id,a.x,.083,a.z,a.width,.015,a.depth,col,root,{alpha:.15,pickable:false,metadata:{id:a.id,type:'area'}});worldLabels.push({el:label(a.id,a.name,'area-label'),position:new Vector3(a.x,.5,a.z)});}
   // Merge by material, pickability and shadow behavior, preserving exact face ranges.
@@ -147,7 +167,11 @@ export async function createRenderer(canvas,labels){
    const key=mesh.material?.uniqueId+':'+mesh.isPickable+':'+mesh.receiveShadows;
    if(!batches.has(key))batches.set(key,[]);batches.get(key).push(mesh);
   }
-  for(const meshes of batches.values()){
+  const mergeGroups=[];for(const meshes of batches.values()){
+   if(!world.terrain?.cells?.length){mergeGroups.push(meshes);continue;}
+   let group=[],vertices=0;for(const mesh of meshes){const count=mesh.getTotalVertices();if(vertices+count>TERRAIN_BATCH_VERTEX_LIMIT&&group.length){mergeGroups.push(group);group=[];vertices=0;}group.push(mesh);vertices+=count;}if(group.length)mergeGroups.push(group);
+  }
+  for(const meshes of mergeGroups){
    if(meshes.length<2)continue;const ranges=[];let face=0;
    for(const m of meshes){m.computeWorldMatrix(true);const count=m.getTotalIndices()/3;ranges.push({start:face,end:face+count,metadata:m.metadata});face+=count;}
    const mat=meshes[0].material,pickable=meshes[0].isPickable,receive=meshes[0].receiveShadows;const merged=Mesh.MergeMeshes(meshes,true,true);

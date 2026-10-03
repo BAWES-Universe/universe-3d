@@ -1,8 +1,18 @@
-# Development status · 2026-10-03 02:38 UTC
+# Development status · 2026-10-03 02:49 UTC
 
-## Current increment: native terrain workbench
+## Current increment: bounded cut-surface construction
 
-The terrain checkpoint was published as `65f2a3e3531f49fb2899f4cf88095b2bdfa7b99e`. Its exact-head CI passed nine jobs and exposed two compact-layout regressions: the 320px toolbelt gained a third row, and an unnecessarily raised palette obscured the initial 1000px/DPR2 selection fixture. The focused correction moves Room settings beside Done, keeps 12 toolbelt controls in two rows with 45.5px minimum width at 320, and restores the medium palette offset to 701–850px. Both original regression suites pass unchanged; an additional eight-case native toolbar fixture covers reachability, target sizes, Terrain→Custom→Save and keyboard Room access. The 14 terrain editor fixture cases also pass. Publication/CI for this correction remain pending.
+Sparse terrain now builds the cut base grounds and decorative boxes directly into bounded geometry buffers. The previous renderer already merged compatible surfaces into few final draw calls, but first constructed thousands of temporary meshes. On the same valid 200×200 scene with 4,096 separated stone cells, constructions drop from 5,276 to 307 and peak live meshes from 5,255 to 289. Final geometry stays 26 meshes, 25 draw calls and 61,473 vertices. A shared-host diagnostic measured 959ms versus 200ms synchronous construction; this is one controlled fixture, not physical-device or production capacity evidence.
+
+The terrain path caps merged buffers at 60,000 vertices. No material art, water behavior, resolution, collision or scene schema changes. Original and corrected 1280×900 captures differ in 13 of 1,152,000 pixels; the measured mean absolute channel difference is 0.000042. Legal sparse garden/studio/night fixtures, contiguous mixed materials and repeated paint/erase all pass resource and geometry checks. Existing alpha picking, nonzero camera framing and creator pause/resume regressions pass in the isolated source proof.
+
+Fresh combined integration passes 1,099 CPU/API checks with the same historical skip, all 250 source syntax checks, build, package startup/static files and Dockerfile-copy reconstruction. All 6 native DPR2 mouse/touch cases and all 7 actual terrain authoring scenarios pass after combining this correction with the compact-toolbar fix. Final main bundle: `1631e855e2731ce43de30a99e4901a551cdd1e14215b6a0ea5b85bf9d8c5aff7`; CSS: `ef875f413264efc3b973c311654b1dc5fe3958204a28832cb5972c8f5904aa9e`.
+
+The compact-toolbar correction is published at `d238342b15acd6eac588d67fe11a56974678972f`; all eleven exact-head CI jobs passed. This construction correction is a separate local increment with publication/CI pending. No deployment or live configuration changed.
+
+## Prior increment: native terrain workbench
+
+The terrain checkpoint was published as `65f2a3e3531f49fb2899f4cf88095b2bdfa7b99e`. Its exact-head CI passed nine jobs and exposed two compact-layout regressions: the 320px toolbelt gained a third row, and an unnecessarily raised palette obscured the initial 1000px/DPR2 selection fixture. The focused correction moves Room settings beside Done, keeps 12 toolbelt controls in two rows with 45.5px minimum width at 320, and restores the medium palette offset to 701–850px. Both original regression suites pass unchanged; an additional eight-case native toolbar fixture covers reachability, target sizes, Terrain→Custom→Save and keyboard Room access. The 14 terrain editor fixture cases also pass. The compact-toolbar correction is published as `d238342b15acd6eac588d67fe11a56974678972f`; all eleven exact-head CI jobs passed.
 
 Build now paints snapped rectangles of grass, soil, stone, wood or water. Appearance and blocking are explicit; water starts blocked, with no swimming. Restore base removes authored cells and restores the original paving/ground/planting. A straight wall stroke creates an ordinary wall that remains selectable, movable and rotatable. Pointer previews do not mutate the scene; one completed stroke is one undo transaction. Keyboard sizing, native focus/activation and touch/camera cancellation use the same editor path.
 

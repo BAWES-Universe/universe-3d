@@ -22,7 +22,7 @@ Only an actor with current room-wide scene editing permission can alter terrain.
 
 New blocking terrain or changed wall footprints must preserve arrival and its usable route, and cannot cover an active authorized person or resident. Rejection leaves the scene unchanged. Existing untouched geometry is not silently revalidated or relocated. Shared terrain geometry feeds player movement, click paths, safe arrival and resident navigation. Positions remain bounded client reports under the existing application model; this is not server-authoritative player physics.
 
-Terrain edits replace the affected baked paving, decks, ground and decorative planting cleanly. Erase restores that underlying scenery. Rendering must not introduce coplanar flicker, hidden leftover blockers or per-cell material/resource leaks. Legacy scenes with no terrain field keep the existing environment path.
+Terrain edits replace the affected baked paving, decks, ground and decorative planting cleanly. Erase restores that underlying scenery. Rendering must not introduce coplanar flicker, hidden leftover blockers or per-cell material/resource leaks. Legacy scenes with no terrain field keep the existing environment path. Fragmented base grounds and decorative boxes are batched before mesh construction, and terrain-path merge buffers are capped at 60,000 vertices; the sparse 4,096-cell and repeated erase fixtures verify construction and resource bounds.
 
 ## Verification boundary
 
