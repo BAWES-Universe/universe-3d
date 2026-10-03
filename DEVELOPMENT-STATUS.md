@@ -1,4 +1,4 @@
-# Development status · 2026-10-03 08:48 UTC
+# Development status · 2026-10-03 09:15 UTC
 
 ## Current increment: native named arrivals (separate development work)
 
@@ -17,6 +17,16 @@ The initial published arrival head `60b1ce5001d9d3ddb5f5cc24d1c65b2870b9904a` ex
 The corrected observer case pauses through native Chat, waits for a stable acknowledged pose, and verifies exact HTTP pose/admission preservation alongside the original movement and lease assertions. Every default groupplay assertion remains enabled. This is a test precondition correction, not a change to movement or admission authority.
 
 The combined selector/typing source passes 1,371 CPU/API checks with the existing historical skip, syntax and build. All four authoring suites pass on the original published runtime with the selector interaction corrected. All four Nearby suites pass on the repaired runtime, including unchanged first-input deadlines and a new actual reconnect case. The corrected observer, same-cookie secondary-session and compact-touch replays all pass, with zero page exceptions and unchanged source/bundle hashes in their recorded runs. Remote full CI remains pending for the combined correction. Repaired main bundle SHA-256: `6b14ab7cb4a8e7c3e8934f1380e2540f56a4777ef19b15583b4586df2f1af2f1`; CSS remains `26e371387d5773ab891e0db08c83a2184b8be16238a41c6b718cbe3c4695039c`. The operator release pin remains `76b83c34cb2d461523ccb1b3b065c3030104fd28`.
+
+### Native consent and movement readiness
+
+Correction head `61644240fb91854de449a7de4f4f3cba7d7323f8` passed twelve CI jobs, including Nearby and authoring. Two remaining native fixtures relied on elapsed time: the next consent case inherited an invitation that could expire after thirty seconds, and the doorway case treated equal-duration W/S holds plus an old toast as evidence of exit/re-entry.
+
+The consent cases now retire any previous invitation and create their own through native controls. A focused replay observes both earlier invitations expire naturally, then verifies fresh Decline/Ignore/F and held-Enter Accept behavior. All seven checks pass; production expiry remains thirty seconds, every original default assertion remains, and the earlier observer preservation block is unchanged.
+
+The doorway fixture now measures actual boundary crossings while holding native keys and waits for a fresh area-triggered denial response. All twelve flows pass normally and with tenfold CPU throttling; exact request counts and post-denial suppression remain. The exact remote count failure was not reproduced locally: three old-timing probes passed, but one depended on braking drift to finish only 0.008 units inside the region. The corrected test removes that timing assumption and records the measured positions.
+
+These changes affect two browser tests and this status only. Runtime is unchanged from `6164424`; full exact-head CI remains pending for this follow-up. The operator release pin remains `76b83c34cb2d461523ccb1b3b065c3030104fd28`.
 
 ## Prior increment: mobile away media privacy
 
