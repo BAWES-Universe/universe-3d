@@ -1,6 +1,6 @@
 {
   "name": "universe-3d-game",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,8 @@
     "test:browser:hud": "node scripts/test-browser.mjs hud",
     "test:browser:framing": "node scripts/test-browser.mjs framing",
     "test:browser:residents": "node scripts/test-browser.mjs residents",
-    "test:browser:presentation": "node scripts/test-browser.mjs presentation"
+    "test:browser:presentation": "node scripts/test-browser.mjs presentation",
+    "test:browser:nearby": "node scripts/test-browser.mjs nearby"
   },
   "dependencies": {
     "@babylonjs/core": "9.28.0"

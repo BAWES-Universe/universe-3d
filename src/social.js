@@ -1,4 +1,5 @@
 import {roomAllows} from './permissions.js';
+import {createNearbyText, validateNearbyText} from './proximity-text.js';
 /**
  * Universe's standalone social client. Identity, message ownership, room access,
  * reactions and moderation are validated by the server; UI gates are only affordances.
@@ -42,7 +43,7 @@ function timeLabel(date) {
 function normalizeList(result, key) { return Array.isArray(result?.[key]) ? result[key] : Array.isArray(result) ? result : []; }
 function focusEnd(node) { node?.focus(); if (node && typeof node.setSelectionRange === 'function') node.setSelectionRange(node.value.length, node.value.length); }
 
-export function mountSocial({ root, api, getState, onNavigate = () => {}, onExplore = null, onManage = null, onAvatar = null, portrait = null, toast = () => {} }) {
+export function mountSocial({ root, api, getState, onNavigate = () => {}, onExplore = null, onManage = null, onAvatar = null, portrait = null, toast = () => {}, onNearbyUnread = () => {} }) {
   if (!root || typeof api !== 'function' || typeof getState !== 'function') throw new Error('mountSocial needs root, api and getState');
   const avatar=(person,large=false)=>makeAvatar(person,large,portrait);
   let destroyed = false;
@@ -80,10 +81,15 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   const unread = new Map();
   const tabs = new Map();
   let renderInbox = null;
+  let nearbyElements = null;
+  let nearbyUnread = 0;
   const currentState = () => getState() || {};
   const user = () => currentState().user || {};
   const room = () => currentState().room || {};
-  const channelKey = () => chatMode === 'dm' && selectedPeer ? `dm:${selectedPeer.id}` : `room:${room().id || ''}`;
+  const channelKey = () => chatMode === 'nearby' ? 'nearby' : chatMode === 'dm' && selectedPeer ? `dm:${selectedPeer.id}` : `room:${room().id || ''}`;
+  const nearby = createNearbyText({ api, getState, onChange: nearbyChanged, onMessage: ({stayId, own}) => {
+    if (!own && (root.hidden || activeTab !== 'chat' || chatMode !== 'nearby' || nearby.snapshot().selectedId !== stayId)) nearby.markUnread(stayId);
+  }});
   const channelPath = (key) => key.startsWith('dm:') ? `/api/dm/${enc(key.slice(3))}/messages` : `/api/rooms/${enc(key.slice(5))}/messages`;
   const getChannel = (key) => {
     if (!cache.has(key)) cache.set(key, { messages: [], loaded: false, loading: false, error: '', request: 0, liveDuringLoad: new Set(), hasOlder: false, nextCursor: null, loadingOlder: false });
@@ -169,18 +175,19 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
 
   function syncHeader() {
     const peerName = selectedPeer?.name || 'Direct message';
-    title.textContent = { chat: chatMode === 'inbox' ? 'Direct messages' : chatMode === 'dm' ? peerName : 'Room chat', people: 'People', explore: 'Find your space', settings: 'Make it yours' }[activeTab];
-    subtitle.textContent = { chat: chatMode === 'inbox' ? 'Your conversations, all in one place' : chatMode === 'dm' ? 'A conversation between the two of you' : room().name || 'Choose a room to join the conversation', people: `${(currentState().people || []).length} in ${room().name || 'this room'}`, explore: 'Small worlds. Room for everyone.', settings: 'Your name, Woka and availability' }[activeTab];
+    title.textContent = { chat: chatMode === 'nearby' ? 'Nearby text' : chatMode === 'inbox' ? 'Direct messages' : chatMode === 'dm' ? peerName : 'Room chat', people: 'People', explore: 'Find your space', settings: 'Make it yours' }[activeTab];
+    subtitle.textContent = { chat: chatMode === 'nearby' ? 'Only your current conversation bubble' : chatMode === 'inbox' ? 'Your conversations, all in one place' : chatMode === 'dm' ? 'A conversation between the two of you' : room().name || 'Choose a room to join the conversation', people: `${(currentState().people || []).length} in ${room().name || 'this room'}`, explore: 'Small worlds. Room for everyone.', settings: 'Your name, Woka and availability' }[activeTab];
     for (const [tab, node] of tabs) {
       node.setAttribute('aria-selected', String(tab === activeTab));
       node.tabIndex = tab === activeTab ? 0 : -1;
       if (tab === 'chat') {
-        const total = [...unread.values()].reduce((sum, count) => sum + count, 0);
+        const total = [...unread.values()].reduce((sum, count) => sum + count, 0) + nearby.snapshot().unread;
         node.replaceChildren('Chat');
         if (total) node.append(el('span', { class: 'social-unread', 'aria-label': `${total} unread messages`, text: total > 99 ? '99+' : total }));
       }
     }
     root.dataset.tab = activeTab;
+    root.dataset.chatMode = chatMode;
     panel.setAttribute('aria-labelledby', `social-tab-${activeTab}`);
   }
   function setTab(tab) {
@@ -190,15 +197,18 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     dismissConfirm();
     activeTab = tab;
     if (tab === 'chat' && chatMode !== 'inbox') unread.delete(channelKey());
+    if (tab === 'chat' && chatMode === 'nearby') nearby.markRead();
     render();
   }
   function render() {
     if (destroyed) return;
+    nearby.syncState();
     const id = user().id || '';
     if (lastUser !== id) {
       lastUser = id; cache.clear(); unread.clear(); drafts.clear(); sendOperations.clear(); selectedPeer = null; chatMode = 'room'; edit = null;
       localWorlds = null; conversations = []; conversationsLoaded = false; mountedKey = '';
     }
+    publishNearbyUnread();
     syncHeader();
     if (!id) {
       if (mountedKey !== 'signed-out') { panel.replaceChildren(empty('Enter a room to start exploring together.')); mountedKey = 'signed-out'; }
@@ -208,7 +218,9 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (mountedKey !== viewKey) {
       dismissConfirm();
       mountedKey = viewKey;
-      panel.replaceChildren(); timeline = composer = sendButton = editLabel = peopleList = explorerList = profileForm = profileAvatar = noticeNode = null;
+      root.scrollTop = 0;
+      panel.replaceChildren(); timeline = composer = sendButton = editLabel = peopleList = explorerList = profileForm = profileAvatar = noticeNode = nearbyElements = null;
+      panel.dataset.chatMode = activeTab === 'chat' ? chatMode : '';
       if (activeTab === 'chat') buildChat();
       else if (activeTab === 'people') buildPeople();
       else if (activeTab === 'explore') buildExplorer();
@@ -275,12 +287,15 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }
   }
   function buildChat() {
+    panel.dataset.chatMode = chatMode;
+    if (chatMode === 'nearby') { buildNearby(); return; }
     if (chatMode === 'inbox') { buildInbox(); return; }
     const key = channelKey();
     const roomName = chatMode === 'dm' ? selectedPeer.name : room().name || 'Room';
     const toolbar = el('div', { class: 'social-toolbar' }, el('div', { class: 'social-channel', text: roomName }));
     if (chatMode === 'dm') toolbar.append(button('← Room', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small social-btn-quiet' }));
     toolbar.append(button('Direct', () => { chatMode = 'inbox'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open direct messages' }));
+    appendNearbyMode(toolbar);
     timeline = el('div', { class: 'social-timeline social-scroll', role: 'log', 'aria-label': chatMode === 'dm' ? `Messages with ${selectedPeer.name}` : 'Room messages', 'aria-live': 'polite', 'aria-relevant': 'additions text', tabindex: '0' });
     noticeNode = el('div');
     editLabel = el('div');
@@ -301,6 +316,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     syncComposer(); renderTimeline(); loadMessages(key);
   }
   function syncComposer() {
+    if (chatMode === 'nearby') { renderNearby(); return; }
     if (!composer || !sendButton) return;
     const key = channelKey();
     const sending = busy.has(`send:${key}`);
@@ -311,6 +327,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (edit?.key === key) editLabel.append(el('div', { class: 'social-edit-label' }, 'Editing your message', button('Cancel', cancelEdit, { class: 'button social-btn social-btn-small social-btn-quiet' })));
   }
   async function sendMessage() {
+    if (chatMode === 'nearby') { await nearby.send(); return; }
     const key = channelKey();
     if (!composer || busy.has(`send:${key}`)) return;
     const text = composer.value.trim();
@@ -346,6 +363,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (composer) { composer.value = readDraft(channelKey()); syncComposer(); composer.focus(); }
   }
   function renderTimeline() {
+    if (chatMode === 'nearby') { renderNearby(); return; }
     if (!timeline || activeTab !== 'chat' || chatMode === 'inbox') return;
     const key = channelKey();
     const bucket = getChannel(key);
@@ -409,6 +427,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   }
   function buildInbox() {
     const toolbar = el('div', { class: 'social-toolbar' }, button('← Room chat', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small social-btn-quiet' }), button('Find someone', () => setTab('people'), { class: 'button social-btn social-btn-small' }));
+    appendNearbyMode(toolbar);
     panel.append(toolbar);
     const list = el('div', { class: 'social-scroll social-stack' });
     noticeNode = el('div'); list.append(noticeNode); panel.append(list);
@@ -433,6 +452,105 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       conversationsLoading = true; renderList();
       api('/api/conversations').then((result) => { conversations = normalizeList(result, 'conversations'); conversationsLoaded = true; }).catch(showError).finally(() => { conversationsLoading = false; renderList(); });
     }
+  }
+
+  function publishNearbyUnread() {
+    const count = nearby.snapshot().unread;
+    if (count !== nearbyUnread) { nearbyUnread = count; onNearbyUnread(count); }
+  }
+  function appendNearbyMode(toolbar) {
+    if (!nearby.snapshot().available) return;
+    toolbar.append(button('Nearby', () => {
+      edit = null; chatMode = 'nearby'; nearby.markRead(); resetView();
+    }, { class: 'button social-btn social-btn-small social-nearby-mode', 'aria-label': 'Nearby', 'aria-pressed': String(chatMode === 'nearby') }));
+  }
+  function nearbyChanged() {
+    if (destroyed) return;
+    const state = nearby.snapshot();
+    publishNearbyUnread();
+    if (!state.available && chatMode === 'nearby') { chatMode = 'room'; resetView(); return; }
+    if (activeTab === 'chat') {
+      const toolbar = panel.querySelector('.social-toolbar');
+      const mode = toolbar?.querySelector('.social-nearby-mode');
+      if (state.available && toolbar && !mode) appendNearbyMode(toolbar);
+      else if (!state.available) mode?.remove();
+      if (mode) { mode.textContent = state.unread ? `Nearby · ${state.unread}` : 'Nearby'; mode.setAttribute('aria-label', 'Nearby'); }
+    }
+    syncHeader();
+    if (activeTab === 'chat' && chatMode === 'nearby') renderNearby();
+  }
+  function buildNearby() {
+    const toolbar = el('div', { class: 'social-toolbar social-nearby-toolbar' },
+      button('Room', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open room chat' }),
+      button('Direct', () => { chatMode = 'inbox'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open direct messages' }));
+    appendNearbyMode(toolbar);
+    const status = el('p', { class: 'social-nearby-status', role: 'status', 'aria-live': 'polite' });
+    const recipients = el('p', { class: 'social-nearby-recipients' });
+    const stays = el('select', { class: 'input social-input', 'aria-label': 'Nearby stays' });
+    stays.addEventListener('change', () => nearby.select(stays.value));
+    const live = button('Open current nearby stay', () => nearby.select(nearby.snapshot().activeId), { class: 'button social-btn social-btn-small' });
+    const summary = el('div', { class: 'social-nearby-summary' }, status, recipients, stays, live,
+      el('details', { class: 'social-nearby-about' }, el('summary', { text: 'Live only · No missed-message replay' }), el('p', { text: 'The server relays readable plain text to this bubble. Up to 200 received or acknowledged messages and drafts stay in this tab; reload or account change clears them. Leaving keeps received stays read-only. Other signed-in sessions of your account may receive a labeled copy. Room chat and Direct keep their separate saved history.' })));
+    timeline = el('div', { class: 'social-timeline social-scroll', role: 'log', 'aria-label': 'Nearby messages', 'aria-live': 'polite', 'aria-relevant': 'additions', tabindex: '0' });
+    const error = el('div', { class: 'social-nearby-error', role: 'alert' });
+    const retry = button('Retry same message', () => nearby.send(true), { class: 'button social-btn social-btn-small', 'aria-label': 'Retry nearby message' });
+    const refresh = button('Refresh Nearby', () => nearby.refresh(), { class: 'button social-btn social-btn-small' });
+    const controls = el('div', { class: 'social-nearby-recovery' }, retry, refresh);
+    composer = el('textarea', { class: 'input social-input', rows: '2', placeholder: 'Say hello to people in this bubble…', 'aria-label': 'Message nearby people', 'aria-describedby': 'nearby-composer-hint' });
+    let composing = false;
+    composer.addEventListener('compositionstart', () => { composing = true; });
+    composer.addEventListener('compositionend', () => { composing = false; });
+    composer.addEventListener('input', () => nearby.setDraft(composer.value));
+    composer.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !composing && event.keyCode !== 229) { event.preventDefault(); nearby.send(); }
+    });
+    sendButton = button('Send ↗', () => nearby.send(), { class: 'button social-btn social-btn-primary', 'aria-label': 'Send nearby message' });
+    const hint = el('span', { class: 'social-composer-hint', id: 'nearby-composer-hint', text: 'Enter to send · Shift + Enter for a new line\n2,000 characters · Plain text' });
+    const form = el('form', { class: 'social-composer social-nearby-composer', onsubmit: event => { event.preventDefault(); if (!composing) nearby.send(); } }, error, controls, composer, el('div', { class: 'social-composer-actions' }, hint, sendButton));
+    nearbyElements = { status, recipients, stays, live, error, retry, refresh, controls };
+    panel.append(toolbar, summary, timeline, form); renderNearby();
+  }
+  function renderNearby() {
+    if (!nearbyElements || activeTab !== 'chat' || chatMode !== 'nearby') return;
+    const state = nearby.snapshot(), stay = state.selected, c = state.context, nodes = nearbyElements;
+    const ended = !!stay?.endedAt, isLive = !!stay && stay.id === state.activeId;
+    let status = state.navigating ? 'Changing rooms · sending paused' : !state.ready ? 'Room unavailable · sending paused' : state.connection === 'unavailable' ? 'Nearby unavailable · membership could not be verified' : state.connection !== 'connected' ? state.connection === 'connecting' ? 'Connecting Nearby · sending paused' : 'Connection lost · sending paused' : c?.reason === 'authority-unavailable' ? 'Nearby unavailable · membership could not be verified' : c?.reason === 'muted' ? 'Muted · you can read Nearby, but cannot send' : c?.recipientCount ? `${c.recipientCount} nearby recipient${c.recipientCount === 1 ? '' : 's'} · live now` : 'Alone · move near someone to start a bubble';
+    if (ended) status = `Ended stay · read-only. ${status}`;
+    nodes.status.textContent = status;
+    nodes.status.dataset.canSend = String(isLive && !ended && !!c?.canSend && state.ready && !state.navigating && state.connection === 'connected');
+    nodes.recipients.textContent = c?.conversationRecipients?.length ? `Current recipients: ${c.conversationRecipients.map(peer => (currentState().people || []).find(person => person.id === peer.accountId)?.name || peer.accountId).join(', ')}` : 'No current nearby recipients';
+    nodes.live.hidden = !state.activeId || isLive;
+    const optionsSignature = JSON.stringify(state.stays.map(item => [item.id, item.endedAt, item.unread, item.id === state.activeId]));
+    if (nodes.stays.dataset.signature !== optionsSignature) {
+      nodes.stays.dataset.signature = optionsSignature;
+      nodes.stays.replaceChildren(...state.stays.map((item, index) => el('option', { value: item.id, text: `${item.id === state.activeId ? 'Live' : item.endedAt ? 'Ended' : 'Disconnected'} · ${item.roomName} · stay ${index + 1}${item.unread ? ` (${item.unread} unread)` : ''}` })));
+    }
+    nodes.stays.hidden = state.stays.length < 2;
+    nodes.stays.value = state.selectedId || '';
+    const messageSignature = JSON.stringify([stay?.id, stay?.endedAt, stay?.messages]);
+    if (timeline.dataset.signature !== messageSignature) {
+      const nearBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 65, top = timeline.scrollTop;
+      timeline.dataset.signature = messageSignature;
+      const rows = (stay?.messages || []).map(message => {
+        const row = renderMessage({ ...message, userId: message.author.id }, 'nearby');
+        if (message.ownAccountCopy) row.querySelector('.social-message-meta').append(el('span', { class: 'social-message-time', text: 'Your other session' }));
+        return row;
+      });
+      timeline.replaceChildren(...(rows.length ? rows : [empty(ended ? 'No messages were received during this stay.' : 'Only messages received while you are here appear. No earlier or missed messages are loaded.')]));
+      if (nearBottom) timeline.scrollTop = timeline.scrollHeight; else timeline.scrollTop = top;
+    }
+    if (composer.value !== (stay?.draft || '')) composer.value = stay?.draft || '';
+    composer.readOnly = !stay || ended;
+    composer.placeholder = ended ? 'This stay has ended. Its draft is kept here.' : !stay ? 'Join a nearby conversation to write a message…' : 'Say hello to people in this bubble…';
+    const validation = stay?.draft ? validateNearbyText(stay.draft, c?.limits) : '';
+    nodes.error.textContent = state.refreshError || stay?.error || validation;
+    nodes.error.hidden = !nodes.error.textContent;
+    nodes.retry.hidden = stay?.operation?.status !== 'retry';
+    nodes.retry.disabled = !isLive || !state.ready || !c?.canSend || state.connection !== 'connected' || state.navigating;
+    nodes.refresh.hidden = !c?.connectionEpoch || !(state.refreshError || stay?.error || c?.reason === 'authority-unavailable');
+    nodes.controls.hidden = nodes.retry.hidden && nodes.refresh.hidden;
+    sendButton.disabled = !isLive || ended || !state.ready || !c?.canSend || state.navigating || state.connection !== 'connected' || !!stay?.operation || !stay?.draft.trim() || !!validation;
+    sendButton.textContent = stay?.operation?.status === 'sending' ? 'Sending…' : 'Send ↗';
   }
 
   function buildPeople() {
@@ -662,6 +780,8 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     const type = event.type || event.event;
     let data = event.data ?? event.payload ?? event;
     if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
+    if (type === 'proximity-text-context') return nearby.acceptContext(data);
+    if (type === 'proximity-text-message') return nearby.receive(data);
     if (type === 'message' || type === 'dm') {
       const message = data.message || data;
       let key;
@@ -679,7 +799,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       syncHeader();
       if (activeTab === 'chat' && chatMode === 'inbox') renderInbox?.();
     } else if (['presence', 'members', 'room', 'role', 'hello'].includes(type)) {
-      if (type === 'hello') { for (const bucket of cache.values()) bucket.loaded = false; conversationsLoaded = false; if (activeTab === 'chat' && chatMode !== 'inbox') loadMessages(channelKey(), true); }
+      if (type === 'hello') { for (const bucket of cache.values()) bucket.loaded = false; conversationsLoaded = false; if (activeTab === 'chat' && !['inbox','nearby'].includes(chatMode)) loadMessages(channelKey(), true); }
       if (type === 'room') { localWorlds = null; if (activeTab === 'explore') loadWorlds(true); }
       render();
     } else if (type === 'moderation') {
@@ -691,10 +811,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }
   }
   function destroy() {
-    destroyed = true; dismissConfirm();
+    destroyed = true; nearby.destroy(); dismissConfirm();
     root.removeEventListener('keydown', stopGameKeys); root.removeEventListener('keyup', stopGameKeys);
     root.replaceChildren(); root.classList.remove('social-shell');
   }
   render();
-  return { render, onEvent, destroy, setTab, openDm };
+  return { render, onEvent, destroy, setTab, openDm, resetNearbyConnection: reason => nearby.resetConnection(reason), getNearbyStatus: () => nearby.snapshot() };
 }

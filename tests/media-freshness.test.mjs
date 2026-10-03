@@ -176,9 +176,23 @@ test('committed Silent cache rejects other rooms/accounts/malformed revisions an
 
 test('scene and guarded reconnect hooks capture committed authority before editor draft reconciliation',async()=>{
  const path=process.env.MAIN_SOURCE || new URL('../src/main.js',import.meta.url),source=await readFile(path,'utf8');
- assert.match(source,/const eventActorId=state\.user\?\.id/);assert.match(source,/if\(eventActorId!==state.user\?\.id\)return/);assert.match(source,/handleEvent\(\{type,data,actorId:eventActorId\}\)/);
+ assert.match(source,/const eventActorId=state\.user\?\.id/);assert.match(source,/handleEvent\(\{type,data,actorId:eventActorId\}\)/);
  const reconnect=source.slice(source.indexOf('function connectEvents'),source.indexOf('async function refreshCatalog'));assert.ok(reconnect.indexOf('accountId!==state.user?.id')<reconnect.indexOf('media?.acceptCommittedRoom(data.room,accountId)'));assert.ok(reconnect.indexOf('media?.acceptCommittedRoom(data.room,accountId)')<reconnect.indexOf('editor.receiveScene(data.room)'));
  const scene=source.match(/if\(type==='scene'&&thisRoom&&state.ready\)\{[^\n]+/)[0];assert.ok(scene.indexOf('media?.acceptCommittedRoom(data.room,event.actorId)')<scene.indexOf('editor.receiveScene(data.room)'));
+});
+
+test('actual EventSource hooks reject retired streams, closed generations and switched accounts',async()=>{
+ const path=process.env.MAIN_SOURCE || new URL('../src/main.js',import.meta.url),source=await readFile(path,'utf8');
+ const code=source.slice(source.indexOf('function connectEvents'),source.indexOf('async function refreshCatalog'));
+ const streams=[],accepted=[],online=[],resets=[];
+ class Source {constructor(){this.listeners=new Map();streams.push(this);}addEventListener(type,fn){this.listeners.set(type,fn);}close(){this.closed=true;}emit(type,value){this.listeners.get(type)?.({data:JSON.stringify(value)});}}
+ const ctx={events:null,pendingNearbyContext:null,state:{user:{id:'a'},room:null},joinEpoch:0,EventSource:Source,social:{resetNearbyConnection:reason=>resets.push(reason)},setOnline:value=>online.push(value),handleEvent:event=>accepted.push(event)};
+ vm.runInNewContext(code+';connectEvents();',ctx);const first=streams[0];first.emit('scene',{});assert.equal(accepted.length,0);
+ first.onopen();first.emit('scene',{roomId:'r'});assert.equal(accepted.length,1);assert.equal(accepted[0].actorId,'a');
+ vm.runInNewContext('connectEvents();',ctx);const second=streams[1];assert.equal(first.closed,true);first.emit('scene',{});first.onerror();assert.equal(accepted.length,1);assert.deepEqual(online,[true]);
+ second.onopen();second.emit('proximity-text-context',{});assert.equal(accepted.length,2);second.onerror();second.emit('proximity-text-message',{});assert.equal(accepted.length,2);assert.equal(online.at(-1),false);
+ second.onopen();second.emit('proximity-text-context',{});assert.equal(accepted.length,3);ctx.state.user={id:'b'};second.emit('scene',{});second.onerror();assert.equal(accepted.length,3);assert.equal(online.at(-1),true);
+ assert.ok(resets.includes('disconnected'));
 });
 
 test('actual scene-event handler denies new saved Silent before dirty editor preserves its draft',async t=>{

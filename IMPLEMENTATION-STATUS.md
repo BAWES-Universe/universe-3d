@@ -17,13 +17,15 @@
 
 # Standalone implementation status · 2026-10-02
 
-The current v0.6.5 increment adds room image metadata editing and reversible archive/restore, preserving the optional P2P ICE configuration path. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+The current v0.6.8 increment adds opt-in live Nearby text, preserving room-image lifecycle and the optional all-member proximity/ICE path. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Latest verification
 
-`DEVELOPMENT-STATUS.md` records the latest exact source and local checks. Earlier numbers below are historical evidence tied to their stated revision, not certification of the current tree. Native ICE configuration and changed SDP restart credentials prove transport setup only; relay allocation, working connections and successful AV packets still require operator-run acceptance. The existing cap-four/opted-in conversation graph has not yet been replaced by the intended hybrid membership model.
+`DEVELOPMENT-STATUS.md` records the latest exact source and local checks. Earlier numbers below are historical evidence tied to their stated revision, not certification of the current tree. Native ICE configuration and changed SDP restart credentials prove transport setup only; relay allocation, working connections and successful AV packets still require operator-run acceptance. The standard process entry point still uses the legacy cap-four/opted-in media graph. An explicit server-factory configuration implements all-member proximity and scoped P2P lifecycle; executable SFU handoff remains missing.
 
 ## Integrated now
+
+- Opt-in plain Nearby text with current all-member bubble recipients, server-bound identity/3D appearance, stream freshness, bounded receipt reconciliation and tab-only received history/drafts; source attachments, typing, rich text and named-meeting text remain separate gaps
 
 - Room-authorized PNG upload/search/reuse, immutable pinned versions, native floor/upright panels, alpha-aware picking, shared painted collision/full edit footprints and explicit resource/error lifecycle
 

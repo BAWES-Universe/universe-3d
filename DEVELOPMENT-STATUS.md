@@ -1,20 +1,18 @@
-# Development status · 2026-10-02 22:28 UTC
+# Development status · 2026-10-03 00:14 UTC
 
-## Current increment: opt-in all-member proximity and scoped client lifecycle
+## Current increment: live Nearby text independent of media consent
 
-The explicit server factory option now separates conversation membership from microphone consent. Every eligible nearby member counts, while a session must have its own consent for signaling and ICE. Bubble/member/AV/transport scopes fence stale operations and target delivery. Room/admission preconditions prevent a delayed consent body from enabling media in a different room. The legacy default remains unchanged; no deployed settings are assumed. See `PROXIMITY-MEMBERSHIP-CONTRACT.md`.
+Nearby is a separate mode in Chat, backed by the all-member bubble authority. Microphone consent and the P2P threshold do not select its recipients. The opt-in server relays plain text only to the captured, currently authorized bubble sessions, with server-derived name and saved 3D appearance. Each stream receives its own freshness envelope; another tab sharing the same cookie can receive a labeled own-account copy. The origin gets a verified acknowledgement, rather than an optimistic delivery claim.
 
-The matching client preserves safe local capture separately from peer/ICE ownership. One mic/camera click completes authorized joining before prompting; solo capture can stay ready without a peer or ICE and later attach only after current authorization. Other participants' consent changes do not discard the user's local stream. Own denial, consent loss, admission change, Silent, room/account change and invalid policy still stop it. Pending joins can be cancelled, concurrent device intents share joining, and queued consent writes converge in order. Screen sharing requires Join first before opening the browser picker, preserving genuine user activation.
+Received and acknowledged rows, unread state and drafts remain in this browser tab only. Leaving retains a read-only stay. Reconnection recovers no missed messages and never automatically sends a draft. Full reload or account change clears local Nearby history. Room chat/DMs and avatar Express retain their separate behavior. See `PROXIMITY-TEXT-CONTRACT.md` for the precise adaptation and `PROXIMITY-TEXT-SOURCE.md` for immutable source citations and remaining gaps.
 
-No SFU is configured. Over-threshold proximity keeps membership but pauses executable P2P/ICE with an explicit SFU-unavailable message. This is selection policy and local lifecycle evidence, not working media packets or a completed transport handoff. Simultaneous AV from two tabs of the same account remains unverified because peer identity is account/aggregate-member based.
+Activation is explicit: `createGameServer({proximityMembershipConfig, proximityTextConfig:{enabled:true}})`. Both features remain off in the standard process entry point until the operator's intended membership configuration is supplied. No deployed defaults, relay credentials, provider or SFU are configured by this source change. Named meeting/stage chat, typing, files, Markdown, bot text and Matrix/E2EE are outside this first Nearby slice.
 
-Final integrated CPU/API checks pass 828 tests with one pre-existing historical-fixture skip. Syntax (221 files), build, package startup/static files and Dockerfile-copy reconstruction pass. The isolated compatible client also passed nine native RTC/signaling/ICE/DOM checks with zero capture attempts before a final strict-grant-boolean correction; that correction passed 249 focused tests. All seven final integrated media browser suites now pass, including the new nine-case native RTC/signaling/ICE/DOM probe, legacy policies, Silent, freshness and native ICE behavior. The new native probe prohibited device capture and recorded zero capture attempts. This remains local signaling/configuration/teardown proof, not working packets, real relay allocation or AV delivery.
+Integrated CPU/API checks pass900 tests with one existing historical skip. The focused server slice passes33 HTTP/SQLite/SSE cases, and the client controller passes38 checks. The Nearby module has11 passing native browser cases; all16 existing Social module checks also pass. The actual bundle passes six desktop flows covering two-browser microphone-off text, focus/keyboard/IME/Escape, room travel, real SSE disconnection without replay, inert rendering and reload clearing. A separate final touch replay passes320px portrait and700×320 landscape with every computed Nearby text size doubled. Native swipes reveal the composer and Send while Close remains reachable. Syntax, build, package startup/static files and Dockerfile-copy reconstruction pass. The final combined Nearby run passes all11 native module checks and all7 actual-shell flows on the final bundle, including the doubled-computed-text touch case. Exact-head publication/CI is pending. No whole source contract or physical-device/media-packet claim follows from these scoped checks.
 
-Final main bundle: `11e74552455ae5f876d6fce046f50c9066c6cfe021abd258749ac8069bd53d17`; CSS remains `cb873a608bbba94329b0b077d707a49dd49ad372bff91e1c2fc7c6c28d3daf52`. Exact-head CI and publication are pending for this increment.
+Final local bundle: main `a3c86dc3406f694748b3c0c8a73cf7e6e64bac556203fbdf23660856e17eca9b`, CSS `6e4116d7c6653f69f38c3a20251ef2e9bf1118dab54e830d43d36bb4cf938adb`.
 
-The durable baseline `7b3a4baf83afeae176d3bff69c6d58061cef455b` passed all nine remote CI jobs, including HUD/history, framing and images. Its full UI, image lifecycle, normalized parity documents and both browser readiness corrections remain preserved. The parity inventory is deliberately incomplete and certifies no whole feature contract.
-
-The source audit in `MEETING-TRANSPORT-AUDIT.md` resolves the inspected meeting entry path: its LiveKit-named property is not an unconditional SFU selector. Named meetings, stage/audience and cross-room broadcast remain distinct identities/filters on the generic threshold manager; this does not establish deployed values or change current topology.
+The durable baseline `f2f9b080ed778a105a87f15490aa439038b6f4bf` passed all nine remote CI jobs. It includes all-member proximity/client lifecycle, strict media freshness, native ICE/SDP probes and the one-file HUD readiness correction. Current Nearby publication and exact-head CI are pending. The normalized parity inventory remains deliberately incomplete and certifies no whole source contract.
 
 ## Implemented and locally exercised
 
@@ -43,9 +41,9 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Publish this scoped increment and verify every exact-head CI job
-2. Obtain intended cap/threshold/scale and deployed runtime facts before activating the optional proximity policy
+1. Publish this bounded Nearby text increment and verify its exact-head CI
+2. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
 3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
-4. Continue current-source parity and hands-on improvements in small tested increments
+4. Continue source-backed parity, including richer proximity text and independent persistent Matrix contracts
 
-Operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.
+The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04` until separately updated. No deployment or running service modification occurred.

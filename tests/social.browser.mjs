@@ -36,7 +36,7 @@ window.api=async(path,options={})=>{
 window.social=mountSocial({root:document.querySelector('#root'),api:window.api,getState:()=>window.state,onNavigate:async id=>{const room=window.state.worlds.flatMap(w=>w.rooms).find(r=>r.id===id);window.state.room={...room,worldId:'w1',ownerId:'me'};window.social.render()},toast:(...args)=>window.toasts.push(args)});
 </script></body></html>`;
 const server = http.createServer(async (req, res) => {
-  if (req.url === '/social.js' || req.url === '/social.css' || req.url === '/permissions.js') {
+  if (req.url === '/social.js' || req.url === '/social.css' || req.url === '/permissions.js' || req.url === '/proximity-text.js') {
     res.setHeader('Content-Type', req.url.endsWith('.css') ? 'text/css' : 'text/javascript');
     res.end(await readFile(new URL(`../src${req.url}`, import.meta.url)));
   } else if (req.url.startsWith('/assets/')) { res.statusCode = 204; res.end(); }
