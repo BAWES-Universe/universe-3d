@@ -1,11 +1,13 @@
 # Collaborative editing: original implementation plan
 
-The initial object/terrain slice is now implemented as described in
+The object/terrain and guarded area/settings slices are implemented as described in
 [the client behavior](COLLABORATIVE-EDITOR.md) and
-[the service contract](../server/SCENE-OPERATIONS.md). Room settings, areas,
-imports and item reordering retain whole-scene compare-and-swap and can still
-conflict. Unsaved drafts are not a shared live document. The broader plan below
-remains a design record, not a claim that every item or source contract is done.
+[the service contract](../server/SCENE-OPERATIONS.md). V2 area/settings edits
+include symmetric spatial and shared-media-group dependencies. Imports,
+unknown metadata and explicit item/area reordering retain whole-scene
+compare-and-swap and can still conflict. Unsaved drafts are not a shared live
+document. The broader plan below remains a design record, not a claim that
+every item or source contract is done.
 
 The independent friends-preview audit reproduced this at `f534ad2`. The same
 whole-scene API remains in development tree `b349974d`. This plan does not

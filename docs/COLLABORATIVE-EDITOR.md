@@ -1,9 +1,12 @@
 # Independent shared edits
 
 When the server advertises scene operations, Build saves changed objects and
-terrain cells independently. Two people editing different targets can retain
-both changes. A peer's committed snapshot is reconciled with the local draft;
-it does not silently replace that draft.
+terrain cells independently. The v2 capability extends this to atomic areas
+and the supported environment, bounds and spawn fields, with conservative
+dependency checks. Two people editing independent targets can retain both
+changes. A peer's committed snapshot is reconciled with the local draft; it
+does not silently replace that draft. See [shared area behavior](COLLABORATIVE-AREAS.md)
+for the additional conflict boundaries.
 
 The editor retains an acknowledged base, the editable draft and any exact
 pending request separately. If a response is lost, Retry sends the same
@@ -30,9 +33,10 @@ recovery pauses the room and offers export rather than silently discarding it.
 
 ## Compatibility and limits
 
-Room settings, areas, imports and explicit item reordering still use whole-scene
-compare-and-swap. These changes can require whole-room review. Existing servers
-without the operation capability continue using the legacy save route.
+Imports, explicit item/area reordering and unknown scene metadata still use
+whole-scene compare-and-swap and can require whole-room review. Areas and room
+settings also retain that behavior when only v1 is available. Existing servers
+without either operation capability continue using the legacy save route.
 
 Value-based preconditions permit an intervening change that returns an item to
 the identical value. The protocol does not implement history-sensitive entity
@@ -40,9 +44,9 @@ versions. Batches retain the existing HTTP and scene-size limits and are not
 silently split into smaller commits. See [the service contract](../server/SCENE-OPERATIONS.md)
 for exact payload, authorization, receipt and replay behavior.
 
-This slice covers committed objects and terrain. It does not establish complete
-Universe editor parity, shared unsaved drag previews, streamed room chunks or
-arbitrary concurrent area/settings merging.
+These slices cover committed objects, terrain and guarded area/settings edits.
+They do not establish complete Universe editor parity, shared unsaved drag
+previews, streamed room chunks or arbitrary concurrent area/settings merging.
 
 ## Verification
 
@@ -56,6 +60,10 @@ HTTP/SQLite tests. The authoring browser group includes:
 - `editor-collaboration-restart.full.mjs`: native drafts survive local server
   replacement against the same SQLite database, including committed and
   uncommitted unknown responses followed by Undo
+
+The separate `sharedareas` group runs `editor-area-collaboration.full.mjs` for
+native area/field merges, interacting-policy review, arrival safety, retry,
+missed-event recovery and permission downgrade.
 
 These tests use local synthetic accounts and software WebGL. They do not prove
 physical-device performance, a hosted deployment or full feature parity. A

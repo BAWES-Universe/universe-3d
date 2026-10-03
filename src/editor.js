@@ -1,3 +1,4 @@
+import {SCENE_OPERATION_FIELDS} from './scene-operations.js';
 import {icon} from './universe-icons.js';
 import {ENTRY_KEY_RE,validateStarts} from './arrivals.js';
 import {createDestinationEntryLoader,destinationRoomsFromWorlds,mountDestinationPicker} from './destination-picker.js';
@@ -32,10 +33,11 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  const policy=()=>editPolicy(getState())||{};
  const permission=()=>roomPermission()||policy().canEdit===true;
  const itemPermission=item=>roomPermission()||!!item&&policy().canEditItem?.(item)===true;
- const changeError=(before,next)=>{for(const item of next.objects||[]){if(item.type!=='image'||resolvedImage(getScene(),item)?.status!=='archived')continue;const previous=base?.objects.find(old=>old.id===item.id&&old.type==='image');if(!previous||previous.assetRef.assetId!==item.assetRef.assetId||previous.assetRef.versionId!==item.assetRef.versionId)return 'Restore this archived image in Custom before adding a new placement or undoing a saved removal.';}if(roomPermission())return null;if(!same(before?.areas,next?.areas))return 'Only room owners and editors can change areas or arrivals';if(!same(before?.terrain,next?.terrain))return 'Only room owners and editors can change terrain';const scoped=policy();return scoped.canEdit===true&&typeof scoped.validateChange==='function'?scoped.validateChange(before,next):'Only room owners and editors can change room settings';};
+ const changeError=(before,next,imageBase=base)=>{for(const item of next.objects||[]){if(item.type!=='image'||resolvedImage(getScene(),item)?.status!=='archived')continue;const previous=imageBase?.objects.find(old=>old.id===item.id&&old.type==='image');if(!previous||previous.assetRef.assetId!==item.assetRef.assetId||previous.assetRef.versionId!==item.assetRef.versionId)return 'Restore this archived image in Custom before adding a new placement or undoing a saved removal.';}if(roomPermission())return null;if(!same(before?.areas,next?.areas))return 'Only room owners and editors can change areas or arrivals';if(!same(before?.terrain,next?.terrain))return 'Only room owners and editors can change terrain';const scoped=policy();return scoped.canEdit===true&&typeof scoped.validateChange==='function'?scoped.validateChange(before,next):'Only room owners and editors can change room settings';};
  const itemById=id=>[...(getScene()?.objects||[]),...(getScene()?.areas||[])].find(i=>i.id===id);
  const active=()=>enabled&&!root.hidden&&!!getScene()&&!isBlocked()&&!reviewOpen;
- const collaborative=()=>getState().room?.sceneOperations?.version===1;
+ const operationVersion=()=>{const room=getState().room,v2=room?.sceneOperationsV2;return v2?.version===2&&Array.isArray(v2.sceneFields)&&v2.sceneFields.length===SCENE_OPERATION_FIELDS.length&&SCENE_OPERATION_FIELDS.every(field=>v2.sceneFields.includes(field))?2:room?.sceneOperations?.version===1?1:0;};
+ const collaborative=()=>operationVersion()>0;
  function button(label,action,title=label){const b=el('button','small-btn',label);b.type='button';b.title=title;b.onclick=event=>{pointerControl=null;flushFields();action(event);if(deferredInspector){deferredInspector=false;update();}};return b;}
  const header=el('div','builder-heading');const title=el('div','builder-title');title.append(el('span','builder-eyebrow','MAKE THIS PLACE YOURS'),el('strong','','Build mode'));
  const close=button('Done',()=>{cancelGesture();onClose?.();},'Leave build mode');close.ariaLabel='Close editor';close.classList.add('builder-done');header.append(title,close);
@@ -104,15 +106,16 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  function acceptRoomMetadata(room){
   const state=getState();if(!state.room||state.room.id!==room.id)return;
   for(const k of ['personalAreas','capabilities','role'])if(room[k]!==undefined)state.room[k]=room[k];
+  for(const k of ['sceneOperations','sceneOperationsV2'])state.room[k]=room[k]??null;
   const retained=Object.fromEntries(Object.entries(mergeImageDefinitions(state.room.imageDefinitions,imageDefinitions(state.scene))).filter(([,entry])=>entry?.definition?.roomId===room.id));
   state.room.imageDefinitions=mergeImageDefinitions(retained,room.imageDefinitions);
   bindDraft(state.room,state.scene);
  }
  // Scene revisions order committed geometry; live authority can change at the
  // same revision. Keep those observations separate until the save settles.
- const metadataKeys=['personalAreas','capabilities','role'];
+ const protocolKeys=['sceneOperations','sceneOperationsV2'],metadataKeys=['personalAreas','capabilities','role',...protocolKeys];
  const admissionIdentity=()=>{const state=getState();return [state.admissionId,state.admissionEpoch,state.admissionRevision];};
- function roomMetadata(room){return Object.fromEntries(metadataKeys.filter(key=>room?.[key]!==undefined).map(key=>[key,clone(room[key])]));}
+ function roomMetadata(room){return Object.fromEntries(metadataKeys.filter(key=>protocolKeys.includes(key)||room?.[key]!==undefined).map(key=>[key,clone(room?.[key]??null)]));}
  function newerScene(a,b){return b?.scene&&(!a?.scene||Number(b.revision)>Number(a.revision))?clone(b):a;}
  function saveCurrent(operation=pendingSave){const state=getState();return !!operation&&operation.epoch===saveEpoch&&operation.roomEpoch===roomEpoch&&operation.roomId===roomId&&operation.roomId===state.room?.id&&operation.actorId===state.user?.id&&same(operation.admission,admissionIdentity());}
  function retireSave(){pendingSave=null;retrySave=null;saving=false;saveEpoch++;}
@@ -169,7 +172,7 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  function resumeAdmission(room){
   const state=getState(),next=admissionIdentity();
   if(!state.ready||!room?.scene||room.id!==roomId||state.room?.id!==roomId||state.user?.id!==actorId||!base||typeof next[0]!=='string'||!next[0]||typeof next[1]!=='string'||!next[1]||!Number.isSafeInteger(next[2])||next[2]<1||!Number.isSafeInteger(room.revision)||room.revision<0)return false;
-  flushFields();const unresolved=pendingSave||retrySave,reference=unresolved?.kind==='operations'?reconnectDraftReference({base,submitted:unresolved.scene,mine:getScene(),server:room.scene}):review?.reference||base;cancelGesture();closeReview({record:false,restore:false});roomEpoch++;retireSave();admission=next;pointerControl=null;deferredInspector=false;history=[];future=[];historyNotice='Earlier undo history was cleared after reconnecting. Your draft is retained.';
+  flushFields();const unresolved=pendingSave||retrySave,reference=unresolved?.kind==='operations'?reconnectDraftReference({base,submitted:unresolved.scene,mine:getScene(),server:room.scene,version:unresolved.body?.version||unresolved.version||1}):review?.reference||base;cancelGesture();closeReview({record:false,restore:false});roomEpoch++;retireSave();admission=next;pointerControl=null;deferredInspector=false;history=[];future=[];historyNotice='Earlier undo history was cleared after reconnecting. Your draft is retained.';
   reconcileRoom(room,{reference});return true;
  }
  function setBuild(value){if(!value){flushFields();closeReview({record:false,restore:false});}enabled=!!value;if(!value)cancelGesture();else update();mode();}
@@ -464,16 +467,16 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  // Validate final combined geometry after every rebase. Never move a peer item
  // or shift a draft automatically to make an invalid merge appear successful.
  function geometryProblem(scene,server=base){
-  try{bindDraft(getState().room,scene);bindDraft(getState().room,server);return reconciliationGeometryProblem(server,scene);}catch(error){return error.message;}
+  try{bindDraft(getState().room,scene);bindDraft(getState().room,server);return (!same(server,scene)&&changeError(server,scene,server))||reconciliationGeometryProblem(server,scene);}catch(error){return error.message;}
  }
 
  function reconcileRoom(room,{reference=review?.reference||base,choices={},acknowledged=false}={}){
-  room=reconciledRoom(room);bindServerRoom(room);acceptRoomMetadata(room);
-  const result=reconcileScenes({base:reference,mine:getScene(),server:room.scene,choices,validate:geometryProblem,forceReview:forceLegacy});
-  if(result.conflicts.length){conflictRoom=room;review={reference:jsonSnapshot(reference),server:room,conflicts:result.conflicts};reviewChoices={};saveError='';if(reviewOpen)renderReview();update({inspect:false});return false;}
-  const undoResult=rebaseHistory(history,{base:reference,server:room.scene,validate:geometryProblem}),redoResult=rebaseHistory(future,{base:reference,server:room.scene,validate:geometryProblem});
+  room=reconciledRoom(room);bindServerRoom(room);acceptRoomMetadata(room);bindDraft(getState().room,reference);
+  const result=reconcileScenes({base:reference,mine:getScene(),server:room.scene,choices,validate:geometryProblem,forceReview:forceLegacy,version:operationVersion()||1});
+  if(result.conflicts.length){conflictRoom=room;review={reference:clone(reference),server:room,conflicts:result.conflicts};reviewChoices={};saveError='';if(reviewOpen)renderReview();update({inspect:false});return false;}
+  const undoResult=rebaseHistory(history,{base:reference,server:room.scene,validate:geometryProblem,version:operationVersion()||1}),redoResult=rebaseHistory(future,{base:reference,server:room.scene,validate:geometryProblem,version:operationVersion()||1});
   if(undoResult.invalidated||redoResult.invalidated){history=[];future=[];historyNotice='Earlier undo history was cleared because shared changes made it unsafe.';}else{history=undoResult.entries;future=redoResult.entries;}
-  const wasReviewOpen=reviewOpen;closeReview({restore:false});base=jsonSnapshot(room.scene);getState().room.revision=room.revision;getState().room.scene=jsonSnapshot(base);onScene(bindDraft(getState().room,result.scene));conflictRoom=null;review=null;reviewChoices={};saveError='';if(acknowledged)forceLegacy=false;if(!itemById(selected))selected=null;onSelect(selected);update();if(wasReviewOpen)save.focus();refreshPreview();return true;
+  const wasReviewOpen=reviewOpen;closeReview({restore:false});base=jsonSnapshot(room.scene);getState().room.revision=room.revision;getState().room.scene=jsonSnapshot(base);onScene(bindDraft(getState().room,result.scene));conflictRoom=null;review=null;reviewChoices={};saveError='';if(acknowledged&&same(result.scene,room.scene))forceLegacy=false;if(!itemById(selected))selected=null;onSelect(selected);update();if(wasReviewOpen)save.focus();refreshPreview();return true;
  }
  function receiveScene(room){
   if(!collaborative())return receiveSceneLegacy(room);
@@ -485,24 +488,24 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
   cancelGesture();reconcileRoom(room);
  }
  function setReviewInert(value){for(const child of root.children)if(child!==reviewSheet)child.inert=value;}
- function openReview({record=true}={}){if(!review||retrySave||saving||!enabled||root.hidden||!permission()||getState().room?.id!==roomId||getState().user?.id!==actorId||!same(admission,admissionIdentity()))return false;if(reviewOpen)return true;const refreshed=reconcileScenes({base:review.reference,mine:getScene(),server:review.server.scene,validate:geometryProblem,forceReview:forceLegacy});if(!refreshed.conflicts.length&&!review.serverOnly){reconcileRoom(review.server,{reference:review.reference});return false;}if(refreshed.conflicts.length)review.conflicts=refreshed.conflicts;reviewChoices={};cancelGesture();reviewOpen=true;reviewSheet.hidden=false;setReviewInert(true);renderReview();reviewSheet.querySelector('button')?.focus();window.dispatchEvent(new CustomEvent('editor-review',{detail:{open:true,record}}));return true;}
+ function openReview({record=true}={}){if(!review||retrySave||saving||!enabled||root.hidden||!permission()||getState().room?.id!==roomId||getState().user?.id!==actorId||!same(admission,admissionIdentity()))return false;if(reviewOpen)return true;bindDraft(getState().room,review.reference);const refreshed=reconcileScenes({base:review.reference,mine:getScene(),server:review.server.scene,validate:geometryProblem,forceReview:forceLegacy,version:operationVersion()||1});if(!refreshed.conflicts.length&&!review.serverOnly){reconcileRoom(review.server,{reference:review.reference});return false;}if(refreshed.conflicts.length)review.conflicts=refreshed.conflicts;reviewChoices={};cancelGesture();reviewOpen=true;reviewSheet.hidden=false;setReviewInert(true);renderReview();reviewSheet.querySelector('button')?.focus();window.dispatchEvent(new CustomEvent('editor-review',{detail:{open:true,record}}));return true;}
  function closeReview({record=true,restore=true}={}){const wasOpen=reviewOpen;reviewOpen=false;reviewSheet.hidden=true;setReviewInert(false);if(wasOpen){window.dispatchEvent(new CustomEvent('editor-review',{detail:{open:false,record}}));if(restore)reviewBtn.hidden?save.focus():reviewBtn.focus();}}
  function renderReview(){
   if(!review)return;reviewBody.replaceChildren();reviewBody.append(el('p','','Choose which changes to keep. Nothing is saved until you review and press Save.'));
-  for(const conflict of review.conflicts){const row=el('fieldset','builder-conflict-row');row.append(el('legend','',conflictLabel(conflict)),el('p','',conflict.reason));const values=el('div','builder-conflict-values');for(const [label,value]of [['Base',conflict.base],['Mine',conflict.mine],['Server',conflict.server]]){const column=el('div');column.append(el('strong','',label),el('p','',conflictValueLabel(value,conflict.kind)));const details=el('details');details.append(el('summary','','Exact value'),el('pre','',JSON.stringify(value,null,2)));column.append(details);values.append(column);}row.append(values);
-   const choices=el('div','builder-conflict-choices');for(const choice of ['mine','server']){const label=el('label'),radio=el('input');radio.type='radio';radio.name='resolve-'+conflict.key;radio.value=choice;radio.checked=reviewChoices[conflict.key]===choice;radio.onchange=()=>{reviewChoices[conflict.key]=choice;applyReview.disabled=review.conflicts.some(c=>!reviewChoices[c.key])||!permission();};label.append(radio,el('span','',conflict.kind==='geometry'?(choice==='mine'?'Keep my changes (must fit safely)':'Use server (discard my draft changes)'):conflict.kind==='context'?(choice==='mine'?'Keep my settings and recheck on this room':'Use server settings, keep independent item edits'):choice==='mine'?'Keep mine':'Use server'));choices.append(label);}row.append(choices);reviewBody.append(row);
+  for(const conflict of review.conflicts){const row=el('fieldset','builder-conflict-row');row.append(el('legend','',conflictLabel(conflict)),el('p','',conflict.reason));const values=el('div','builder-conflict-values');for(const [label,value]of [['Base',conflict.base],['Mine',conflict.mine],['Server',conflict.server]]){const column=el('div');column.append(el('strong','',label),el('p','',conflictValueLabel(value,conflict.kind,conflict.field)));const details=el('details');details.append(el('summary','','Exact value'),el('pre','',JSON.stringify(value,null,2)));column.append(details);values.append(column);}row.append(values);
+   const choices=el('div','builder-conflict-choices');for(const choice of ['mine','server']){const label=el('label'),radio=el('input');radio.type='radio';radio.name='resolve-'+conflict.key;radio.value=choice;radio.checked=reviewChoices[conflict.key]===choice;radio.onchange=()=>{reviewChoices[conflict.key]=choice;applyReview.disabled=review.conflicts.some(c=>!reviewChoices[c.key])||!permission();};label.append(radio,el('span','',conflict.kind==='geometry'?(choice==='mine'?'Keep my changes (must fit safely)':'Use server (discard my draft changes)'):conflict.kind==='dependencies'?(choice==='mine'?'Keep my changes with this shared space':'Use server (discard my draft changes)'):conflict.kind==='context'?(choice==='mine'?'Keep my settings and recheck on this room':'Use server settings, keep independent item edits'):choice==='mine'?'Keep mine':'Use server'));choices.append(label);}row.append(choices);reviewBody.append(row);
   }applyReview.disabled=review.conflicts.some(c=>!reviewChoices[c.key])||!permission();
  }
  function resolveReview(){
   if(!review||!permission()||getState().room?.id!==roomId||getState().user?.id!==actorId||!same(admission,admissionIdentity()))return;
-  const current=review,choices={...reviewChoices};const result=reconcileScenes({base:current.reference,mine:getScene(),server:current.server.scene,choices,validate:geometryProblem,forceReview:forceLegacy});
+  const current=review,choices={...reviewChoices};bindDraft(getState().room,current.reference);const result=reconcileScenes({base:current.reference,mine:getScene(),server:current.server.scene,choices,validate:geometryProblem,forceReview:forceLegacy,version:operationVersion()||1});
   if(result.conflicts.length){toast(result.conflicts[0].reason+' Keep editing or choose the server version.');return;}
   closeReview({restore:false});history=[];future=[];historyNotice='Undo history starts with this reviewed draft.';
-  base=jsonSnapshot(current.server.scene);getState().room.revision=current.server.revision;getState().room.scene=jsonSnapshot(base);onScene(bindDraft(getState().room,result.scene));forceLegacy=result.legacy;conflictRoom=null;review=null;reviewChoices={};saveError='';if(!itemById(selected))selected=null;onSelect(selected);update();save.focus();toast(result.legacy?'Reviewed room settings are ready. Save applies this whole-room version.':'Reviewed changes are ready. Save sends a new batch against the current room.');
+  base=jsonSnapshot(current.server.scene);getState().room.revision=current.server.revision;getState().room.scene=jsonSnapshot(base);onScene(bindDraft(getState().room,result.scene));forceLegacy=!same(result.scene,current.server.scene)&&(forceLegacy||result.legacy);conflictRoom=null;review=null;reviewChoices={};saveError='';if(!itemById(selected))selected=null;onSelect(selected);update();save.focus();toast(result.legacy?'Reviewed room settings are ready. Save applies this whole-room version.':'Reviewed changes are ready. Save sends a new batch against the current room.');
  }
  async function saveScene(){
   flushFields();if(review){openReview();return;}if(retrySave)return saveOperations();
-  if(!collaborative()||forceLegacy||!base||sceneChanges(base,getScene()).legacy||!sceneChanges(base,getScene()).changes.length)return saveLegacyScene();
+  if(!collaborative()||forceLegacy||!base||sceneChanges(base,getScene(),{version:operationVersion()||1}).legacy||!sceneChanges(base,getScene(),{version:operationVersion()||1}).changes.length)return saveLegacyScene();
   return saveOperations();
  }
  async function saveOperations(){
@@ -510,20 +513,22 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
   let operation=retrySave;
   if(!operation){
    const denied=changeError(base,getScene())||geometryProblem(getScene());if(denied){saveError=denied;toast(denied);update({inspect:false});return;}
-   operation={epoch:++saveEpoch,roomEpoch,roomId,actorId,admission:admissionIdentity(),initialMetadata:roomMetadata(getState().room),metadata:{},committed:null,scene:jsonSnapshot(getScene()),baseScene:jsonSnapshot(base),revision:getState().room.revision,kind:'operations'};
+   operation={epoch:++saveEpoch,roomEpoch,roomId,actorId,admission:admissionIdentity(),initialMetadata:roomMetadata(getState().room),metadata:{},committed:null,scene:jsonSnapshot(getScene()),baseScene:jsonSnapshot(base),revision:getState().room.revision,kind:'operations',version:operationVersion()};
   }
   retrySave=null;pendingSave=operation;saving=true;cancelGesture();saveError='';update();
   try{
-   if(!operation.body){const [admissionId,admissionEpoch,admissionRevision]=operation.admission;operation.body=await createSceneOperationRequest({base:operation.baseScene,mine:operation.scene,baseRevision:operation.revision,operationId:uid(),admission:{admissionId,admissionEpoch,admissionRevision},...(policy().saveMetadata?.()||{})});operation.requestHash=await sceneRequestHash(operation.roomId,operation.body);}
+   if(!operation.body){bindDraft(getState().room,operation.baseScene);bindDraft(getState().room,operation.scene);const [admissionId,admissionEpoch,admissionRevision]=operation.admission;operation.body=await createSceneOperationRequest({version:operation.version,base:operation.baseScene,mine:operation.scene,baseRevision:operation.revision,operationId:uid(),admission:{admissionId,admissionEpoch,admissionRevision},...(policy().saveMetadata?.()||{})});operation.requestHash=await sceneRequestHash(operation.roomId,operation.body);}
    if(!saveCurrent(operation))return;
    operation.sent=true;const result=await api('/api/rooms/'+operation.roomId+'/scene/operations',{method:'POST',body:operation.body,deferRoomPreparation:true});if(!saveCurrent(operation))return;
    const receipt=result.receipt,room=result.room;
-   if(!receipt||receipt.version!==1||receipt.operationId!==operation.body.operationId||receipt.actorId!==operation.actorId||receipt.roomId!==operation.roomId||!Number.isSafeInteger(receipt.appliedRevision)||receipt.appliedRevision<=operation.revision||receipt.requestHash!==operation.requestHash||room?.id!==operation.roomId||!Number.isSafeInteger(room.revision)||room.revision<receipt.appliedRevision||!room.scene)throw Error('The save receipt could not be verified. Retry this same save to check its result.');
+   if(!receipt||receipt.version!==operation.body.version||receipt.operationId!==operation.body.operationId||receipt.actorId!==operation.actorId||receipt.roomId!==operation.roomId||!Number.isSafeInteger(receipt.appliedRevision)||receipt.appliedRevision<=operation.revision||receipt.requestHash!==operation.requestHash||room?.id!==operation.roomId||!Number.isSafeInteger(room.revision)||room.revision<receipt.appliedRevision||!room.scene)throw Error('The save receipt could not be verified. Retry this same save to check its result.');
    const committed=reconciledRoom(newerScene(room,operation.committed),operation);pendingSave=null;saving=false;
    reconcileRoom(committed,{reference:operation.scene,acknowledged:true});toast('Room saved · independent shared changes kept');
   }catch(error){
    if(!saveCurrent(operation))return;
-   if(operation.sent&&(!error.status||error.status>=500)){retrySave=operation;saveError=error.message||'The save result is unknown. Retry this same save.';toast(saveError);}
+   // An older endpoint rejecting a retry cannot establish the first attempt's outcome.
+   const errorCode=error.code||error.data?.code||error.data?.error?.code,unsupportedRetry=operation.unknownOutcome&&([404,405].includes(error.status)||error.status===400&&errorCode==='INVALID_SCENE_OPERATIONS');
+   if(operation.sent&&(!error.status||error.status>=500||unsupportedRetry)){operation.unknownOutcome=true;retrySave=operation;saveError=error.message||'The save result is unknown. Retry this same save.';toast(saveError);}
    else{const remote=error.data?.room,code=error.code||error.data?.code||error.data?.error?.code,committed=newerScene(operation.committed,remote?.id===operation.roomId?remote:null);pendingSave=null;saving=false;
     if(committed?.scene&&Number(committed.revision)>=Number(operation.revision))reconcileRoom(reconciledRoom(committed,operation));
     if(!review&&error.status===409&&code==='SCENE_OPERATION_CONFLICT'){conflictRoom=committed||{...getState().room,scene:jsonSnapshot(base)};review={reference:jsonSnapshot(base),server:conflictRoom,serverOnly:true,conflicts:[{kind:'geometry',key:'geometry',base:jsonSnapshot(base),mine:jsonSnapshot(getScene()),server:jsonSnapshot(conflictRoom.scene),reason:error.message||'These changes cannot fit in the current room.'}]};}

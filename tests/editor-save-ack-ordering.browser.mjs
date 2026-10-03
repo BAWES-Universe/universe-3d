@@ -12,7 +12,7 @@ import {createGameServer} from '../server/app.mjs';
 import {emptyScene} from '../src/worlds.js';
 
 const source=`import {mountEditor} from './src/editor.js';
-const legacyRoom=room=>{const copy=structuredClone(room);delete copy.sceneOperations;return copy;};
+const legacyRoom=room=>{const copy=structuredClone(room);delete copy.sceneOperations;delete copy.sceneOperationsV2;return copy;};
 window.install=({room,user})=>{
  room=legacyRoom(room);
  const state=window.state={room,scene:structuredClone(room.scene),user,position:{x:0,z:7},ready:true};
