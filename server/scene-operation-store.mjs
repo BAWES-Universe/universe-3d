@@ -9,6 +9,7 @@ export function migrateSceneOperations(store) {
     actor_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     operation_id TEXT NOT NULL, room_id TEXT NOT NULL,
     request_hash TEXT NOT NULL, applied_revision INTEGER NOT NULL,
+    protocol_version INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY(actor_id,operation_id)
    );
    CREATE TABLE IF NOT EXISTS scene_operation_journal (
@@ -26,6 +27,8 @@ export function migrateSceneOperations(store) {
    END;
    INSERT OR IGNORE INTO scene_operation_journal(room_id,revision,scene) SELECT id,revision,scene FROM rooms;
   `);
+  // Existing durable v1 identities keep their original hash and receipt version.
+  if(!store.all('PRAGMA table_info(scene_operation_receipts)').some(column=>column.name==='protocol_version'))store.db.exec('ALTER TABLE scene_operation_receipts ADD COLUMN protocol_version INTEGER NOT NULL DEFAULT 1');
  });
 }
 

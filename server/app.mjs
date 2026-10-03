@@ -207,12 +207,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const actionAuthority=createActionAuthority({store,presence,body,send,now,captureFence:arrivals.captureFence,checkFence:arrivals.checkFence});
   // Both write protocols use this complete synchronous validation/provenance
   // chain while holding the same SQLite write lock.
-  function commitScene({row,userId,live,before,next,personalAreaRevisions,imageSessionEpoch,validateGeometry=false,conflict}) {
+  function commitScene({row,userId,live,before,next,personalAreaRevisions,imageSessionEpoch,validateGeometry=false,validateDependencies,conflict}) {
     const roomId=row.id;
     if(!store.roomCapabilities(row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');
     const resolvedImages=images.resolveScenePair({roomId,userId,token:live.token_hash,before,next,expectedEpoch:imageSessionEpoch});
     const encoded=v.scene(next,resolvedImages.next);validatePersonalScene(next);
     store.validatePersonalObjectDelta(row,userId,before,next,personalAreaRevisions,resolvedImages.before,resolvedImages.next);
+    validateDependencies?.(resolvedImages);
     validateImageSceneDelta({store,presence,now,room:row,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
     validateTerrainSceneDelta({store,presence,residents:bots.snapshot(roomId),now,room:row,userId,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
     arrivals.validateScene(next,resolvedImages.next,roomId);

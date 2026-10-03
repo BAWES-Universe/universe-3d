@@ -1,9 +1,9 @@
 import {createHash} from 'node:crypto';
-import {canonicalStringify,sceneOperationContext,sceneOperationRequestIdentity,validateSceneOperationBatch,applySceneOperations} from '../src/scene-operations.js';
+import {canonicalStringify,sceneOperationContext,sceneOperationDependencyView,sceneOperationRequestIdentity,validateSceneOperationBatch,applySceneOperations} from '../src/scene-operations.js';
 import {replaySceneOperations} from './scene-operation-store.mjs';
 import * as v from './validation.mjs';
 const hash=value=>createHash('sha256').update(canonicalStringify(value)).digest('hex');
-const receipt=row=>({version:1,operationId:row.operation_id,actorId:row.actor_id,roomId:row.room_id,appliedRevision:row.applied_revision,requestHash:row.request_hash});
+const receipt=row=>({version:row.protocol_version,operationId:row.operation_id,actorId:row.actor_id,roomId:row.room_id,appliedRevision:row.applied_revision,requestHash:row.request_hash});
 
 export function createSceneOperationService({store,session,arrivals,images,body,send,commitScene,afterCommit}) {
  const conflict=(roomId,userId,conflicts,message='The scene changed. Review the conflicting items before saving.')=>v.fail(409,'SCENE_OPERATION_CONFLICT',message,{room:store.room(roomId,userId),conflicts});
@@ -36,20 +36,30 @@ export function createSceneOperationService({store,session,arrivals,images,body,
     return {room:store.room(row,userId),receipt:receipt(prior),duplicate:true};
    }
    const before=JSON.parse(row.scene),conflicts=[];
-   if(batch.baseRevision>row.revision||hash(sceneOperationContext(before))!==batch.contextHash)conflicts.push({kind:'context'});
-   const objects=new Map(before.objects.map(object=>[object.id,object])),cells=new Map((before.terrain?.cells??[]).map(cell=>[`${cell[0]},${cell[1]}`,cell]));
+   if(batch.baseRevision>row.revision||hash(sceneOperationContext(before,batch.version))!==batch.contextHash)conflicts.push({kind:'context'});
+   const objects=new Map(before.objects.map(object=>[object.id,object])),areas=new Map((before.areas??[]).map(area=>[area.id,area])),cells=new Map((before.terrain?.cells??[]).map(cell=>[`${cell[0]},${cell[1]}`,cell]));
    for(const operation of batch.operations){
-    if(operation.kind==='object'){
-     const current=objects.get(operation.id),expected=current?hash(current):null;
-     if(expected!==operation.before)conflicts.push({kind:'object',id:operation.id});
-     if(operation.after!==null&&hash(operation.after)===operation.before)v.fail(400,'INVALID_SCENE_OPERATIONS','Object operations must change the target');
+    if(operation.kind==='object'||operation.kind==='area'){
+     const current=(operation.kind==='object'?objects:areas).get(operation.id),expected=current?hash(current):null;
+     if(expected!==operation.before)conflicts.push({kind:operation.kind,id:operation.id});
+     if(operation.after!==null&&hash(operation.after)===operation.before)v.fail(400,'INVALID_SCENE_OPERATIONS','Operations must change the target');
+    }else if(operation.kind==='scene'){
+     const expected=Object.hasOwn(before,operation.field)?hash(before[operation.field]):null;
+     if(expected!==operation.before)conflicts.push({kind:'scene',field:operation.field});
+     if(operation.after!==null&&hash(operation.after)===operation.before)v.fail(400,'INVALID_SCENE_OPERATIONS','Operations must change the target');
     }else if(canonicalStringify(cells.get(`${operation.x},${operation.z}`)??null)!==canonicalStringify(operation.before))conflicts.push({kind:'terrain',x:operation.x,z:operation.z});
    }
    if(conflicts.length)conflict(roomId,userId,conflicts);
    const next=applySceneOperations(before,batch.operations);
-   const saved=commitScene({row,userId,live,before,next,personalAreaRevisions:batch.personalAreaRevisions,imageSessionEpoch,validateGeometry:true,conflict:targets=>conflict(roomId,userId,targets,'These changes overlap or block the current scene. Review their placement before saving.')});
-   store.run('INSERT INTO scene_operation_receipts(actor_id,operation_id,room_id,request_hash,applied_revision) VALUES(?,?,?,?,?)',userId,batch.operationId,roomId,requestHash,saved.room.revision);
-   return {...saved,receipt:{version:1,operationId:batch.operationId,actorId:userId,roomId,appliedRevision:saved.room.revision,requestHash},duplicate:false};
+   const saved=commitScene({row,userId,live,before,next,personalAreaRevisions:batch.personalAreaRevisions,imageSessionEpoch,validateGeometry:true,
+    validateDependencies:batch.version===2?resolvedImages=>{
+     let dependencies;
+     try{dependencies=sceneOperationDependencyView(before,batch.operations,{...resolvedImages.before,...resolvedImages.next});}catch(error){v.fail(400,error.code??'INVALID_SCENE_OPERATIONS',error.message);}
+     if(hash(dependencies)!==batch.dependenciesHash)conflict(roomId,userId,[{kind:'dependencies'}],'Nearby areas, objects, ground or room geometry changed. Review their combined behavior before saving.');
+    }:undefined,
+    conflict:targets=>conflict(roomId,userId,targets,'These changes overlap or block the current scene. Review their placement before saving.')});
+   store.run('INSERT INTO scene_operation_receipts(actor_id,operation_id,room_id,request_hash,applied_revision,protocol_version) VALUES(?,?,?,?,?,?)',userId,batch.operationId,roomId,requestHash,saved.room.revision,batch.version);
+   return {...saved,receipt:{version:batch.version,operationId:batch.operationId,actorId:userId,roomId,appliedRevision:saved.room.revision,requestHash},duplicate:false};
   });
   if(!result.duplicate)afterCommit(roomId,userId,result.room,result.questChanges);
   send(res,200,{room:result.room,receipt:result.receipt,duplicate:result.duplicate});return true;
