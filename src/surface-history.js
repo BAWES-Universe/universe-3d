@@ -1,5 +1,5 @@
 // History stores surface names and an opaque, tab-local content key, never URLs or form data.
-const names=new Set(['chat','people','settings','places','quests','build','bots','personal','content','avatar','palette','express','images','dialog']);
+const names=new Set(['chat','people','settings','places','quests','build','editor-review','bots','personal','content','avatar','palette','express','images','dialog']);
 export function surfaceLayers(entry,room){
  if(entry?.room!==room)return [];
  return [...new Set([...(Array.isArray(entry.underlay)?entry.underlay:[]),entry.surface].filter(name=>names.has(name)&&name!=='content'))];

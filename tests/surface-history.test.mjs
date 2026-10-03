@@ -25,6 +25,14 @@ test('pending close then open retains nested intent without duplicate back or re
  const f=fixture();f.machine.remember('chat');f.machine.remember('palette',{nested:true});f.machine.dismiss('palette');f.machine.remember('avatar',{nested:true});f.back(()=>f.machine.remember('avatar',{nested:true}));
  assert.deepEqual(f.history.state,{room:'room',surface:'avatar',underlay:['chat']});assert.equal(f.entries.length,3);assert.equal(f.backs,1);
 });
+test('editor review is a nested Build surface and never stores draft or conflict data',()=>{
+ const f=fixture();f.machine.remember('build');f.machine.remember('editor-review',{nested:true});
+ assert.deepEqual(f.history.state,{room:'room',surface:'editor-review',underlay:['build']});
+ const writes=f.writes.length;f.machine.dismiss('editor-review');assert.equal(f.backs,1);
+ f.back(()=>f.machine.dismiss('editor-review'));assert.deepEqual(surfaceLayers(f.history.state,'room'),['build']);assert.equal(f.writes.length,writes);
+ f.forward(()=>f.machine.remember('editor-review',{nested:true}));assert.deepEqual(surfaceLayers(f.history.state,'room'),['build','editor-review']);assert.equal(f.writes.length,writes);
+ f.setRoom('elsewhere');assert.deepEqual(surfaceLayers(f.history.state,'elsewhere'),[]);
+});
 test('genuine async content reopening keeps the foreground and never stores provider data',()=>{
  const f=fixture();f.setContent('opaque');f.machine.remember('content',{nested:true});f.machine.remember('chat');const before=JSON.stringify(f.history.state);f.machine.remember('content',{nested:true});assert.equal(JSON.stringify(f.history.state),before);
  f.machine.forgetContent('different');assert.equal(JSON.stringify(f.history.state),before);f.machine.forgetContent('opaque');assert.deepEqual(f.history.state,{room:'room',surface:'chat',contentDismissedDepth:1});

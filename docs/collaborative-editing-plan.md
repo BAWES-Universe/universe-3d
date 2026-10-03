@@ -1,9 +1,11 @@
-# Collaborative editing: implementation plan
+# Collaborative editing: original implementation plan
 
-Status: proposed, not implemented. The current editor commits an entire scene
-with compare-and-swap on the room revision. Two people changing different
-objects can conflict. Exporting a draft or loading a server snapshot is not a
-merge, and unsaved drafts are not a shared live document.
+The initial object/terrain slice is now implemented as described in
+[the client behavior](COLLABORATIVE-EDITOR.md) and
+[the service contract](../server/SCENE-OPERATIONS.md). Room settings, areas,
+imports and item reordering retain whole-scene compare-and-swap and can still
+conflict. Unsaved drafts are not a shared live document. The broader plan below
+remains a design record, not a claim that every item or source contract is done.
 
 The independent friends-preview audit reproduced this at `f534ad2`. The same
 whole-scene API remains in development tree `b349974d`. This plan does not

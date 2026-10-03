@@ -1,6 +1,8 @@
 /** Bounded editor-module race repro with real SQLite HTTP and native SSE.
  * It is not a full-game or native end-to-end user journey. Playwright delays only
  * the successful PUT receipt; it does not fabricate any server room/event.
+ * The fixture omits the operation capability to exercise retained legacy CAS;
+ * the companion full-game suite uses the currently advertised save transport.
  */
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
@@ -10,16 +12,18 @@ import {createGameServer} from '../server/app.mjs';
 import {emptyScene} from '../src/worlds.js';
 
 const source=`import {mountEditor} from './src/editor.js';
+const legacyRoom=room=>{const copy=structuredClone(room);delete copy.sceneOperations;return copy;};
 window.install=({room,user})=>{
+ room=legacyRoom(room);
  const state=window.state={room,scene:structuredClone(room.scene),user,position:{x:0,z:7},ready:true};
  window.logs={events:[],toasts:[]};
- const api=async(url,{method='GET',body}={})=>{const response=await fetch(url,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.message),{status:response.status,data});return data;};
+ const api=async(url,{method='GET',body}={})=>{const response=await fetch(url,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.message),{status:response.status,data});if(data.room)data.room=legacyRoom(data.room);return data;};
  const editor=window.editor=mountEditor({root:document.querySelector('#editor'),getState:()=>state,onScene:scene=>state.scene=scene,onSelect:()=>{},toast:message=>logs.toasts.push(message),api});
  editor.attachRoom();editor.setBuild(true);
  const events=window.events=new EventSource('/api/events');
  events.addEventListener('hello',()=>window.streamReady=true);
  for(const type of ['scene','role'])events.addEventListener(type,event=>{
-  const data=JSON.parse(event.data);logs.events.push({type,data,saving:editor.isSaving()});
+  const data=JSON.parse(event.data);if(data.room)data.room=legacyRoom(data.room);logs.events.push({type,data,saving:editor.isSaving()});
   if(data.roomId!==state.room.id)return;
   // Same role/scene dispatch relevant to this race as src/main.js handleEvent.
   if(type==='role'){state.room.role=data.role;state.room.capabilities=data.capabilities||data.room?.capabilities;if(data.room?.personalAreas)state.room.personalAreas=data.room.personalAreas;}

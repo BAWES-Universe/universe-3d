@@ -1215,3 +1215,41 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
 /* Save feedback is a live status, not an input surface. It must not swallow
    the next furniture choice while a short sheet is open. */
 body:has(#editor.editor-workbench:not([hidden])) #toast { pointer-events: none; }
+
+/* Conflict review uses the editor's existing sheet surfaces and touch targets. */
+.builder-conflict-review {
+  position: absolute; z-index: 8; top: 100px; bottom: 110px;
+  left: 50%; transform: translateX(-50%); width: min(720px,calc(100% - 32px));
+  display: flex; flex-direction: column; overflow: hidden; border-radius: 15px;
+  background: var(--u-surface-raised); color: var(--u-text-soft);
+  box-shadow: var(--u-shadow-raised); backdrop-filter: var(--u-backdrop);
+  border: 1px solid var(--u-secondary-border);
+}
+.builder-conflict-review[hidden] { display: none; }
+.builder-conflict-review > .builder-tray-top { flex: 0 0 auto; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--u-secondary-border); }
+.builder-conflict-review .builder-tray-top button { width: auto; padding: 8px 14px; font-size: 12px; }
+.builder-conflict-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px; }
+.builder-conflict-body > p { margin: 0 0 16px; color: var(--u-text-muted); line-height: 1.5; }
+.builder-conflict-row { min-width: 0; margin: 0 0 16px; padding: 12px; border: 1px solid var(--u-secondary-border); border-radius: 12px; }
+.builder-conflict-row legend { max-width: 100%; overflow-wrap: anywhere; font-weight: 600; padding: 0 6px; }
+.builder-conflict-row > p { margin-top: 0; color: var(--u-text-muted); line-height: 1.5; }
+.builder-conflict-values { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.builder-conflict-values > div { min-width: 0; padding: 8px; border-radius: 8px; background: var(--u-secondary); overflow-wrap: anywhere; }
+.builder-conflict-values p { font-size: 11px; line-height: 1.5; }
+.builder-conflict-values summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--u-text-muted); }
+.builder-conflict-values pre { max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: 10px; }
+.builder-conflict-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.builder-conflict-choices label { display: flex; align-items: center; flex: 1 1 150px; min-height: 48px; padding: 8px; gap: 8px; border: 1px solid var(--u-secondary-border); border-radius: 8px; cursor: pointer; }
+.builder-conflict-choices label:has(input:checked) { background: var(--u-selected); border-color: var(--u-selected-border); }
+.builder-conflict-choices input { width: 18px; height: 18px; min-height: 0; margin: 0; flex: 0 0 auto; accent-color: var(--u-primary); }
+.builder-conflict-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--u-secondary-border); }
+.builder-conflict-actions button { min-height: 48px; white-space: normal; }
+.builder-conflict-actions button:last-child { background: var(--u-primary); color: #fff; }
+#editor.editor-workbench[data-short=true] .builder-conflict-review { inset: 8px; width: auto; transform: none; }
+@media (max-width: 540px) {
+ .builder-conflict-review { left: 8px; right: 8px; top: 96px; bottom: 96px; width: auto; transform: none; }
+ .builder-conflict-values { grid-template-columns: 1fr; }
+ .builder-conflict-values > div { display: grid; grid-template-columns: 46px minmax(0,1fr); column-gap: 8px; }
+ .builder-conflict-values p { margin: 0; }
+ .builder-conflict-values details { grid-column: 2; }
+}

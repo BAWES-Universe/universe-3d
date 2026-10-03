@@ -56,7 +56,7 @@ let navigating=false,reconcilingArrival=null,retainedEditorFocus=null,pendingNea
 let groupControls=null,groupView=null,groupState=null,followResumeAt=0;
 const followMotion=createFollowMotionController();
 let renderer=null,editor=null,social=null,media=null,quests=null,places=null,events=null,keys=new Set(),path=[],pathSpeed=1,deskTargetId=null,joystick={x:0,z:0},building=false,presenceAt=0,presenceBusy=false,presenceInFlight=null,emote='',emoteUntil=0,nearby=null,currentAreas=new Set(),joinEpoch=0,lastTime=0,toastTimer=0,toastKind='',selectedWoka=0,unread=0,dragStart=null;
-function surfaceVisible(name){return ({chat:()=>$('social').dataset.tab==='chat'&&!$('social').hidden,people:()=>$('social').dataset.tab==='people'&&!$('social').hidden,settings:()=>$('social').dataset.tab==='settings'&&!$('social').hidden,build:()=>building,dialog:()=>!$('dialog').hidden,images:()=>imageLibrary?.isOpen(),bots:()=>botEditor?.isOpen(),personal:()=>personalAreas?.isOpen(),avatar:()=>avatarCreator?.isOpen(),palette:()=>palette?.isOpen(),express:()=>express?.isOpen(),places:()=>places?.isOpen(),quests:()=>quests?.isOpen()})[name]?.()??false;}
+function surfaceVisible(name){return ({chat:()=>$('social').dataset.tab==='chat'&&!$('social').hidden,people:()=>$('social').dataset.tab==='people'&&!$('social').hidden,settings:()=>$('social').dataset.tab==='settings'&&!$('social').hidden,build:()=>building,'editor-review':()=>editor?.isReviewOpen?.(),dialog:()=>!$('dialog').hidden,images:()=>imageLibrary?.isOpen(),bots:()=>botEditor?.isOpen(),personal:()=>personalAreas?.isOpen(),avatar:()=>avatarCreator?.isOpen(),palette:()=>palette?.isOpen(),express:()=>express?.isOpen(),places:()=>places?.isOpen(),quests:()=>quests?.isOpen()})[name]?.()??false;}
 const surfaceHistory=createSurfaceHistory({history,getRoom:()=>state.room?.id,getContent:()=>areaActions?.isOpen()?areaActions.historyKey():null,isVisible:surfaceVisible,getUrl:()=>location.href});
 async function api(url,{method='GET',body,signal,deferRoomPreparation=false}={}){if(url==='/api/logout'&&botEditor?.isOpen()&&!await botEditor.close())throw Error('Save or discard your resident draft before signing out');const res=await fetch(url,{method,signal,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});let data;try{data=await res.json();}catch{data={message:'The server returned an unreadable response'};}if(!deferRoomPreparation&&res.ok&&data.room?.scene)imageLibrary?.prepareRoom(data.room,{preserve:!url.endsWith('/join')});if(!res.ok){const err=new Error(data.message||data.error?.message||data.error||'Request failed');err.status=res.status;err.data=data;throw err;}if(url==='/api/logout')imageLibrary?.suspend();return data;}
 function toast(message,{kind='notice'}={}){toastKind=kind;$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{$('toast').hidden=true;toastKind='';},4300);}
@@ -107,14 +107,22 @@ const arrivalNavigation=createArrivalNavigation({api,getContext:()=>({accountId:
  onRetained:buffered=>{for(const event of buffered.toSorted((a,b)=>(a.data.room?.revision??Infinity)-(b.data.room?.revision??Infinity)))handleEvent(event);},
  onDecision:applyArrival,onAuthorityLost:loseArrivalAuthority,onError:error=>toast(error.message),
  onCommit:({result,decision,destination,options,events:buffered})=>{
-  const retained=(options.reconcile||options.mode==='resume')&&decision.kind==='retain'&&result.room.id===state.room?.id;
-  if(retained){
-   // The editor may keep an older saved base while a dirty draft is open.
-   // Feed fresh committed denial geometry to media before editor conflict handling.
+  const sameRoomResume=(options.reconcile||options.mode==='resume')&&result.room.id===state.room?.id;
+  const retained=sameRoomResume&&decision.kind==='retain';
+  const recoverDraft=sameRoomResume&&!retained&&editor?.isDirty();
+  const keptEditor=retained||recoverDraft;
+  if(keptEditor){
+   if(!retained){retireTravelEffects();editor.closeReview?.({record:false,restore:false});}
+   // The new pose/admission is already authorized. Retire old save callbacks,
+   // but retain local work across a same-room process restart or expired pose.
+   applyArrival(decision);state.ready=true;
    media?.acceptCommittedRoom(result.room,state.user.id);
-   imageLibrary?.receiveRoom(result.room);editor.cancelGesture();editor.receiveScene(result.room);
+   imageLibrary?.receiveRoom(result.room);editor.cancelGesture();
+   if(recoverDraft){if(!editor.resumeAdmission?.(result.room)){retireRoomAccess('Your room connection changed. Keep a copy of your draft before opening it again.');return;}}
+   else editor.receiveScene(result.room);
    const {scene:_scene,revision:_revision,...metadata}=result.room;Object.assign(state.room,metadata);
-   applyArrival(decision);state.ready=true;imageLibrary?.acceptRoom();
+   imageLibrary?.acceptRoom();
+   if(!retained){currentAreas.clear();areaActions?.arrive(state.room.id,state.scene,state.position);}
    if(building&&!canBuildInRoom(state.room)){toggleBuild(false,{record:false});if(editor.isDirty())showDialog({eyebrow:'EDITOR ACCESS CHANGED',title:'Keep a copy of your work',text:'Your editor access was removed. You can export the unsaved draft before leaving this room.',actions:[{label:'Export my draft',run:()=>editor.exportScene()}]});}
   }else{
   retireTravelEffects();building=false;$('editor').hidden=true;$('quest-open').hidden=false;$('dock-build').classList.remove('active');
@@ -130,9 +138,9 @@ const arrivalNavigation=createArrivalNavigation({api,getContext:()=>({accountId:
   for(const event of buffered)if(event.type==='media-policy')media.onEvent(event);
   refreshBotPermissions();quests?.refresh();setOnline(true);$('welcome').hidden=true;
   const preserved=options.reconcile&&state.destination?.roomId===destination.roomId?state.destination:destination;
-  if(!retained)writeDestination(preserved,options.reconcile?'replace':options.historyMode||'push');
+  if(!keptEditor)writeDestination(preserved,options.reconcile?'replace':options.historyMode||'push');
   if(result.arrival?.fallback==='unknown-entry')toast('That named arrival is no longer available. You arrived at this room’s default.');
-  if(!retained)$('game').focus();
+  if(!keptEditor)$('game').focus();
  },
  onSettled:async({current,options,failed,committed})=>{
   if(!current)return;
@@ -229,7 +237,7 @@ function rememberSurface(surface,{nested=false}={}){if(!state.user)return;if(sur
 function dismissSurface(surface){surfaceHistory.dismiss(surface);syncContentWindows();}
 function togglePanel(tab){if(!state.user)return;if(tab!=='explore'&&contentMaximized())areaActions.setWindowMaximized(false);if(botEditor?.isOpen())return botEditor.close().then(ok=>ok&&togglePanel(tab));stopPlayer();if(tab==='explore'){if(places?.isOpen())places.close();else places?.open('explore');return;}const same=$('social').dataset.tab===tab&&!$('social').hidden;if(same){$('social').hidden=true;clearActive();dismissSurface(tab);return;}if(building)toggleBuild(false,{record:false});if(places?.isOpen())places.close();$('social').hidden=false;social.setTab(tab);rememberSurface(tab);clearActive();$('dock-'+tab)?.classList.add('active');if(tab==='chat'){unread=0;updateUnreadBadge();}}
 function clearActive(){for(const b of document.querySelectorAll('#dock [data-panel]'))b.classList.remove('active');}
-function toggleBuild(force,{record=true}={}){if(force!==false&&contentMaximized())areaActions.setWindowMaximized(false);if(force===false&&imageLibrary?.isOpen()&&record){imageLibrary.setOpen(false);return;}if(force!==false&&botEditor?.isOpen())return botEditor.close().then(ok=>ok&&toggleBuild(force,{record}));stopPlayer();if(force!==false&&!renderer){toast('3D building is unavailable in this browser');return;}if(force!==false&&(!state.ready||!state.room||!canBuildInRoom(state.room))){toast('The room owner can grant you editor access');return;}building=force??!building;if(record){if(building)rememberSurface('build');else dismissSurface('build');}$('editor').hidden=!building;$('quest-open').hidden=building;$('dock-build').classList.toggle('active',building);$('room-subtitle').textContent=building?'A little imagination goes a long way':'A place to be together';if(building){if(places?.isOpen())places.close();$('social').hidden=true;clearActive();path=[];keys.clear();editor.attachRoom();}renderer?.setBuild(building);editor.setBuild(building);if(building&&editor.getSelected())renderer?.select(editor.getSelected());}
+function toggleBuild(force,{record=true}={}){if(force!==true&&record&&editor?.isReviewOpen?.()){editor.closeReview();return;}if(force!==false&&contentMaximized())areaActions.setWindowMaximized(false);if(force===false&&imageLibrary?.isOpen()&&record){imageLibrary.setOpen(false);return;}if(force!==false&&botEditor?.isOpen())return botEditor.close().then(ok=>ok&&toggleBuild(force,{record}));stopPlayer();if(force!==false&&!renderer){toast('3D building is unavailable in this browser');return;}if(force!==false&&(!state.ready||!state.room||!canBuildInRoom(state.room))){toast('The room owner can grant you editor access');return;}if(force===false||force===undefined&&building)editor?.closeReview?.({record:false});building=force??!building;if(record){if(building)rememberSurface('build');else dismissSurface('build');}$('editor').hidden=!building;$('quest-open').hidden=building;$('dock-build').classList.toggle('active',building);$('room-subtitle').textContent=building?'A little imagination goes a long way':'A place to be together';if(building){if(places?.isOpen())places.close();$('social').hidden=true;clearActive();path=[];keys.clear();editor.attachRoom();}renderer?.setBuild(building);editor.setBuild(building);if(building&&editor.getSelected())renderer?.select(editor.getSelected());}
 function showDialog({eyebrow,title,text,actions=[],owner=''}){$('dialog').dataset.actionOwner=owner;if($('dialog').hidden)dialogReturnFocus=document.activeElement;rememberSurface('dialog',{nested:true});$('dialog-eyebrow').textContent=eyebrow||'UNIVERSE';$('dialog-title').textContent=title;$('dialog-content').textContent=text||'';$('dialog-actions').replaceChildren();for(const action of actions){const b=document.createElement('button');b.className='primary';b.textContent=action.label;if(action.description){b.classList.add('room-action-button');const detail=document.createElement('small');detail.textContent=action.description;b.append(detail);}b.onclick=()=>{closeDialog(false);history.replaceState({room:state.room?.id},'',location.href);action.run();};$('dialog-actions').append(b);}$('dialog').hidden=false;syncContentWindows();stopPlayer();$('dialog-close').focus();}
 function closeDialog(record=true){if($('dialog').dataset.actionOwner==='share-arrival')arrivalShare?.cancel();$('dialog').hidden=true;lastSurfaceClosed=performance.now();if(record)dismissSurface('dialog');const target=dialogReturnFocus?.isConnected&&dialogReturnFocus.getClientRects().length?dialogReturnFocus:$('game');target.focus();}
 function openUrl(url){try{const u=new URL(url,location.origin);if(!['https:','http:'].includes(u.protocol))throw Error();window.open(u.href,'_blank','noopener,noreferrer');}catch{toast('This item needs a valid http or https address');}}
@@ -274,10 +282,10 @@ function syncGroupPresentation(){
 }
 function isTyping(){return imageLibrary?.hasFocus()||areaActions?.hasFocus()||/INPUT|TEXTAREA|SELECT|IFRAME/.test(document.activeElement?.tagName)||document.activeElement?.isContentEditable;}
 function stopPlayer({cancelPath=true}={}){keys.clear();joystick={x:0,z:0};stopMotion(motion);state.moving=false;if(cancelPath){path=[];pathSpeed=1;deskTargetId=null;renderer?.setDestination(null);}worldInput?.cancel();}
-function modalOpen(){return !!(contentMaximized()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||!$('dialog').hidden||!$('welcome').hidden);}
+function modalOpen(){return !!(editor?.isReviewOpen?.()||contentMaximized()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||!$('dialog').hidden||!$('welcome').hidden);}
 function contentMaximized(){const window=areaActions?.windowState();return !!(window?.open&&window.maximized);}
 function contentCoversViewport(){const window=areaActions?.windowState();return !!(window?.open&&window.width>=Math.min(innerWidth,$('game').getBoundingClientRect().width)-1);}
-function contentHasHigherSurface(){return !!(imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||botEditor?.isOpen()||!$('dialog').hidden||!$('welcome').hidden||!$('fallback').hidden);}
+function contentHasHigherSurface(){return !!(editor?.isReviewOpen?.()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||botEditor?.isOpen()||!$('dialog').hidden||!$('welcome').hidden||!$('fallback').hidden);}
 function syncContentWindows(){
  contentModality?.sync();syncWindowControls();
  const covered=String(contentMaximized());if($('express').dataset.contentCover!==covered)$('express').dataset.contentCover=covered;
@@ -342,6 +350,7 @@ for(const b of document.querySelectorAll('#dock [data-panel]'))b.onclick=()=>tog
  const dockMore=document.createElement('span');dockMore.id='dock-more';dockMore.setAttribute('aria-hidden','true');dockMore.innerHTML=icon('ChevronRight');$('app').append(dockMore);$('dock').setAttribute('aria-description','Scroll or swipe horizontally for more controls. Tab brings each control into view.');const updateDockHint=()=>{dockMore.hidden=$('dock').scrollWidth-$('dock').clientWidth-$('dock').scrollLeft<2;};$('dock').addEventListener('scroll',updateDockHint);window.addEventListener('resize',updateDockHint);new ResizeObserver(updateDockHint).observe($('dock'));requestAnimationFrame(updateDockHint);
  $('quick-actions').onclick=()=>palette?.toggle();$('shortcuts-help').onclick=showShortcuts;$('manage-place').onclick=()=>places?.open('manage');$('places-alert').onclick=()=>{$('places-alert').hidden=true;places?.open('invitations');};$('quest-open').onclick=()=>quests?.open();$('zoom-in').onclick=()=>renderer?.zoom(-2);$('zoom-out').onclick=()=>renderer?.zoom(2);$('rotate-camera').onclick=()=>renderer?.orbit(-90,0);$('home-camera').onclick=()=>renderer?.resetCamera();$('camera-right').onclick=()=>renderer?.orbit(90,0);$('camera-tilt-up').onclick=()=>renderer?.orbit(0,-60);$('camera-tilt-down').onclick=()=>renderer?.orbit(0,60);$('camera-follow').onclick=()=>renderer?.setFollow(!renderer.getCameraState().follow);$('camera-pan').onclick=()=>{worldInput?.setPanMode(!worldInput.getPanMode());$('camera-pan').setAttribute('aria-pressed',String(worldInput.getPanMode()));};$('interact').onclick=()=>interact();$('dialog-close').onclick=()=>closeDialog();$('dialog').onclick=e=>{if(e.target===$('dialog'))closeDialog();};$('invite').onclick=()=>{if(!state.room){places?.open('explore');return;}if(!navigating)void arrivalShare?.open();};
  window.addEventListener('session-ended',()=>{imageLibrary?.suspend();editor.revert();location.reload();});window.addEventListener('social-close',()=>{clearActive();lastSurfaceClosed=performance.now();const surface=history.state?.surface;if(['chat','people','explore','settings'].includes(surface))dismissSurface(surface);($('dock-'+$('social').dataset.tab)||$('dock-chat')).focus({preventScroll:true});});window.addEventListener('profile-updated',()=>{renderPeople();sendPresence(true);});window.addEventListener('avatar-emote',e=>{emote=e.detail.emoji;emoteUntil=Date.now()+4500;renderPeople();sendPresence(true);});document.addEventListener('focusin',()=>{if(isTyping())stopPlayer();});window.addEventListener('editor-status',e=>{$('dirty-dot').hidden=!e.detail.dirty;});
+ window.addEventListener('editor-review',e=>{stopPlayer();if(e.detail?.record===false){syncContentWindows();return;}if(e.detail?.open)rememberSurface('editor-review',{nested:true});else{lastSurfaceClosed=performance.now();if(!navigating)dismissSurface('editor-review');}});
  const interactive=target=>!!target?.closest?.('button,a,input,textarea,select,[role="button"],[contenteditable="true"]');
  let enterStartedInUi=false;
  const keyName=e=>e.key.length===1?e.key.toLowerCase():e.key;
@@ -432,7 +441,9 @@ for(const b of document.querySelectorAll('#dock [data-panel]'))b.onclick=()=>tog
   if(layers.has('quests')&&!quests?.isOpen())quests?.open();else if(!layers.has('quests')&&quests?.isOpen())quests.close();
   if(!layers.has('dialog')){if(!$('dialog').hidden)closeDialog(false);}else{const wasHidden=$('dialog').hidden;$('dialog').hidden=false;
   if(wasHidden){stopPlayer();$('dialog-close').focus();}}
+  if(!layers.has('editor-review')&&editor?.isReviewOpen?.())editor.closeReview({record:false});
   if(layers.has('build')&&!building)toggleBuild(true,{record:false});
+  if(layers.has('editor-review')&&(!building||!editor?.openReview?.())){const next={...history.state};delete next.underlay;if(building)next.surface='build';else delete next.surface;history.replaceState(next,'',location.href);}
   if(!layers.has('build')&&!layers.has('images')&&building){building=false;$('editor').hidden=true;$('quest-open').hidden=false;$('dock-build').classList.remove('active');renderer?.setBuild(false);editor.setBuild(false);updateTitle();}
  }));
  window.addEventListener('beforeunload',e=>{if(editor.isDirty()){e.preventDefault();e.returnValue='';}});}

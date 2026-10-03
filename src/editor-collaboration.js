@@ -1,0 +1,127 @@
+/** Three-way scene reconciliation. This module never grants edit authority.
+ * Pending requests are immutable transport snapshots, independent of the draft. */
+import {canonicalStringify,sceneOperationContext,applySceneOperations,hashSceneObject,hashSceneContext,sceneOperationRequestIdentity} from './scene-operations.js';
+import {collisionBoxes,contains} from './worlds.js';
+import {objectFootprint,footprintInside} from './personal-area-policy.js';
+import {imageDefinitions} from './image-asset-context.js';
+import {canLeaveArrival,overlaps} from './editor-geometry.js';
+import {validateStarts} from './arrivals.js';
+import {validateTerrain,terrainCollisionBoxes} from './terrain.js';
+
+export const jsonSnapshot=value=>JSON.parse(JSON.stringify(value));
+export const equalSceneValue=(a,b)=>canonicalStringify(a)===canonicalStringify(b);
+export const targetKey=target=>target.kind==='object'?'object:'+target.id:target.kind==='terrain'?`terrain:${target.x},${target.z}`:target.kind;
+const objects=scene=>new Map((scene.objects||[]).map(item=>[item.id,item]));
+const cells=scene=>new Map((scene.terrain?.cells||[]).map(cell=>[`${cell[0]},${cell[1]}`,cell]));
+const valueAt=(scene,change)=>change.kind==='object'?objects(scene).get(change.id)??null:cells(scene).get(`${change.x},${change.z}`)??null;
+
+/** before values here are full values; hashing happens only at the wire edge. */
+export function sceneChanges(base,mine){
+ base=jsonSnapshot(base);mine=jsonSnapshot(mine);
+ const changes=[],oldObjects=objects(base),newObjects=objects(mine),oldCells=cells(base),newCells=cells(mine);
+ for(const id of new Set([...oldObjects.keys(),...newObjects.keys()])){const before=oldObjects.get(id)??null,after=newObjects.get(id)??null;if(!equalSceneValue(before,after))changes.push({kind:'object',id,before,after});}
+ for(const key of new Set([...oldCells.keys(),...newCells.keys()])){const before=oldCells.get(key)??null,after=newCells.get(key)??null;if(!equalSceneValue(before,after)){const [x,z]=key.split(',').map(Number);changes.push({kind:'terrain',x,z,before,after});}}
+ const contextChanged=!equalSceneValue(sceneOperationContext(base),sceneOperationContext(mine));
+ const applied=applySceneOperations(base,changes),orderChanged=!equalSceneValue(applied.objects.map(o=>o.id),mine.objects.map(o=>o.id));
+ return {changes,contextChanged,orderChanged,legacy:contextChanged||orderChanged};
+}
+
+/** A conservative merge. Unresolved conflicts return a candidate for review,
+ * never permission to replace the live draft. Identical changes converge. */
+export function reconcileScenes({base,mine,server,choices={},validate=()=>null,forceReview=false}){
+ base=jsonSnapshot(base);mine=jsonSnapshot(mine);server=jsonSnapshot(server);
+ const delta=sceneChanges(base,mine),conflicts=[],operations=[];
+ const remoteContextChanged=!equalSceneValue(sceneOperationContext(base),sceneOperationContext(server));
+ const localChanged=delta.changes.length||delta.legacy;
+ const hasContextConflict=!!localChanged&&(remoteContextChanged||delta.legacy||forceReview)&&!equalSceneValue(base,server);
+ if(hasContextConflict&&!choices.context)conflicts.push({kind:'context',key:'context',base:sceneOperationContext(base),mine:sceneOperationContext(mine),server:sceneOperationContext(server),reason:delta.legacy||forceReview?'Room settings, areas, import or item order require a whole-room review.':'Room settings or areas changed while you were building.'});
+ for(const change of delta.changes){
+  const current=valueAt(server,change),key=targetKey(change);
+  const conflict=!equalSceneValue(current,change.before)&&!equalSceneValue(current,change.after);
+  if(conflict&&!choices[key])conflicts.push({...change,key,mine:change.after,base:change.before,server:current,reason:change.kind==='object'?'This item changed in both drafts.':'This ground cell changed in both drafts.'});
+  if(choices[key]==='server'||equalSceneValue(current,change.after))continue;
+  operations.push({...change,before:current});
+ }
+ let scene=applySceneOperations(server,operations);
+ if(delta.contextChanged&&(!hasContextConflict||choices.context==='mine'))scene={...jsonSnapshot(sceneOperationContext(mine)),objects:scene.objects,...(scene.terrain===undefined?{}:{terrain:scene.terrain})};
+ if(delta.orderChanged&&(!hasContextConflict||choices.context==='mine')){const indexed=objects(scene),ordered=mine.objects.map(o=>indexed.get(o.id)).filter(Boolean),included=new Set(ordered.map(o=>o.id));scene.objects=[...ordered,...scene.objects.filter(o=>!included.has(o.id))];}
+ if(choices.geometry==='server')scene=jsonSnapshot(server);
+ const problem=validate(scene,server);
+ if(problem)conflicts.push({kind:'geometry',key:'geometry',base,mine,server,reason:typeof problem==='string'?problem:problem.reason});
+ return {scene,conflicts,legacy:sceneChanges(server,scene).legacy,changes:delta.changes};
+}
+
+/** Recover intent after an admission change retires an unknown request. Later
+ * edits (including Undo back to the old base) still express intent. Where the
+ * server has advanced a pending target, compare that later edit to the submitted
+ * value; unchanged server targets continue to compare against the old base. */
+export function reconnectDraftReference({base,submitted,mine,server}){
+ const advanced=sceneChanges(base,submitted).changes.filter(change=>!equalSceneValue(valueAt(mine,change),change.after)&&!equalSceneValue(valueAt(server,change),change.before));
+ return applySceneOperations(base,advanced);
+}
+
+/** Transform local snapshots over a peer commit. If any undo/redo step is
+ * ambiguous, drop the old stack rather than resurrecting somebody else's work. */
+export function rebaseHistory(entries,{base,server,validate}){
+ const next=[];
+ for(const entry of entries){const rebased=reconcileScenes({base,mine:entry.scene,server,validate});if(rebased.conflicts.length)return {entries:[],invalidated:true};next.push({...entry,scene:rebased.scene});}
+ return {entries:next,invalidated:false};
+}
+
+export async function createSceneOperationRequest({base,mine,baseRevision,operationId,admission,personalAreaRevisions}){
+ base=jsonSnapshot(base);mine=jsonSnapshot(mine);const delta=sceneChanges(base,mine);
+ if(delta.legacy)throw new Error('Room settings, areas and item order use the reviewed whole-room save.');
+ if(delta.changes.length>6096)throw new Error('This save touches too many items or ground cells. Export the draft before reducing it.');
+ const operations=await Promise.all(delta.changes.map(async change=>({...change,before:change.kind==='object'?await hashSceneObject(change.before):change.before})));
+ const request={version:1,operationId,baseRevision,contextHash:await hashSceneContext(base),operations,...(personalAreaRevisions?{personalAreaRevisions:jsonSnapshot(personalAreaRevisions)}:{}),admission:jsonSnapshot(admission)};
+ // Freeze nested data too: a retry must not pick up later edits or permissions.
+ const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};return freeze(request);
+}
+
+export function conflictLabel(conflict){
+ if(conflict.kind==='object')return (conflict.mine?.name||conflict.server?.name||conflict.base?.name||conflict.id)+' · '+conflict.id;
+ if(conflict.kind==='terrain')return `Ground cell (${conflict.x}, ${conflict.z})`;
+ return conflict.kind==='context'?'Room settings and areas':'Space and walking routes';
+}
+export function conflictValueLabel(value,kind){
+ if(value===null)return 'Absent / deleted';
+ if(kind==='terrain')return `${value[2]} · ${value[3]?'blocks walking':'walkable'}`;
+ if(kind==='object')return [`${value.name||value.type} · (${value.x}, ${value.z}) · ${value.rotation||0}°`,value.text?'Description: '+value.text:null,value.actions?.length?'Actions: '+value.actions.map(action=>action.type).join(' → '):null,value.width||value.depth?`Size: ${value.width||'default'} × ${value.depth||'default'}`:null].filter(Boolean).join('\n');
+ return kind==='geometry'?`${value.objects?.length||0} items · ${value.terrain?.cells?.length||0} ground cells`:`${value.bounds?.width} × ${value.bounds?.depth} m · ${value.areas?.length||0} areas · ${value.theme||'room'}`;
+}
+
+export async function sceneRequestHash(roomId,request){
+ const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonicalStringify(sceneOperationRequestIdentity(roomId,request))));
+ return Array.from(new Uint8Array(bytes),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+
+/** Compare actual geometry, not names/actions/color. A legacy overlap is not a
+ * newly introduced collider and must remain editable. Callers bind authorized
+ * image definitions on both snapshots before invoking this pure check. */
+export function reconciliationGeometryProblem(before,next){
+ try{
+  validateStarts(next);validateTerrain(next.terrain,next.bounds);
+  const old=objects(before),oldImages=imageDefinitions(before),nextImages=imageDefinitions(next);
+  const entries=next.objects.map(item=>({item,box:objectFootprint(item,nextImages),cells:collisionBoxes(next,item)}));
+  const blocked=terrainCollisionBoxes(next.terrain),oldBlocked=new Set((before.terrain?.cells||[]).filter(c=>c[3]).map(c=>`${c[0]},${c[1]}`));
+  const newBlocked=blocked.filter(c=>!oldBlocked.has(`${c.x-.5},${c.z-.5}`));
+  const boundsChanged=!equalSceneValue(before.bounds,next.bounds),spawnChanged=!equalSceneValue(before.spawn,next.spawn),roomBox={x:0,z:0,...next.bounds};let introduced=!!newBlocked.length;
+  for(const entry of entries){
+   const {item,box,cells}=entry,prior=old.get(item.id),oldBox=prior?objectFootprint(prior,oldImages):null,oldCells=prior?collisionBoxes(before,prior):[];
+   if((boundsChanged||!equalSceneValue(box,oldBox))&&!footprintInside(roomBox,box))return (item.name||item.type)+': Keep the whole item inside the room edge';
+   const changed=!equalSceneValue(cells,oldCells);
+   if(changed&&cells.length){
+    introduced=true;
+    const collision=entries.find(other=>other.item.id!==item.id&&cells.some(cell=>other.cells.some(otherCell=>overlaps(cell,otherCell))));
+    if(collision)return (item.name||item.type)+': Overlaps '+(collision.item.name||collision.item.type);
+    if(cells.some(cell=>blocked.some(other=>overlaps(cell,other))))return (item.name||item.type)+': Keep solid items off blocked terrain';
+   }
+   if((changed||spawnChanged)&&cells.some(cell=>contains(cell,next.spawn.x,next.spawn.z,.75)))return (item.name||item.type)+': Leave a clear space around the arrival point';
+   if(cells.some(cell=>newBlocked.some(other=>overlaps(cell,other))))return (item.name||item.type)+': Keep solid items off blocked terrain';
+  }
+  for(const area of next.areas||[]){const oldArea=(before.areas||[]).find(a=>a.id===area.id),box={x:area.x,z:area.z,width:area.width,depth:area.depth},prior=oldArea?{x:oldArea.x,z:oldArea.z,width:oldArea.width,depth:oldArea.depth}:null;if((boundsChanged||!equalSceneValue(box,prior))&&!footprintInside(roomBox,box))return (area.name||'Area')+': Keep the whole area inside the room edge';}
+  if(newBlocked.some(box=>contains(box,next.spawn.x,next.spawn.z,.75)))return 'Leave a clear space around the arrival point';
+  if((introduced||spawnChanged)&&canLeaveArrival(before)&&!canLeaveArrival(next))return 'Leave a clear walking route from the arrival point.';
+  return null;
+ }catch(error){return error.message;}
+}
