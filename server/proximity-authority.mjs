@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {createBubbleModel} from './proximity/membership.mjs';
 import {integer,invariant,validateConfig} from './proximity/policy.mjs';
 import * as v from './validation.mjs';
+import {createParticipantControlState,validateControlCommand} from './proximity-controls.mjs';
 import {SILENT_MEDIA_MESSAGE} from '../src/media-policy-copy.js';
 
 const CONFIG_KEYS=['enabled','membershipCeiling','p2pThreshold','downgradeDelayMs','minimumDistanceSource','groupRadiusSource','sourceUnitsPerWorldUnit','coordinateLimitWorld','memberTtlMs','maxRooms','maxMembersPerRoom','maxAccounts','maxMemberships','maxSessionsPerMember'];
@@ -42,6 +43,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
   invariant(store&&presence instanceof Map&&typeof now==='function','AUTHORITY_REQUIRED');
   const epoch=randomUUID(),model=createBubbleModel({config,epoch});
   const admissions=new Map(),grants=new Map(),contexts=new Map(),scopes=new Map();
+  const controls=createParticipantControlState({config,model,presence});
   let sequence=0,closed=false,lastTime=0,transaction=0;
   const assertOpen=()=>invariant(!closed,'SERVICE_CLOSED');
   function time(){
@@ -49,7 +51,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
     try{const value=now();integer(value,'nowMs');invariant(value>=lastTime,'CLOCK_REGRESSED');lastTime=value;return value;}
     catch(error){for(const roomId of [...admissions.keys()]){clearRoom(roomId);onInvalidate(roomId);}throw error;}
   }
-  function clearRoom(roomId){transaction++;model.forgetRoom(roomId);admissions.delete(roomId);contexts.delete(roomId);scopes.delete(roomId);for(const[token,grant]of grants)if(grant.roomId===roomId)grants.delete(token);}
+  function clearRoom(roomId){transaction++;controls.forgetRoom(roomId);model.forgetRoom(roomId);admissions.delete(roomId);contexts.delete(roomId);scopes.delete(roomId);for(const[token,grant]of grants)if(grant.roomId===roomId)grants.delete(token);}
   function liveActor(accepted,at){
     if(!accepted||typeof accepted.token_hash!=='string')v.fail(401,'AUTH_REQUIRED');
     const current=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',accepted.token_hash,at);
@@ -86,9 +88,11 @@ export function createProximityMembershipAuthority({config:input,store,presence,
         const admissionId=continuous?previous.admissionId:`${epoch}:admission:${integer(++sequence,'sequence',1)}`;
         next.set(accountId,{admissionId,tokens,lastSeen:p.lastSeen});nextContexts.set(accountId,context);
         const mediaConsent=[...tokens].some(token=>{const g=grants.get(token);return g?.roomId===roomId&&g.accountId===accountId&&g.admissionId===admissionId;});
-        members.push({accountId,admissionId,x:p.x,z:p.z,moving:p.moving,lastSeenMs:p.lastSeen,status,context:{kind:context.kind==='proximity'?'proximity':'silent'},mediaConsent,canPublish:context.canPublish===true,followLeaderId:null});
+        members.push({accountId,admissionId,name:store.get('SELECT name FROM users WHERE id=?',accountId)?.name??'Player',x:p.x,z:p.z,moving:p.moving,lastSeenMs:p.lastSeen,status,context:{kind:context.kind==='proximity'?'proximity':'silent'},mediaConsent,canPublish:context.canPublish===true,followLeaderId:null});
       }
-      const result=model.syncRoom({roomId,members,nowMs:at,sfuAvailable:false});
+      const trustedMembers=controls.syncAdmissions(roomId,next,members,at);
+      const result=model.syncRoom({roomId,members:trustedMembers,nowMs:at,sfuAvailable:false});
+      controls.observe(roomId,result);
       if(next.size){admissions.set(roomId,next);contexts.set(roomId,nextContexts);}else{admissions.delete(roomId);contexts.delete(roomId);}
       for(const[token,g]of grants)if(g.roomId===roomId){const a=next.get(g.accountId);if(!a||a.admissionId!==g.admissionId||!a.tokens.has(token))grants.delete(token);}
       const priorScopes=scopes.get(roomId)??new Map(),nextScopes=new Map();
@@ -115,6 +119,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
     return Object.freeze({
       policyForAccount(accountId){current();return view(accountId,roomId,at);},
       policyForSession(accepted){current();const s=liveActor(accepted,time());if(s.current_room_id!==roomId)v.fail(403,'ROOM_MISMATCH');return view(s.user_id,roomId,at,s.token_hash);},
+      controlForSession(accepted,connectionId){current();const s=liveActor(accepted,time());if(s.current_room_id!==roomId)v.fail(403,'ROOM_MISMATCH');return {...controls.state(roomId,s.user_id,connectionId,at),snapshotRevision:captured};},
     });
   }
   function assertAdmission(accepted,roomId){
@@ -159,6 +164,10 @@ export function createProximityMembershipAuthority({config:input,store,presence,
     // A sweep rechecks authority, not just elapsed time. No policy read renews TTL.
     model.tick(at);return results;
   }
-  function close(){model.clear();admissions.clear();contexts.clear();grants.clear();scopes.clear();closed=true;}
-  return Object.freeze({refresh,captureRoom,assertAdmission,policy,policyForAccount,setConsent,authorizeP2PSignal,authorizeDelivery,sweep,forgetRoom(roomId){assertOpen();clearRoom(roomId);},close,stats(){return{...model.stats(),grants:grants.size};}});
+  function controlState(accepted,connectionId){const at=time(),s=liveActor(accepted,at);sync(s.current_room_id,at);return {...controls.state(s.current_room_id,s.user_id,connectionId,at),snapshotRevision:transaction};}
+  function controlAction(accepted,body,fence){validateControlCommand(body);const at=time(),s=liveActor(accepted,at);sync(s.current_room_id,at);const result=controls.command(s,body,at,fence);sync(s.current_room_id,at);return result;}
+  function beginControlledPresence(accepted){return controls.beginPresence(accepted);}
+  function authorizeControlledPresence(accepted,body,fence){const at=time(),s=liveActor(accepted,at);controls.checkPresenceFence(s,fence);if(!controls.hasFollowing(s.current_room_id,s.user_id)&&body.followLeaseId===undefined)return;sync(s.current_room_id,at);controls.authorizePresence(s,body,fence);}
+  function close(){controls.close();model.clear();admissions.clear();contexts.clear();grants.clear();scopes.clear();closed=true;}
+  return Object.freeze({controlState,controlAction,beginControlledPresence,authorizeControlledPresence,setControlConnectionLookup:controls.setConnectionLookup,refresh,captureRoom,assertAdmission,policy,policyForAccount,setConsent,authorizeP2PSignal,authorizeDelivery,sweep,forgetRoom(roomId){assertOpen();clearRoom(roomId);},close,stats(){return{...model.stats(),...controls.stats(),grants:grants.size};}});
 }

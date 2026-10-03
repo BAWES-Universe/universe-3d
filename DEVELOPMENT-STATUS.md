@@ -1,6 +1,14 @@
-# Development status · 2026-10-03 04:02 UTC
+# Development status · 2026-10-03 05:36 UTC
 
-## Current increment: usable embedded content windows
+## Current increment: participant locks and consented following
+
+An admitted bubble participant can lock/unlock that conversation and invite its other participants to follow. Each recipient explicitly accepts or declines. Stop halts locally immediately and requests authoritative cleanup; a newer server-confirmed Stop survives a lost HTTP acknowledgement. Ignore invitations is saved per account on this device and reapplied on admission. Room ownership grants no control over someone else's bubble. F is the source social-follow shortcut, with Shift+F reserved for camera follow; pending incoming consent does not make F accept or dismiss it.
+
+Accepted followers use collision-aware movement and exact world-motion facing, with ordinary paths taking precedence. Editor, typing, dialog and focus interruptions pause motion; fresh current authority is required before resuming. A single accepted connection controls movement. Sibling sessions receive the current pose and may Stop, without acquiring a movement lease. Lock-only changes retain separate media/text revisions. This path depends on explicitly configured all-member membership and remains disabled by default. It starts no microphone, camera or provider.
+
+Server authority passes 37 focused HTTP/SQLite/SSE cases and 25 independent boundary checks. The motion component passes 26 focused and existing motion checks. The current client passes 54 protocol checks, 10 native component scenarios and five responsive touch layouts. Earlier integrated native play established named consent, lock/outsider exclusion, follower movement/facing, immediate Stop and Chat pause/resume; it also exposed two corrected keyboard/acknowledgement issues. The corrected actual-game replay and final aggregate verification are pending at this source checkpoint, so this increment is not yet release-verified. The replay also found a resume GET overtaken by live state could leave a request ticket pending forever; failed tickets now retire safely and a valid successful read may retain newer same-admission authority. Controlled native replays cover both that ordering and lost replies. A prior aggregate exposed one outdated EventSource test fixture missing the new controller dependencies; its updated 40-case freshness suite passes, and the complete aggregate will rerun. Exact scope, source pins and remaining gaps are in `GROUP-PLAY-CONTRACT.md`, `server/PROXIMITY-CONTROLS.md`, and `FOLLOW-MOTION.md`.
+
+## Prior increment: usable embedded content windows
 
 Existing room-content windows now resize with a 48px native handle or keyboard steps, and maximize/restore when the measured game canvas is at least 1024px wide. The same iframe, unsent form, tabs and underlying Chat remain mounted. Presentation changes add no history entries or authorization calls; explicit Return, Close, room exit and revoked actions still dispose content, and later history reopening reauthorizes. The pinned design source is PR609 merge `9a68beea975560480c2c4dd3f23aeb50ef6f330b`, not evidence of deployment.
 
@@ -8,9 +16,9 @@ Maximized content makes covered controls inert and yields to real higher dialogs
 
 The integrated tree passes 1,110 CPU/API tests with the same historical skip, 259 syntax checks, build, package startup/static checks and Dockerfile-copy reconstruction. All ten new actual-game scenarios, all eleven unchanged content-history scenarios and all five unchanged Express scenarios pass on the final bundle, with zero page exceptions. Ten native window-component cases also pass. Exact iframe identity, draft, history and authorization counters are checked through pointer resize, native keyboard, cross-frame Tab in both directions, real Room SSE unread, higher dialogs, 1023/1024 resize and CDP touch/cancellation. The 320px portrait and 844px landscape captures keep controls reachable, opaque ink headers and no obsolete map-framing warning. Social and Nearby typing fixtures each pass eighteen cases, including covered-state handling. The new `windows` CI group exercises these modules, Social and the actual game; existing groups remain present.
 
-Final main bundle: `2979ba0181c69ca0441e999a1fce013a09e31e59e0bc81e120a84c75e78e6430`; CSS: `6cae2c2c7c625ffffb5cf28eb31f88d902971d2966d1ccacbd3bb0637b8407ad`. This increment is locally verified; its publication and exact-head CI are pending.
+Final main bundle: `2979ba0181c69ca0441e999a1fce013a09e31e59e0bc81e120a84c75e78e6430`; CSS: `6cae2c2c7c625ffffb5cf28eb31f88d902971d2966d1ccacbd3bb0637b8407ad`. This increment is published at `2331886fd92f27bf3a3ff5a80e599dbf21d40189`; all twelve exact-head CI jobs passed in run `37095503538`.
 
-This is a bounded adaptation of working content windows. The source Orbit shell, its full toolbar layout and per-device bar preference, provider embedding acceptance, physical devices and deployment remain separate. Current remote baseline is `a72fcd30761822243d28ab15a831c2632fed4427`; its one-file terrain readiness correction passed all eleven exact-head CI jobs. No live configuration or credentials changed.
+This is a bounded adaptation of working content windows. The source Orbit shell, its full toolbar layout and per-device bar preference, provider embedding acceptance, physical devices and deployment remain separate. Current remote baseline is the windows commit `2331886fd92f27bf3a3ff5a80e599dbf21d40189`, with all twelve exact-head CI jobs green. No live configuration or credentials changed.
 
 ## Prior increment: bounded cut-surface construction
 
@@ -105,7 +113,7 @@ The operator review remains pinned to `93ae7de9f529f252ecba13230369b404a663ef04`
 
 ## Next
 
-1. Publish the native terrain workbench and verify its exact-head CI
+1. Complete the participant-control native replay, publish its bounded source and verify exact-head CI
 2. Confirm intended proximity cap/threshold/scale before activating the optional policy in an operator build
 3. Complete operator-authorized real device/relay acceptance and safe hybrid SFU handoff
 4. Continue larger world-creation and social-play parity gaps and port the next verified source control changes

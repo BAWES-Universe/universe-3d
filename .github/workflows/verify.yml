@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [core, authoring, images, media, framing, residents, presentation, hud, nearby, terrain, windows]
+        group: [core, authoring, images, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -1,0 +1,44 @@
+/* Source ink, round 1.5px glyphs and native action pills; contextual, not a permanent dock. */
+.proximity-controls {
+  --proximity-base-bottom: 112px;
+  --proximity-base-max-height: calc(100dvh - 260px);
+  position: absolute; z-index: 12;
+  left: calc(var(--hud-left,0px) + var(--hud-width,100vw)/2);
+  bottom: var(--proximity-bottom,var(--proximity-base-bottom)); transform: translateX(-50%);
+  width: max-content; max-width: min(440px,calc(var(--hud-width,100vw) - 24px));
+  max-height: var(--proximity-max-height,var(--proximity-base-max-height)); overflow: auto; overscroll-behavior: contain;
+  color: var(--u-text-soft,#fff); font: 13px/1.4 Inter,Arial,sans-serif;
+  scrollbar-width: thin; scrollbar-color: var(--u-text-muted) var(--u-ink);
+}
+.proximity-controls[hidden], .proximity-controls [hidden] { display: none !important; }
+.proximity-summary { display: flex; justify-content: center; gap: 10px; margin: 0 0 6px; padding: 3px 12px; background: var(--u-surface-flat,#14121e); border-radius: var(--u-pill,9999px); font-size: 12px; }
+.proximity-summary-detail { color: var(--u-text-muted,#bbb); }
+.proximity-control-strip { display: flex; gap: 4px; padding: 5px; border-radius: var(--u-pill,9999px); background: var(--u-surface-flat,#14121e); box-shadow: var(--u-shadow-flat); backdrop-filter: var(--u-backdrop); }
+.proximity-control { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 48px; min-height: 48px; border: 1px solid transparent; border-radius: var(--u-pill,9999px); padding: 8px 11px; background: transparent; color: inherit; font: inherit; line-height: 1.3; cursor: pointer; touch-action: manipulation; flex-shrink: 0; }
+.proximity-control svg { width: 24px; height: 24px; flex: 0 0 24px; pointer-events: none; }
+.proximity-control[aria-pressed=true], .proximity-primary { background: var(--u-primary,#8629fc); color: #fff; }
+.proximity-control[data-stop=true] { background: var(--u-muted-coral,#e96d51); color: #14121e; font-weight: 600; }
+.proximity-control[data-control=ignore] { font-size: 11px; padding-inline: 9px; }
+.proximity-control[data-control=ignore][aria-pressed=true] { background: var(--u-selected); box-shadow: inset 0 0 0 1px var(--u-selected-border); }
+.proximity-control[aria-disabled=true] { opacity: .55; cursor: default; }
+.proximity-control:focus-visible, .proximity-summary:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.proximity-control:not([aria-disabled=true]):active { box-shadow: inset 0 0 0 2px rgba(255,255,255,.5); }
+@media (hover:hover) { .proximity-control:not([aria-disabled=true]):hover { box-shadow: inset 0 0 0 1px var(--u-secondary-hover-border); background-color: var(--u-control-hover); } }
+.proximity-invitation { margin-bottom: 7px; padding: 10px; border-radius: 20px; background: var(--u-surface-raised,#14121e); box-shadow: var(--u-shadow-raised); backdrop-filter: var(--u-backdrop); }
+.proximity-invitation-title { margin: 0 0 8px; text-align: center; overflow-wrap: anywhere; }
+.proximity-invitation-actions { display: flex; gap: 6px; }
+.proximity-invitation-actions .proximity-control { flex: 1; background-color: var(--u-secondary); border-color: var(--u-secondary-border); }
+.proximity-invitation[data-expired=true] { opacity: .8; }
+.proximity-feedback { margin-top: 7px; display: flex; align-items: center; gap: 5px; border-radius: 20px; padding: 5px 10px; background: var(--u-surface-flat,#14121e); }
+.proximity-status { flex: 1; min-width: 0; max-width: 340px; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.proximity-status[data-error=true] { color: #ffd2c9; }
+/* Compact lanes place the surface above the movement/camera region. Parent may
+   override --proximity-bottom for an open side surface; nothing covers the dock. */
+@media (max-width:700px) { .proximity-controls { --proximity-base-bottom: 340px; --proximity-base-max-height: max(112px,calc(100dvh - 490px)); } .proximity-control { gap: 5px; padding-inline: 9px; font-size: 12px; } .proximity-control-strip { gap: 2px; } }
+#app[data-hud-compact=true] .proximity-controls { max-width: calc(var(--hud-width,100vw) - 24px); }
+@media (max-height:550px) { .proximity-controls { --proximity-base-bottom: 88px; --proximity-base-max-height: max(108px,calc(100dvh - 176px)); max-width: min(440px,calc(var(--hud-width,100vw) - 280px)); } }
+/* Hosts can embed the same surface in a reserved lane with no screen positioning. */
+.proximity-controls[data-placement=inline] { position: relative; left: auto; bottom: auto; transform: none; width: 100%; max-width: 100%; max-height: none; }
+@media (prefers-reduced-motion:reduce) { .proximity-controls * { transition: none; } }
+
+.proximity-controls[data-obscured=true] { visibility: hidden; pointer-events: none; }

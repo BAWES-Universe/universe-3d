@@ -61,9 +61,9 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
     }
     return result;
   }
-  function refresh(roomId) {
+  function refresh(roomId,after) {
     if(!roomId)return;const previous=refreshFrame;
-    try{if(membership)refreshFrame={roomId,batch:membership.captureRoom(roomId),graph:null};for(const p of presence.values())if(p.roomId===roomId&&store.canSeeRoom(store.roomRow(roomId),p.userId))emitUser(p.userId,'media-policy',policy(p.userId,roomId));}
+    try{if(membership)refreshFrame={roomId,batch:membership.captureRoom(roomId),graph:null};for(const p of presence.values())if(p.roomId===roomId&&store.canSeeRoom(store.roomRow(roomId),p.userId))emitUser(p.userId,'media-policy',policy(p.userId,roomId));after?.(refreshFrame?.batch);}
     finally{refreshFrame=previous;}
   }
   function state(userId,roomId,value,acceptedSession) {v.boolean(value,'enabled');if(!roomId)v.fail(403,'JOIN_REQUIRED');store.authorize(roomId,userId);if(membership)membership.setConsent(acceptedSession,value);if(value||(membership&&membership.policyForAccount(userId,roomId).enabled))enabled.set(userId,roomId);else {enabled.delete(userId);for(const pair of [...priorEdges])if(pair.includes(userId))priorEdges.delete(pair);}refresh(roomId);return policy(userId,roomId,acceptedSession);}
@@ -93,5 +93,5 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
   function authorizeDelivery(s,data){if(!membership)return true;if(data.bubbleId!==undefined)return membership.authorizeDelivery(s,data);try{return membership.policy(s).enabled;}catch{return false;}}
   function sweep(){if(membership)for(const result of membership.sweep())if(!result.error)refresh(result.roomId);}
   function close(){membership?.close();enabled.clear();priorEdges.clear();}
-  return {policy,refresh,state,leave,signal,authorizeDelivery,sweep,close,proximityTextPolicy(s){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.policy(s);},captureProximityTextRoom(roomId){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.captureRoom(roomId);},assertAdmission(s,roomId){membership?.assertAdmission(s,roomId);}};
+  return {captureControlRoom(roomId){return membership.captureRoom(roomId);},controlState(s,connectionId){return membership.controlState(s,connectionId);},controlAction(s,body,fence){return membership.controlAction(s,body,fence);},beginControlledPresence(s){return membership?.beginControlledPresence(s);},authorizeControlledPresence(s,body,fence){membership?.authorizeControlledPresence(s,body,fence);},setControlConnectionLookup(fn){membership?.setControlConnectionLookup(fn);},policy,refresh,state,leave,signal,authorizeDelivery,sweep,close,proximityTextPolicy(s){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.policy(s);},captureProximityTextRoom(roomId){if(!membership)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return membership.captureRoom(roomId);},assertAdmission(s,roomId){membership?.assertAdmission(s,roomId);}};
 }
