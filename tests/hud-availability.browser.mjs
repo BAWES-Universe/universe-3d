@@ -17,6 +17,13 @@ async function hit(locator,{scroll=true}={}){
 }
 async function press(locator,touch=false){await hit(locator);if(touch)await locator.tap();else await locator.click();await page.waitForTimeout(150);}
 async function customReachable(touch=false){
+ // Build can become visible before ResizeObserver moves secondary controls
+ // into More. Wait for the measured layout before choosing the native route;
+ // an early isVisible() result can otherwise refer to a now-hidden control.
+ await page.waitForFunction(()=>{
+  const editor=document.querySelector('#editor'),r=editor.getBoundingClientRect(),short=r.height<540;
+  return r.width>0&&r.height>0&&editor.dataset.short===String(short)&&editor.dataset.compact===String(r.width<760||short);
+ },null,{timeout:5000});
  const custom=page.getByRole('button',{name:'Custom images',exact:true});
  if(await custom.isVisible()){await hit(custom);return;}
  const more=page.getByRole('button',{name:'More build tools',exact:true});
