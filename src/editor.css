@@ -30,9 +30,9 @@
   left: 24px;
   top: 105px;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0,1fr) auto auto;
   align-items: center;
-  gap: 7px 24px;
+  gap: 7px 10px;
   padding: 14px 15px 12px;
   min-width: 258px;
   max-width: 370px;
@@ -62,6 +62,15 @@
 
   font-weight: 700;
 }
+.builder-room-settings {
+  min-width: 48px;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 11px;
+  background: var(--u-secondary);
+  border: 1px solid var(--u-secondary-border);
+}
+.builder-room-settings.active { background: var(--u-selected); border-color: var(--u-selected-border); }
 .builder-done {
   align-self: center;
   color: var(--u-text-soft);
@@ -1052,7 +1061,7 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
 .terrain-note { min-height: 14px; margin: 9px 0 0; font-size: 10px; line-height: 1.5; color: var(--u-text-muted); }
 .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 397px; }
 @media (min-width: 1100px) { .builder-terrain { left: calc(50% - 25px); } }
-@media (min-width: 701px) and (max-width: 1050px) {
+@media (min-width: 701px) and (max-width: 850px) {
   .builder-toolbelt { flex-wrap: wrap; justify-content: center; width: max-content; border-radius: 20px; }
   .builder-tray, .builder-terrain { bottom: 238px; }
   .builder-hint { bottom: 234px; }
@@ -1060,9 +1069,9 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
   .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 458px; }
 }
 @media (max-width: 700px) {
-  .builder-toolbelt { grid-template-columns: repeat(7,minmax(0,1fr)); }
+  .builder-toolbelt { grid-template-columns: repeat(6,minmax(0,1fr)); }
   .builder-toolbelt .small-btn { white-space: normal; min-width: 0; line-height: 1.25; padding: 5px 2px; font-size: 9px; }
-  .builder-toolbelt .primary { grid-column: span 2; }
+  .builder-toolbelt .primary { grid-column: span 1; }
   .builder-terrain { left: 10px; right: 10px; bottom: 205px; transform: none; width: auto; max-width: none; padding: 8px 9px 10px; border-radius: 14px; }
   .terrain-materials { gap: 5px; }
   .terrain-materials button { min-height: 58px; font-size: 10px; }
@@ -1072,15 +1081,17 @@ body:has(#editor.editor-workbench:not([hidden])) #toast {
   .terrain-note { font-size: 9px; }
   .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 420px; }
 }
+@media (max-width: 700px) {
+  .editor-workbench .builder-heading { grid-template-columns: minmax(0,1fr) auto auto; gap: 4px 7px; }
+  .builder-heading .builder-room-settings { grid-column: 2; grid-row: 1 / span 2; }
+  .builder-heading .builder-done { grid-column: 3; }
+}
 @media (max-width: 379px) {
-  .builder-toolbelt { grid-template-columns: repeat(6,minmax(0,1fr)); }
-  .builder-toolbelt .primary { grid-column: span 6; }
-  .builder-tray, .builder-terrain { bottom: 258px; }
-  .builder-hint { bottom: 267px; }
-  .builder-tray:not([hidden]) ~ .builder-hint { bottom: 472px; }
   .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 473px; }
   .terrain-actions { flex-wrap: wrap; }
   .terrain-blocking { margin-left: 3px; }
 }
 @media (max-height: 650px) and (min-width: 1051px) { .builder-terrain { bottom: 161px; } .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 381px; } }
 @media (max-height: 520px) { .builder-terrain { max-height: calc(100dvh - 255px); overflow: auto; } .builder-terrain:not([hidden]) ~ .builder-hint { display: none; } }
+
+@media (pointer: coarse) { .builder-toolbelt .small-btn { min-width: 44px; } }

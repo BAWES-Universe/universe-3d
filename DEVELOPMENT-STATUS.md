@@ -1,6 +1,8 @@
-# Development status · 2026-10-03 02:15 UTC
+# Development status · 2026-10-03 02:38 UTC
 
 ## Current increment: native terrain workbench
+
+The terrain checkpoint was published as `65f2a3e3531f49fb2899f4cf88095b2bdfa7b99e`. Its exact-head CI passed nine jobs and exposed two compact-layout regressions: the 320px toolbelt gained a third row, and an unnecessarily raised palette obscured the initial 1000px/DPR2 selection fixture. The focused correction moves Room settings beside Done, keeps 12 toolbelt controls in two rows with 45.5px minimum width at 320, and restores the medium palette offset to 701–850px. Both original regression suites pass unchanged; an additional eight-case native toolbar fixture covers reachability, target sizes, Terrain→Custom→Save and keyboard Room access. The 14 terrain editor fixture cases also pass. Publication/CI for this correction remain pending.
 
 Build now paints snapped rectangles of grass, soil, stone, wood or water. Appearance and blocking are explicit; water starts blocked, with no swimming. Restore base removes authored cells and restores the original paving/ground/planting. A straight wall stroke creates an ordinary wall that remains selectable, movable and rotatable. Pointer previews do not mutate the scene; one completed stroke is one undo transaction. Keyboard sizing, native focus/activation and touch/camera cancellation use the same editor path.
 
@@ -10,7 +12,7 @@ Authored patches replace affected baked scenery cleanly. Water animates a shared
 
 Final local aggregate passes 1,096 CPU/API tests with the same historical skip; all 249 source files pass syntax checks. Build, package startup/static files and Dockerfile-copy reconstruction pass. Final browser verification passes 14 native editor cases, 9 renderer cases, 7 actual two-client/desktop/touch scenarios, 3 native full-shell Enter lifecycle checks and all 5 existing Express full-shell cases, with no page exceptions. The final main bundle is `e689c2fed2f185b13473ff3ee05a151015ff2f5077d5e8e2db6e96b4365d4c2d`; CSS is `9d41f047b3c38bfef73d0fca935d57e05ba794c8bfddc8f582e1923515f84b00`. Headless software-WebGL, fixture query/draw counts and emulated touch do not establish physical-device performance or production capacity.
 
-Baseline `b733ab2c532e31e7eb99f315eebd8b5b9b32aa62` passed all ten exact-head CI jobs. Terrain publication and its exact-head CI remain pending; no deployment, live configuration or credential changes were made.
+Baseline `b733ab2c532e31e7eb99f315eebd8b5b9b32aa62` passed all ten exact-head CI jobs. Terrain source is published; the compact-layout correction above addresses its two CI failures. No deployment, live configuration or credential changes were made.
 
 ## Prior increment: ephemeral human Nearby typing
 

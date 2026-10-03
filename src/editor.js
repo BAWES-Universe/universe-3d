@@ -44,9 +44,9 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  const undo=button('↶',()=>undoScene(),'Undo last change (Ctrl/Cmd+Z)');undo.ariaLabel='Undo';
  const redo=button('↷',()=>redoScene(),'Redo (Ctrl/Cmd+Shift+Z)');redo.ariaLabel='Redo';
  const snapBtn=button('Grid 1m',()=>{if(floatingImage(activeImage())){if(!imageSnap){imageSnap=true;snap=1;}else if(snap===1)snap=.5;else imageSnap=false;}else snap=snap===1?.5:1;gesture=null;refreshPreview();update({inspect:false});mode();},'Toggle 1 metre / half-metre snapping');
- const settingsBtn=button('⚙ Room',()=>{roomSettings=!roomSettings;update({inspect:true});},'Room settings, areas and room files');
+ const settingsBtn=button('⚙ Room',()=>{roomSettings=!roomSettings;update({inspect:true});},'Room settings, areas and room files');settingsBtn.classList.add('builder-room-settings');header.insertBefore(settingsBtn,close);
  const save=button('Save room',()=>saveScene(),'Save room (Ctrl/Cmd+S)');save.classList.add('primary');
- belt.append(selectBtn,eraseBtn,addBtn,terrainBtn,customBtn,areaBtn,rotateBtn,duplicateBtn,undo,redo,snapBtn,settingsBtn,save);
+ belt.append(selectBtn,eraseBtn,addBtn,terrainBtn,customBtn,areaBtn,rotateBtn,duplicateBtn,undo,redo,snapBtn,save);
  const tray=el('section','builder-tray');tray.ariaLabel='Furniture tray';const trayTop=el('div','builder-tray-top');trayTop.append(el('strong','','A few things to make it yours'));
  const trayClose=button('×',()=>{trayOpen=false;update({inspect:false});},'Close furniture tray');trayClose.ariaLabel='Close furniture tray';trayTop.append(trayClose);tray.append(trayTop);
  const search=el('input','builder-search');search.type='search';search.placeholder='Find furniture or a placed item…';search.ariaLabel='Search room items';tray.append(search);
