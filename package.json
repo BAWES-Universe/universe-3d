@@ -1,6 +1,6 @@
 {
   "name": "universe-3d-game",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "private": true,
   "type": "module",
   "scripts": {

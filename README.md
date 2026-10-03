@@ -18,6 +18,8 @@ In local development mode, the first guest on a fresh database owns the seeded p
 
 Data lives in `data/universe.sqlite`. Keep it across restarts. Create a local account in You to recover your character and identity after clearing cookies. There is no email/password recovery or SSO. Local development defaults to loopback and exact loopback Host checks. For the separate private dev preview, explicit public-mode Host/Origin/TLS settings, offline owner/reviewer provisioning and a dedicated persistent volume are supplied. Read `DEV-PREVIEW-OPERATOR.md` before exposing the app; changing only the listen address is unsafe.
 
+Optional all-member proximity and Nearby text are off by default. An operator can activate them through the strictly validated `UNIVERSE_PROXIMITY_CONFIG`, without editing the application factory. Every membership policy value must be explicit; no deployed cap, threshold or coordinate scale is inferred. See [the configuration contract](PROXIMITY-RUNTIME-CONFIG.md). This does not configure a relay or SFU.
+
 ## Play and create
 
 - **Move:** WASD / ZQSD / arrows, relative to the camera. Hold Shift for 2.5× manual fast walk. Click the ground to pathfind; Shift does not accelerate automatic paths. Diagonals are normalized.
@@ -26,6 +28,7 @@ Data lives in `data/universe.sqlite`. Keep it across restarts. Create a local ac
 - **Build:** E (B is an alias). Choose furniture, inspect the snapped footprint, rotate with R, click or Space to place. Select and drag to move; V selects, X erases, D duplicates, Delete removes. Arrows move the preview or selection; `[ ]` cycles selection. Undo/redo uses Cmd/Ctrl Z / Shift Z; save uses Cmd/Ctrl S. Escape cancels the current operation before closing.
 - **Custom images:** open Build → Custom images. Choose a PNG, name/tag it, choose a floor or upright representation and optional collision cells, then explicitly Upload. Search the room library and place a pinned reusable instance. Drag, quarter-turn, duplicate and Save work as with furniture. Images stay flat; they are not converted into 3D meshes. See `CUSTOM-IMAGES.md` for limits and current lifecycle gaps.
 - **Express:** Enter on key release opens Say; Ctrl+Enter opens Think. Think is visible to others, not a private note. Favorites use 1–6. Room chat is a separate durable conversation.
+- **Nearby text, when enabled:** choose Chat → Nearby. Enter sends, Shift+Enter adds a line, and composition does not send. Only current bubble recipients receive it; microphone consent is independent. Received history/drafts stay in this tab, become read-only after leave, and clear on reload. Reconnection does not fetch missed messages. Room/Direct remain separate persistent channels.
 - **Direct sections:** C Chat, U People, G Explore, J Quests, P You, M Connect, L Personal spaces, N Bots when authorized. Cmd/Ctrl K searches actual actions, people and places. `?` or F1 opens the shortcut guide.
 - **Personal spaces:** managers configure dynamic/static personal areas in Build. Registered eligible users can claim or transfer a dynamic space, then edit objects only within its full footprint. L reopens the area controls; Cmd/Ctrl D walks to your first desk in the current room at 2.5× speed. Managers can assign/revoke with explicit object-retention choices.
 - **Residents:** eligible universe owners and world admins/editors can open Bots, choose a native 3D appearance, set home/radius and ordered patrol points, then explicitly create the resident. Closing a new draft keeps it in the current tab; reload or sign-out clears that local draft. Existing resident field changes save on Back/Close. Native scene handles and the plan/numeric controls edit the same draft. Disabled residents stay in the catalog. Local pause/resume/return controls obey their saved permissions. Provider-free social residents remain silent.
@@ -71,6 +74,7 @@ npm run test:browser:modules
 npm run test:browser:authoring
 npm run test:browser:images
 npm run test:browser:media
+npm run test:browser:nearby
 ```
 
 Core browser tests run serially through the actual shell for camera, direct building, character persistence, Express and WebGL-unavailable fallback. Module tests separately cover fixtures and media-policy/lifecycle behavior. Browser tests use Chromium software WebGL; local results do not certify physical phones or production capacity. Old test scripts remain as historical probes and are not implicitly passing checks.

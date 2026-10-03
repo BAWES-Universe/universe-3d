@@ -17,7 +17,7 @@
 
 # Standalone implementation status · 2026-10-02
 
-The current v0.6.8 increment adds opt-in live Nearby text, preserving room-image lifecycle and the optional all-member proximity/ICE path. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
+The current v0.6.9 increment exposes the optional all-member proximity and Nearby text policy through an explicit, strictly validated process configuration. Both remain off by default. Full Universe parity remains unfinished. Passing focused tests does not certify a whole source contract or replace user play review.
 
 ## Latest verification
 

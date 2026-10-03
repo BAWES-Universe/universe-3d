@@ -4,7 +4,7 @@ Status: bounded server and scoped-client integration, **disabled by default**. B
 
 ## Activation and boundaries
 
-The only activation is explicit `createGameServer({proximityMembershipConfig})`. There is no environment variable, production default, public config endpoint, or SFU switch. Omit the option to retain the prior four-participant media graph and existing API. The composed `src/media.js` recognizes `proximity-v1` and sends its scoped envelopes. Earlier clients do not, and must not be used with this option. No factory/configuration default was changed by the client integration.
+Activation is explicit `createGameServer({proximityMembershipConfig})`, or the validated process-entry `UNIVERSE_PROXIMITY_CONFIG` described in `PROXIMITY-RUNTIME-CONFIG.md`. The optional environment object requires every policy value; absent/off retains the previous path. There is no automatic activation, public config endpoint, or SFU switch. Omit the option to retain the prior four-participant media graph and existing API. The composed `src/media.js` recognizes `proximity-v1` and sends its scoped envelopes. Earlier clients do not, and must not be used with this option. No factory/configuration default was changed by the client integration.
 
 `validateProximityMembershipConfig` requires all fields:
 

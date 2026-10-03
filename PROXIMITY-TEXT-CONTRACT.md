@@ -4,7 +4,7 @@ This bounded increment maps to `U3D-PAR-CHAT-PROXIMITY` without certifying that 
 
 ## Activation and scope
 
-The factory accepts `proximityTextConfig: {enabled: true}` only with a valid explicitly configured `proximityMembershipConfig`. No environment variable or process default enables it. Existing media/ICE routes retain their consent and session protections. `media.proximityTextPolicy(acceptedSession)` delegates to the existing all-member authority; there is no room-wide or legacy-media fallback.
+The factory accepts `proximityTextConfig: {enabled: true}` only with a valid explicitly configured `proximityMembershipConfig`. The process entry can supply this option through the explicit `UNIVERSE_PROXIMITY_CONFIG` contract in `PROXIMITY-RUNTIME-CONFIG.md`; absent/off preserves the previous path. No process default enables it. Existing media/ICE routes retain their consent and session protections. `media.proximityTextPolicy(acceptedSession)` delegates to the existing all-member authority; there is no room-wide or legacy-media fallback.
 
 Audience comes solely from authoritative `conversationRecipients`, plus sender-account sibling sessions as an explicit standalone own-account-copy adaptation. Account membership counts once; all captured live recipient sessions/streams are checked separately. The initiating SSE stream receives its HTTP acknowledgement, with no SSE echo to that exact stream. Sibling tabs sharing the same cookie/session and other authenticated sessions of the same account receive `ownAccountCopy: true`. Multiple streams on a recipient session each receive at most one event, carrying the same message ID but their own epoch. Clients deduplicate their rows by message ID.
 
