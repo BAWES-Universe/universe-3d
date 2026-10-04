@@ -47,6 +47,7 @@ import {createHudAvailability} from './hud-availability.js';
 import './hud-availability.css';
 const $=id=>document.getElementById(id);
 const updateHudAvailability=createHudAvailability($('app'),$('game'));
+let shellMore=null;
 let areaActions,contentModality=null,syncWindowControls=()=>{},bootReady=false,lastSurfaceClosed=0;for(const id of ['join-form','login-form'])$(id).addEventListener('submit',event=>{if(!bootReady){event.preventDefault();event.stopImmediatePropagation();}});
 
 const state={accessPolicy:{guestCreation:true,registration:true},user:null,worlds:[],universes:[],room:null,bots:[],botPermissions:{canManage:false},scene:clone(seedWorlds[0].rooms[0].scene),people:[],position:{x:0,z:7},direction:0,moving:false,ready:false,online:false,admissionId:null,admissionEpoch:null,admissionRevision:null,destination:null};
@@ -99,6 +100,7 @@ const arrivalNavigation=createArrivalNavigation({api,getContext:()=>({accountId:
   return true;
  },
  onBegin:(_destination,options)=>{
+  shellMore?.close({restore:false});
   const focused=document.activeElement;retainedEditorFocus=(options.reconcile||options.mode==='resume')&&$('editor').contains(focused)?{node:focused,value:focused.value,start:focused.selectionStart,end:focused.selectionEnd}:null;
   joinEpoch++;navigating=true;$('editor').inert=true;pendingNearbyContext=null;pendingGroupContext=null;
   groupControls?.syncState();followMotion.clear(motion,{path});social?.resetNearbyConnection('travelling');social?.render();
@@ -282,17 +284,18 @@ function syncGroupPresentation(){
 }
 function isTyping(){return imageLibrary?.hasFocus()||areaActions?.hasFocus()||/INPUT|TEXTAREA|SELECT|IFRAME/.test(document.activeElement?.tagName)||document.activeElement?.isContentEditable;}
 function stopPlayer({cancelPath=true}={}){keys.clear();joystick={x:0,z:0};stopMotion(motion);state.moving=false;if(cancelPath){path=[];pathSpeed=1;deskTargetId=null;renderer?.setDestination(null);}worldInput?.cancel();}
-function modalOpen(){return !!(editor?.isReviewOpen?.()||contentMaximized()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||!$('dialog').hidden||!$('welcome').hidden);}
+function modalOpen(){return !!(shellMore?.isOpen()||editor?.isReviewOpen?.()||contentMaximized()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||!$('dialog').hidden||!$('welcome').hidden);}
 function contentMaximized(){const window=areaActions?.windowState();return !!(window?.open&&window.maximized);}
 function contentCoversViewport(){const window=areaActions?.windowState();return !!(window?.open&&window.width>=Math.min(innerWidth,$('game').getBoundingClientRect().width)-1);}
-function contentHasHigherSurface(){return !!(editor?.isReviewOpen?.()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||botEditor?.isOpen()||!$('dialog').hidden||!$('welcome').hidden||!$('fallback').hidden);}
+function contentHasHigherSurface(){return !!(shellMore?.isOpen()||editor?.isReviewOpen?.()||imageLibrary?.isOpen()||personalAreas?.isOpen()||quests?.isOpen()||places?.isOpen()||avatarCreator?.isOpen()||express?.isOpen()||palette?.isOpen()||botEditor?.isOpen()||!$('dialog').hidden||!$('welcome').hidden||!$('fallback').hidden);}
 function syncContentWindows(){
- contentModality?.sync();syncWindowControls();
+ contentModality?.sync();syncWindowControls();shellMore?.sync();
+ const buildButton=$('dock-build'),pressed=String(building);if(buildButton.getAttribute('aria-pressed')!==pressed){buildButton.setAttribute('aria-pressed',pressed);buildButton.querySelector('label').textContent=building?'Done':'Build';buildButton.setAttribute('aria-label',building?'Leave Build mode':'Build');}
  const covered=String(contentMaximized());if($('express').dataset.contentCover!==covered)$('express').dataset.contentCover=covered;
 }
 function walkTo(point){if(!state.ready||building||modalOpen()||groupState?.followingReadOnly)return;const destination=nearestWalkable(state.scene,point);pathSpeed=1;deskTargetId=null;$('game').focus();path=findPath(state.scene,state.position,destination);if(path.length){renderer?.setDestination(destination);}else toast('That spot is not reachable. Try a clear patch of ground.');}
 let lastFramingStatus='';
-function update(dt,actualDt=dt){syncGroupState();syncContentWindows();syncGroupPresentation();if(contentCoversViewport())dismissFramingToast();if(deskTargetId&&!(state.room?.personalAreas||[]).some(area=>area.areaId===deskTargetId&&area.isOwner)){stopPlayer();toast('Your desk assignment changed');}
+function update(dt,actualDt=dt){syncGroupState();syncContentWindows();syncGroupPresentation();const intentionalCover=contentCoversViewport()||shellMore?.isOpen()||(!$('social').hidden&&(innerWidth<=700||innerHeight<=540));if(intentionalCover)dismissFramingToast();if(deskTargetId&&!(state.room?.personalAreas||[]).some(area=>area.areaId===deskTargetId&&area.isOwner)){stopPlayer();toast('Your desk assignment changed');}
  quests?.setSuppressed(modalOpen()||building||!$('social').hidden||!$('media').hidden||isTyping());
  const observing=mirrorControlledAvatar(),pausedFollow=!!groupState?.motion&&followBlocked();if(pausedFollow)followMotion.pause(motion,{path});
  if(renderer&&state.ready&&!navigating&&!building&&!botEditor?.isOpen()&&!modalOpen()&&!isTyping()&&!observing&&!pausedFollow){
@@ -305,7 +308,7 @@ function update(dt,actualDt=dt){syncGroupState();syncContentWindows();syncGroupP
   if(hadPath&&!path.length)renderer.setDestination(null);updateAreas();
  }else if(!observing){stopMotion(motion);state.moving=false;}
  updateHudAvailability();renderPeople();renderer?.setTarget(state.position.x,state.position.z);renderer?.render(Math.min(.1,dt),actualDt);express?.update(performance.now());sendPresence();$('coords').textContent=state.position.x.toFixed(1)+' / '+state.position.z.toFixed(1);
- if(renderer&&$('camera-follow')){const camera=renderer.getCameraState();$('camera-follow').setAttribute('aria-pressed',String(camera.follow));if(camera.framing.status==='insufficient-space'&&lastFramingStatus!=='insufficient-space'&&!contentCoversViewport())toast('Not enough visible map space to frame the character. Close a panel or enlarge the window.',{kind:'framing'});lastFramingStatus=camera.framing.status;}
+ if(renderer&&$('camera-follow')){const camera=renderer.getCameraState();$('camera-follow').setAttribute('aria-pressed',String(camera.follow));if(camera.framing.status==='insufficient-space'&&lastFramingStatus!=='insufficient-space'&&!intentionalCover)toast('Not enough visible map space to frame the character. Close a panel or enlarge the window.',{kind:'framing'});lastFramingStatus=camera.framing.status;}
 }
 function loop(time){const actualDt=(time-lastTime)/1000||.016;lastTime=time;update(actualDt,actualDt);requestAnimationFrame(loop);}
 function showShortcuts(){showDialog({eyebrow:'EVERYTHING AT YOUR FINGERTIPS',title:'Make yourself at home',text:'Move · WASD / ZQSD / arrows\nFast walk · hold Shift (2.5×)\nExpress / Think · Enter / Ctrl Enter\nChat / People / Explore · C / U / G\nBuild · E (B also works)\nInteract · Space\nRotate your character · R\nFavourite reactions · 1–6\nQuests / Profile / Connect / Bots · J / P / M / N\nPersonal spaces · L\nPersonal desk · Cmd/Ctrl D\nQuick actions · Cmd K / Ctrl K\nNearby · F invite/stop following (never Accept)\nCamera · drag to orbit, wheel to zoom\nCamera keys · [ ] orbit, Page Up/Down tilt, + − zoom, Shift F follow camera, Home reset\nPan · middle-drag, Shift right-drag, or Pan + arrows\nTouch camera · two fingers orbit/pinch; three fingers pan\nBuild · arrows move preview, Space place, R rotate, D duplicate, V select, X erase, Delete remove\nBuild history · Cmd/Ctrl Z undo, Shift Z redo, Cmd/Ctrl S save\nTab / Shift Tab focuses every control. Enter / Space activates it. Escape steps back.\nShortcuts stay out of text fields and composition.'});}
@@ -343,13 +346,58 @@ function quickActions(){const ready=()=>state.ready;return [
 {id:'build-duplicate',label:'Duplicate selected item',shortcut:'D',enabled:()=>building&&!!editor?.getSelected(),run:()=>editor.duplicate()},
 {id:'build-erase',label:'Erase items',shortcut:'X',enabled:()=>building,run:()=>editor.setTool('erase')},
 {id:'shortcuts',label:'Keyboard shortcuts',shortcut:'?',run:showShortcuts}];}
+/** Transient shell navigation: actions call existing owners. No content or draft nodes are rebuilt. */
+function mountShellMore(){
+ const trigger=document.createElement('button');trigger.id='dock-more';trigger.type='button';
+ trigger.innerHTML='<span>'+icon('ChevronUp')+'</span><label>More</label>';trigger.setAttribute('aria-label','More');
+ trigger.setAttribute('aria-controls','shell-more');trigger.setAttribute('aria-expanded','false');trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('data-window-control','');$('dock').append(trigger);
+ const root=document.createElement('div');root.id='shell-more';root.hidden=true;
+ root.innerHTML='<div class="shell-more-backdrop"></div><section class="shell-more-card" role="dialog" aria-modal="true" aria-labelledby="shell-more-title"><header><h2 id="shell-more-title">Make yourself at home</h2><button type="button" class="icon-btn" aria-label="Close More">'+icon('Close')+'</button></header><div class="shell-more-body"></div></section>';$('app').append(root);
+ const body=root.querySelector('.shell-more-body'),bindings=[];
+ function group(title,items){
+  const section=document.createElement('section'),heading=document.createElement('h3'),list=document.createElement('div');heading.textContent=title;list.className='shell-more-actions';section.append(heading,list);body.append(section);
+  for(const item of items){const button=document.createElement('button');button.type='button';button.innerHTML=icon(item.icon)+'<span></span>';button.querySelector('span').textContent=item.label;list.append(button);
+   button.onclick=()=>{if(button.disabled)return;close({restore:false});$('game').focus({preventScroll:true});if(item.target)$(item.target).click();else item.run();};bindings.push({button,...item});
+  }
+ }
+ group('Together',[
+  {label:'Connect',icon:'MicOn',target:'dock-media'}, {label:'Express',icon:'Emoji',target:'dock-emote'},
+  {label:'You',icon:'Settings',target:'dock-settings'}, {label:'Customize character',icon:'Pencil',run:()=>avatarCreator?.open()},
+ ]);
+ group('Your room',[
+  {label:'Quests',icon:'Star',target:'quest-open'}, {label:'Personal spaces',icon:'Home',run:openPersonalAreas,enabled:()=>state.ready},
+  {label:'Custom images',icon:'Copy',run:()=>openImageLibrary(),enabled:()=>state.ready}, {label:'Room residents',icon:'Users',run:()=>openBots(),visible:()=>state.botPermissions.canManage},
+  {label:'Manage this place',icon:'Tools',target:'manage-place'}, {label:'Share link',icon:'Share',target:'invite'},
+ ]);
+ group('Camera',[
+  ['Zoom in','Plus','zoom-in'],['Zoom out','Minus','zoom-out'],['Orbit left','RotateLeft','rotate-camera'],['Orbit right','RotateRight','camera-right'],
+  ['Tilt up','ChevronUp','camera-tilt-up'],['Tilt down','ChevronDown','camera-tilt-down'],['Pan camera','Move','camera-pan'],['Follow me','Focus','camera-follow'],['Reset camera','Home','home-camera'],
+ ].map(([label,icon,target])=>({label,icon,target,enabled:()=>!!renderer})));
+ group('Find an action', [{label:'Quick actions',icon:'Search',target:'quick-actions'}, {label:'Keyboard shortcuts',icon:'Help',target:'shortcuts-help'}]);
+ const card=root.querySelector('.shell-more-card'),closeButton=card.querySelector('header button');
+ function close({restore=true}={}){if(root.hidden)return;root.hidden=true;trigger.setAttribute('aria-expanded','false');stopPlayer();lastSurfaceClosed=performance.now();if(restore)trigger.focus({preventScroll:true});}
+ function sync(){if(root.hidden)return;for(const item of bindings){const target=item.target?$(item.target):null,disabled=target?.disabled||item.enabled&&!item.enabled(),hidden=item.visible&&!item.visible();if(item.button.disabled!==!!disabled)item.button.disabled=!!disabled;if(item.button.hidden!==!!hidden)item.button.hidden=!!hidden;for(const attr of ['aria-expanded','aria-pressed']){const value=target?.getAttribute(attr);if(value!==item.button.getAttribute(attr)){if(value===null||value===undefined)item.button.removeAttribute(attr);else item.button.setAttribute(attr,value);}}}}
+ trigger.onclick=()=>{if(!root.hidden){close();return;}stopPlayer();root.hidden=false;trigger.setAttribute('aria-expanded','true');sync();closeButton.focus({preventScroll:true});};
+ closeButton.onclick=()=>close();root.querySelector('.shell-more-backdrop').onclick=()=>close();
+ // Dismiss before activating another visible shell control, without consuming its action.
+ document.addEventListener('pointerdown',event=>{if(!root.hidden&&!root.contains(event.target)&&!trigger.contains(event.target))close({restore:false});},true);
+ const compact=matchMedia('(max-width: 700px), (max-height: 540px)');
+ compact.addEventListener('change',()=>{if(['dock-media','dock-emote','dock-settings'].includes(document.activeElement?.id)&&compact.matches)trigger.focus({preventScroll:true});});
+ return {isOpen:()=>!root.hidden,close,sync,handleKey(event){
+  if(root.hidden)return false;
+  if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();close();return true;}
+  if(event.key==='Tab'){const controls=[...card.querySelectorAll('button:not(:disabled)')].filter(node=>!node.hidden&&node.getClientRects().length);const index=controls.indexOf(document.activeElement);if(index<0||event.shiftKey&&index===0||!event.shiftKey&&index===controls.length-1){event.preventDefault();(event.shiftKey?controls.at(-1):controls[0])?.focus();}}
+  // Native Tab/Enter/Space stay with the menu; all world and editor handlers wait.
+  event.stopImmediatePropagation();return true;
+ }};
+}
 function applySourceIcons(){const docks={explore:'Planet',chat:'MessageCircle',people:'Users',media:'MicOn',emote:'Emoji',build:'Tools',settings:'Settings'};for(const[id,name]of Object.entries(docks)){$('dock-'+id).querySelector('span').innerHTML=icon(name);}const buttons={'zoom-in':'Plus','zoom-out':'Minus','rotate-camera':'RotateLeft','camera-right':'RotateRight','camera-tilt-up':'ChevronUp','camera-tilt-down':'ChevronDown','camera-pan':'Move','camera-follow':'Focus','home-camera':'Home','dialog-close':'Close','shortcuts-help':'Help'};for(const[id,name]of Object.entries(buttons))$(id).innerHTML=icon(name);$('shortcuts-help').setAttribute('aria-label','Keyboard shortcuts');$('quick-actions').innerHTML=icon('Command')+'<span>K</span>';$('quick-actions').setAttribute('aria-label','Quick actions');$('quest-open').textContent='Quests';$('quest-open').insertAdjacentHTML('afterbegin',icon('Star'));$('invite').textContent='Share link';$('invite').insertAdjacentHTML('afterbegin',icon('Share'));}
 function setupControls(){applySourceIcons();
  for(const selector of ['.builder-toolbelt','.hud-right','#view-controls'])document.querySelector(selector)?.setAttribute('aria-description','Scroll or swipe horizontally for more controls. Tab brings each control into view.');
-for(const b of document.querySelectorAll('#dock [data-panel]'))b.onclick=()=>togglePanel(b.dataset.panel);$('dock-build').onclick=()=>toggleBuild();$('dock-media').onclick=()=>{$('media').hidden=!$('media').hidden;$('dock-media').classList.toggle('active',!$('media').hidden);};$('dock-emote').onclick=()=>express?.toggle();for(const b of document.querySelectorAll('[data-emote]'))b.onclick=()=>{emote=b.dataset.emote;emoteUntil=Date.now()+4500;$('emotes').hidden=true;api('/api/rooms/'+state.room.id+'/emote',{method:'POST',body:{emoji:emote}}).catch(e=>toast(e.message));sendPresence(true);};
- const dockMore=document.createElement('span');dockMore.id='dock-more';dockMore.setAttribute('aria-hidden','true');dockMore.innerHTML=icon('ChevronRight');$('app').append(dockMore);$('dock').setAttribute('aria-description','Scroll or swipe horizontally for more controls. Tab brings each control into view.');const updateDockHint=()=>{dockMore.hidden=$('dock').scrollWidth-$('dock').clientWidth-$('dock').scrollLeft<2;};$('dock').addEventListener('scroll',updateDockHint);window.addEventListener('resize',updateDockHint);new ResizeObserver(updateDockHint).observe($('dock'));requestAnimationFrame(updateDockHint);
+for(const b of document.querySelectorAll('#dock [data-panel]'))b.onclick=()=>togglePanel(b.dataset.panel);$('dock-build').onclick=()=>toggleBuild();$('dock-media').onclick=()=>{stopPlayer();$('media').hidden=!$('media').hidden;$('dock-media').classList.toggle('active',!$('media').hidden);};$('dock-emote').onclick=()=>express?.toggle();for(const b of document.querySelectorAll('[data-emote]'))b.onclick=()=>{emote=b.dataset.emote;emoteUntil=Date.now()+4500;$('emotes').hidden=true;api('/api/rooms/'+state.room.id+'/emote',{method:'POST',body:{emoji:emote}}).catch(e=>toast(e.message));sendPresence(true);};
+ shellMore=mountShellMore();
  $('quick-actions').onclick=()=>palette?.toggle();$('shortcuts-help').onclick=showShortcuts;$('manage-place').onclick=()=>places?.open('manage');$('places-alert').onclick=()=>{$('places-alert').hidden=true;places?.open('invitations');};$('quest-open').onclick=()=>quests?.open();$('zoom-in').onclick=()=>renderer?.zoom(-2);$('zoom-out').onclick=()=>renderer?.zoom(2);$('rotate-camera').onclick=()=>renderer?.orbit(-90,0);$('home-camera').onclick=()=>renderer?.resetCamera();$('camera-right').onclick=()=>renderer?.orbit(90,0);$('camera-tilt-up').onclick=()=>renderer?.orbit(0,-60);$('camera-tilt-down').onclick=()=>renderer?.orbit(0,60);$('camera-follow').onclick=()=>renderer?.setFollow(!renderer.getCameraState().follow);$('camera-pan').onclick=()=>{worldInput?.setPanMode(!worldInput.getPanMode());$('camera-pan').setAttribute('aria-pressed',String(worldInput.getPanMode()));};$('interact').onclick=()=>interact();$('dialog-close').onclick=()=>closeDialog();$('dialog').onclick=e=>{if(e.target===$('dialog'))closeDialog();};$('invite').onclick=()=>{if(!state.room){places?.open('explore');return;}if(!navigating)void arrivalShare?.open();};
- window.addEventListener('session-ended',()=>{imageLibrary?.suspend();editor.revert();location.reload();});window.addEventListener('social-close',()=>{clearActive();lastSurfaceClosed=performance.now();const surface=history.state?.surface;if(['chat','people','explore','settings'].includes(surface))dismissSurface(surface);($('dock-'+$('social').dataset.tab)||$('dock-chat')).focus({preventScroll:true});});window.addEventListener('profile-updated',()=>{renderPeople();sendPresence(true);});window.addEventListener('avatar-emote',e=>{emote=e.detail.emoji;emoteUntil=Date.now()+4500;renderPeople();sendPresence(true);});document.addEventListener('focusin',()=>{if(isTyping())stopPlayer();});window.addEventListener('editor-status',e=>{$('dirty-dot').hidden=!e.detail.dirty;});
+ window.addEventListener('session-ended',()=>{imageLibrary?.suspend();editor.revert();location.reload();});window.addEventListener('social-close',()=>{clearActive();lastSurfaceClosed=performance.now();const surface=history.state?.surface;if(['chat','people','explore','settings'].includes(surface))dismissSurface(surface);const trigger=$('dock-'+$('social').dataset.tab)||$('dock-chat');(trigger.getClientRects().length?trigger:$('dock-more')).focus({preventScroll:true});});window.addEventListener('profile-updated',()=>{renderPeople();sendPresence(true);});window.addEventListener('avatar-emote',e=>{emote=e.detail.emoji;emoteUntil=Date.now()+4500;renderPeople();sendPresence(true);});document.addEventListener('focusin',()=>{if(isTyping())stopPlayer();});window.addEventListener('editor-status',e=>{$('dirty-dot').hidden=!e.detail.dirty;});
  window.addEventListener('editor-review',e=>{stopPlayer();if(e.detail?.record===false){syncContentWindows();return;}if(e.detail?.open)rememberSurface('editor-review',{nested:true});else{lastSurfaceClosed=performance.now();if(!navigating)dismissSurface('editor-review');}});
  const interactive=target=>!!target?.closest?.('button,a,input,textarea,select,[role="button"],[contenteditable="true"]');
  let enterStartedInUi=false;
@@ -360,6 +408,7 @@ for(const b of document.querySelectorAll('#dock [data-panel]'))b.onclick=()=>tog
   // Native activation may close a control and move focus before Enter is released.
   // Keep that gesture with its UI origin, even after a long hold or lost focus.
   if(e.key==='Enter'&&!e.repeat)enterStartedInUi=interactive(e.target)||!!areaActions?.hasFocus()||!!express?.isOpen();
+  if(shellMore?.handleKey(e))return;
   if(imageLibrary?.hasFocus(e.target))return;
   // Onboarding and capability fallback are also true keyboard-modal surfaces.
   const entrySurface=!$('fallback').hidden?$('fallback'):!$('welcome').hidden&&!avatarCreator?.isOpen()?$('welcome'):null;
@@ -418,10 +467,11 @@ for(const b of document.querySelectorAll('#dock [data-panel]'))b.onclick=()=>tog
   if(/^[1-6]$/.test(k)){e.preventDefault();express?.playSlot(Number(k)-1);return;}
   if(actions[k]){e.preventDefault();stopPlayer({cancelPath:true});actions[k]();}
  });
- window.addEventListener('keyup',e=>{const k=keyName(e);keys.delete(k==='z'?'w':k==='q'?'a':k);if(k==='Enter'&&enterStartedInUi){enterStartedInUi=false;return;}if(e.isComposing||e.keyCode===229||isTyping()||!$('welcome').hidden||places?.isOpen()||quests?.isOpen()||avatarCreator?.isOpen()||palette?.isOpen())return;if(performance.now()-lastSurfaceClosed<500)return;if(building&&k==='Enter'&&!e.ctrlKey&&!e.metaKey&&!e.altKey)return;if(!interactive(e.target)||express?.isOpen())if(express?.handleKey(e))return;if(e.defaultPrevented||modalOpen()||building||botEditor?.isOpen()||e.ctrlKey||e.metaKey||e.altKey)return;if(k===' '&&!interactive(e.target)){e.preventDefault();interact();}},true);
- window.addEventListener('blur',()=>{stopPlayer();followMotion.pause(motion,{path});});document.addEventListener('visibilitychange',()=>{stopPlayer();if(!document.hidden)sendPresence(true);});
+ window.addEventListener('keyup',e=>{const k=keyName(e);if(shellMore?.isOpen()){keys.clear();e.stopImmediatePropagation();return;}keys.delete(k==='z'?'w':k==='q'?'a':k);if(k==='Enter'&&enterStartedInUi){enterStartedInUi=false;return;}if(e.isComposing||e.keyCode===229||isTyping()||!$('welcome').hidden||places?.isOpen()||quests?.isOpen()||avatarCreator?.isOpen()||palette?.isOpen())return;if(performance.now()-lastSurfaceClosed<500)return;if(building&&k==='Enter'&&!e.ctrlKey&&!e.metaKey&&!e.altKey)return;if(!interactive(e.target)||express?.isOpen())if(express?.handleKey(e))return;if(e.defaultPrevented||modalOpen()||building||botEditor?.isOpen()||e.ctrlKey||e.metaKey||e.altKey)return;if(k===' '&&!interactive(e.target)){e.preventDefault();interact();}},true);
+ window.addEventListener('blur',()=>{shellMore?.close({restore:false});stopPlayer();followMotion.pause(motion,{path});});document.addEventListener('visibilitychange',()=>{stopPlayer();if(!document.hidden)sendPresence(true);});
  worldInput=mountWorldInput({canvas:$('game'),joystickRoot:$('joystick'),joystickThumb:$('joystick-thumb'),getContext:()=>({ready:state.ready,building:building||!!botEditor?.isOpen(),modalOpen:modalOpen()}),getRenderer:()=>renderer,getEditor:()=>botEditor?.isOpen()?botMapInput:editor,onJoystick:value=>joystick=value,onWalkTo:walkTo,onInteract:hit=>{if(hit.type==='bot'){const bot=state.bots.find(b=>b.id===hit.id);if(!bot)return false;if(state.botPermissions.canManage)openBots(bot.id);else showDialog({eyebrow:'ROOM BOT',title:bot.name,text:'This is a room resident. No AI provider is connected, so it stays silent.'});return true;}const o=state.scene.objects.find(o=>o.id===hit.id);if(!o||!(areaActions?.hasActions(o)||o.text))return false;if(Math.hypot(o.x-state.position.x,o.z-state.position.z)<2.7){interact(o);return true;}walkTo(nearestWalkable(state.scene,{x:o.x,z:o.z+1.6}));return true;}});
  window.addEventListener('popstate',()=>surfaceHistory.replay(()=>{
+  shellMore?.close({restore:false});
   let destination;try{destination=readTravelLocation(location.href);}catch(error){toast(error.message);return;}
   if(destination.roomId&&(!state.destination||destinationKey(destination)!==destinationKey(state.destination))){joinRoom(destination.roomId,{entry:destination.entry,historyMode:'replace'}).catch(()=>{});return;}const surface=history.state?.surface==='explore'?'places':history.state?.surface;
   if(history.state?.surface==='explore')history.replaceState({...history.state,surface:'places'},'',location.href);

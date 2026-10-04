@@ -52,7 +52,7 @@ export function buildEnvironment(world,root,{box,cylinder,sphere,ground,groundPi
    for(let k=0;k<3;k++){
     const xx=x+(k-1)*.18,zz=z+((i+k)%3-1)*.23;
     const flower=sphere('border-foliage',xx,.12,zz,.16,['#91b174','#83a26b','#9cb375'][i%3],root,.7,{surface:'leaves',pickable:false});
-    if((i+k)%3===0)sphere('border-blossom',xx,.24,zz,.065,i%2?'#e6bf73':'#c6addb',root,.7,{pickable:false});
+    if((i+k)%3===0)sphere('border-blossom',xx,.24,zz,.065,i%2?'#e9c74c':'#e96d51',root,.7,{pickable:false});
    }
   }
   // Low perennial beds and stepping stones make the quiet edges readable.
@@ -61,12 +61,12 @@ export function buildEnvironment(world,root,{box,cylinder,sphere,ground,groundPi
    for(let k=0;k<18;k++){
     const a=k*2.399,r=Math.sqrt((k+.5)/18),x=cx+Math.cos(a)*sx*.42*r,z=cz+Math.sin(a)*sz*.42*r;
     sphere('sage-leaves',x,.14,z,.16,k%2?'#9cad83':'#7d9875',root,.65,{surface:'leaves',pickable:false});
-    if(k%2===0){cylinder('flower-stem',x,.22,z,.016,.35,'#80946b',root,.012,{pickable:false});sphere('flower-head',x,.4,z,.07,k%3?'#d3b8e0':'#e9d199',root,.5,{pickable:false});}
+    if(k%2===0){cylinder('flower-stem',x,.22,z,.016,.35,'#80946b',root,.012,{pickable:false});sphere('flower-head',x,.4,z,.07,k%3?'#e7a68b':'#e9d199',root,.5,{pickable:false});}
    }
   }
   for(let i=0;i<5;i++){const x=-9.8+i*.23,z=2.2+i*.55;b('garden-step',x,.044,z,.62,.055,.38,'#c5c7b2');}
   // Fine inlaid navigation stones, with no fake screen or placeholder content.
-  for(const x of [-1,1])for(let z=2;z<10;z+=1.2)b('path-inlay',x*1.32,.056,z,.10,.012,.22,'#b095b9','slate');
+  for(const x of [-1,1])for(let z=2;z<10;z+=1.2)b('path-inlay',x*1.32,.056,z,.10,.012,.22,'#d2b67d','stone');
  }else{
   b('studio-foundation',0,-.03,0,w-.6,.02,d-.6,theme==='studio'?'#ddcbb7':'#b2a1bf',theme==='studio'?'wood':'slate');
   ground('central-work-area',0,.014,-1,16,14,theme==='studio'?'wood':'stone',theme==='studio'?'#c5b49e':'#b6afba',root);
