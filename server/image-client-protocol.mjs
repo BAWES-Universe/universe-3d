@@ -2,7 +2,7 @@ import {IMAGE_PHYSICAL_SIZE_CAPABILITY,CLIENT_CAPABILITIES_HEADER} from '../src/
 export const IMAGE_PROTOCOL_FLOOR_KEY='image_physical_size_protocol_floor';
 export const IMAGE_RELOAD_MESSAGE='Reload this page to use the updated image sizes. Your unsaved room draft is kept so you can export it before reloading.';
 const binaryRead=(path,method)=>['GET','HEAD'].includes(method)&&(/^\/api\/rooms\/[A-Za-z0-9_-]{1,80}\/files\/[A-Za-z0-9_-]{1,80}$/.test(path)||/^\/api\/rooms\/[A-Za-z0-9_-]{1,128}\/assets\/[A-Za-z0-9_-]{1,128}\/versions\/[A-Za-z0-9_-]{1,128}\/image$/.test(path));
-const admission=(path,method)=>path==='/api/site-invites'&&['GET','POST'].includes(method)||method==='POST'&&(['/api/site-admission/check','/api/site-admission/redeem'].includes(path)||/^\/api\/site-invites\/[A-Za-z0-9_-]{1,80}\/revoke$/.test(path));
+const admission=(path,method)=>path==='/api/signup'&&['GET','POST'].includes(method)||path==='/api/setup/me'&&method==='GET'||path==='/api/site-invites'&&['GET','POST'].includes(method)||method==='POST'&&(['/api/site-admission/check','/api/site-admission/redeem'].includes(path)||/^\/api\/site-invites\/[A-Za-z0-9_-]{1,80}\/revoke$/.test(path));
 const exempt=(path,method)=>admission(path,method)||binaryRead(path,method)||['/api/health','/api/access','/api/client-protocol'].includes(path)||method==='POST'&&['/api/session','/api/login','/api/logout'].includes(path);
 /** A version declaration only. Existing cookie/room authorization still applies. */
 export function acceptsImageProtocol(req){

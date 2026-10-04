@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <title>Make yourself at home · BAWES Universe</title>
+  <link rel="stylesheet" href="/universe-tokens.css">
+  <link rel="stylesheet" href="/site-admission.css">
+  <link rel="stylesheet" href="/signup.css">
+  <script src="/signup.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to your account</a>
+  <div class="admission-shell">
+    <header class="site-header"><img class="signup-brand" src="/assets/bawes-universe-logo.png" alt="BAWES Universe" width="184" height="92"><span class="header-note">Make room for possibility.</span></header>
+    <main id="content" class="admission-layout" tabindex="-1">
+      <section class="welcome-story" aria-labelledby="story-title"><p class="eyebrow">YOUR PEOPLE. YOUR PLACES.</p><h1 id="story-title">A little closer.<br><span>A lot more possible.</span></h1><p class="story-intro">Come together, build a corner of your own, and see what happens next.</p><p class="story-footnote">Your account starts with no access to private places.</p></section>
+      <section class="admission-panel" aria-label="Your Universe account">
+        <div id="loading-view" class="view"><p class="eyebrow">ONE MOMENT</p><h2 tabindex="-1">Finding your place</h2><p role="status" class="muted">Checking account access…</p></div>
+        <div id="unavailable-view" class="view" hidden><p class="eyebrow">LET’S TRY THAT AGAIN</p><h2 tabindex="-1">A short pause.</h2><p id="unavailable-message" class="form-notice error" role="alert"></p><button id="retry-access" class="button primary wide" type="button">Try again</button></div>
+        <div id="signup-view" class="view" hidden>
+          <p class="eyebrow">YOUR FIRST HELLO</p><h2 tabindex="-1">Make yourself at home.</h2><p class="muted">Create your own Universe account.</p>
+          <p class="signup-disclosure">Email is not verified. There is no password reset. Save your password somewhere safe.</p>
+          <form id="signup-form">
+            <label for="signup-name">What should we call you?</label><input id="signup-name" name="name" autocomplete="nickname" maxlength="40" required placeholder="Your name">
+            <label for="signup-email">Email</label><input id="signup-email" name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required placeholder="you@example.com" aria-describedby="email-help"><p id="email-help" class="field-help">We trim surrounding spaces and treat email addresses as lowercase. Your email stays private.</p>
+            <label for="signup-password">Password</label><div class="password-field"><input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="16" maxlength="256" required aria-describedby="password-help"><button class="password-toggle" type="button" data-password="signup-password" aria-label="Show password" aria-pressed="false">Show</button></div><p id="password-help" class="field-help">16–256 characters, without spaces at either end or control characters.</p>
+            <label for="signup-confirm">Confirm password</label><div class="password-field"><input id="signup-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="16" maxlength="256" required><button class="password-toggle" type="button" data-password="signup-confirm" aria-label="Show confirmation password" aria-pressed="false">Show</button></div>
+            <p id="signup-error" class="form-notice error" role="alert" hidden></p><button id="signup-submit" class="button primary wide" type="submit">Create my account</button>
+          </form>
+          <button id="signup-signin" class="button quiet wide" type="button">Already have an account? Sign in</button>
+        </div>
+        <div id="signin-view" class="view" hidden>
+          <p class="eyebrow">WELCOME BACK</p><h2 id="signin-heading" tabindex="-1">Your people await.</h2><p id="signin-note" class="muted">Sign in with your email or existing username.</p>
+          <form id="signin-form"><label for="signin-identifier">Email or username</label><input id="signin-identifier" name="identifier" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required>
+            <label for="signin-password">Password</label><div class="password-field"><input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="256" required><button class="password-toggle" type="button" data-password="signin-password" aria-label="Show sign-in password" aria-pressed="false">Show</button></div>
+            <p id="signin-error" class="form-notice error" role="alert" hidden></p><button id="signin-submit" class="button primary wide" type="submit">Sign in</button>
+          </form><button id="signin-create" class="button quiet wide" type="button">New here? Create an account</button><p class="scope-note">This dev setup does not verify email and has no password reset. Keep your password safe.</p>
+        </div>
+        <div id="account-view" class="view" hidden>
+          <p id="account-eyebrow" class="eyebrow">YOU’RE SIGNED IN</p><h2 id="account-heading" tabindex="-1">A place to begin.</h2><p id="account-note" class="muted"></p>
+          <label for="account-id">Your account ID</label><textarea id="account-id" class="account-id" rows="2" readonly spellcheck="false"></textarea><button id="copy-account-id" class="button secondary wide" type="button">Copy account ID</button><p id="copy-status" class="field-help" role="status"></p>
+          <p id="setup-note" class="scope-note" hidden>Setting up this site? Confirm this exact account ID with your operator. Creating an account does not grant owner access.</p>
+          <a id="enter-universe" class="button primary wide" href="/" hidden>Enter Universe</a><button id="check-status" class="button primary wide" type="button" hidden>Check site status</button><button id="change-account" class="button quiet wide" type="button">Sign in to another account</button>
+        </div>
+        <noscript><h2>Let’s get you in</h2><p>Enable JavaScript to create an account and sign in.</p></noscript>
+      </section>
+    </main><footer class="site-footer"><span>BAWES UNIVERSE</span><span>Small hellos. More possibility.</span></footer>
+  </div>
+</body>
+</html>

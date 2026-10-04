@@ -15,7 +15,7 @@ export class Store {
     this.db = new DatabaseSync(filename);
     this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,name TEXT NOT NULL,woka TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'online',created_at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY COLLATE NOCASE,user_id TEXT NOT NULL UNIQUE REFERENCES users(id),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY COLLATE NOCASE,email TEXT COLLATE NOCASE UNIQUE,user_id TEXT NOT NULL UNIQUE REFERENCES users(id),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT REFERENCES users(id),public INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY,world_id TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,name TEXT NOT NULL,owner_id TEXT REFERENCES users(id),public INTEGER NOT NULL DEFAULT 1,revision INTEGER NOT NULL DEFAULT 0,scene TEXT NOT NULL,created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL,current_room_id TEXT REFERENCES rooms(id) ON DELETE SET NULL);
