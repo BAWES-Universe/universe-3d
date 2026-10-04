@@ -15,7 +15,10 @@ async function hit(locator,{scroll=true}={}){
  const state=await locator.evaluate(el=>{const r=el.getBoundingClientRect(),target=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return{rect:r.toJSON(),hit:el===target||el.contains(target),target:target?.outerHTML.slice(0,180),width:innerWidth,height:innerHeight};});
  assert(state.rect.x>=-.5&&state.rect.right<=state.width+.5&&state.rect.y>=-.5&&state.rect.bottom<=state.height+.5,JSON.stringify(state));assert(state.hit,JSON.stringify(state));return state;
 }
-async function press(locator,touch=false){await hit(locator);if(touch)await locator.tap();else await locator.click();await page.waitForTimeout(150);}
+async function press(locator,touch=false){
+ const secondary={'dock-emote':'Express','dock-media':'Connect','dock-settings':'You'};
+ if(!await locator.isVisible()&&secondary[await locator.getAttribute('id')]){const name=secondary[await locator.getAttribute('id')];await press(page.locator('#dock-more'),touch);locator=page.locator('#shell-more').getByRole('button',{name,exact:true});}
+ await hit(locator);if(touch)await locator.tap();else await locator.click();await page.waitForTimeout(150);}
 async function customReachable(touch=false){
  // Build can become visible before ResizeObserver moves secondary controls
  // into More. Wait for the measured layout before choosing the native route;
@@ -79,20 +82,14 @@ async function cameraRowCheck(){
  return layouts;
 }
 async function keyboardDockCheck(){
- await open('Open wide content');await page.locator('#dock-explore').focus();
- for(let i=0;i<6;i++){await hit(page.locator(':focus'),{scroll:false});await page.keyboard.press('Tab');}
- assert.equal(await page.locator('#dock').evaluate(e=>e.scrollLeft>0),true);await hit(page.locator(':focus'),{scroll:false});await page.locator('#dock-explore').focus();
- // Focus scroll and wheel scrolling can finish asynchronously in software WebGL.
- // Establish the reset first, so prior Tab scrolling cannot satisfy the wheel check.
- await page.waitForFunction(()=>document.querySelector('#dock').scrollLeft===0,null,{timeout:5000});
- await hit(page.locator('#dock-explore'),{scroll:false});
- const dock=await page.locator('#dock').boundingBox(),point={x:dock.x+dock.width/2,y:dock.y+dock.height/2};
- assert(await page.evaluate(({x,y})=>document.querySelector('#dock').contains(document.elementFromPoint(x,y)),point),'native wheel target belongs to the dock');
- await page.mouse.move(point.x,point.y);await page.mouse.wheel(500,0);
- await page.waitForFunction(()=>document.querySelector('#dock').scrollLeft>0,null,{timeout:5000});
- assert(await page.locator('#dock').evaluate(e=>e.scrollLeft>0),'native wheel scrolls the available dock');
- await press(page.locator('#dock-build'));await hit(page.getByRole('button',{name:'Save room',exact:true}));await page.screenshot({path:out+'/wide-content-scroll.png'});
- pass('1440px 90-percent requested embed reserves a usable lane; native Tab/wheel reach dock and Build tools',{geometry:await noOverflow()});
+ const before=await page.locator('#dock').boundingBox();await open('Open wide content');
+ assert.deepEqual(await page.locator('#dock').boundingBox(),before,'Desktop dock stays fixed when side content opens');
+ const ids=['dock-explore','dock-chat','dock-people','dock-media','dock-emote','dock-build','dock-settings','dock-more'];await page.locator('#dock-explore').focus();
+ for(let i=0;i<ids.length;i++){assert.equal(await page.locator(':focus').getAttribute('id'),ids[i]);await hit(page.locator(':focus'),{scroll:false});if(i<ids.length-1)await page.keyboard.press('Tab');}
+ assert(await page.locator('#dock').evaluate(e=>e.scrollWidth===e.clientWidth&&e.scrollLeft===0),'All desktop actions fit without horizontal scrolling');
+ const d=await page.locator('#dock').boundingBox();await page.mouse.move(d.x+d.width/2,d.y+d.height/2);await page.mouse.wheel(500,0);
+ assert.deepEqual(await page.locator('#dock').boundingBox(),before);await press(page.locator('#dock-build'));await hit(page.getByRole('button',{name:'Save room',exact:true}));await page.screenshot({path:out+'/wide-content-scroll.png'});
+ pass('1440px wide embed keeps dock fixed and every native Tab target reachable; Build still uses the free lane',{geometry:await noOverflow()});
 }
 try{
  let ctx;
@@ -143,7 +140,7 @@ try{
  assert(Number.parseFloat(await page.locator('#app').evaluate(e=>e.style.getPropertyValue('--hud-width')))>=359);
  for(const selector of['#manage-bots','#manage-place','#invite','#dock-explore','#dock-build','#quick-actions','#shortcuts-help'])await hit(page.locator(selector));
  await page.screenshot({path:out+'/wide-content-1024.png'});
- pass('1024px 90-percent requested embed keeps header/dock actions in a scrollable ≥360px lane',{geometry:await noOverflow()});
+ pass('1024px 90-percent requested embed keeps header actions in a ≥360px lane and navigation in its fixed dock',{geometry:await noOverflow()});
  await page.setViewportSize({width:1440,height:950});await reset();
  // CSS-only accessibility fixture enlarges existing control text, not app actions.
  const zoom=await page.addStyleTag({content:'#app button,#app input,#app textarea {font-size:24px !important}'});await open();await press(page.locator('#dock-emote'));await press(page.getByRole('button',{name:'Close Express',exact:true}));
@@ -157,7 +154,7 @@ try{
   if(!full){
    const d=await page.locator('#dock').boundingBox(),touch=await ctx.newCDPSession(page);await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:1,x:d.x+d.width-20,y:d.y+d.height/2}]});
    for(let i=1;i<=6;i++)await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{id:1,x:d.x+d.width-20-i*(d.width-50)/6,y:d.y+d.height/2}]});
-   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(350);assert(await page.locator('#dock').evaluate(e=>e.scrollLeft>0),'native swipe scrolls available dock');await press(page.locator('#dock-build'),true);await customReachable(true);
+   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(350);assert(await page.locator('#dock').evaluate(e=>e.scrollLeft===0&&e.scrollWidth===e.clientWidth),'fixed desktop dock remains fully visible after native swipe');await press(page.locator('#dock-build'),true);await customReachable(true);
   }
   await press(page.getByRole('button',{name:'Return to world',exact:true}),true);await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__universe?.getState().ready);await settle();
   for(const name of['Open content fixture','Open wide content','Read local message'])await hit(page.getByRole('button',{name,exact:true}));await press(page.locator('#dock-build'),true);await customReachable(true);for(const name of['Open content fixture','Open wide content','Read local message'])await hit(page.getByRole('button',{name,exact:true}));await press(page.getByRole('button',{name:'Close editor',exact:true}),true);await settle();

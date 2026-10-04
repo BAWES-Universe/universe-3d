@@ -1,0 +1,50 @@
+{
+  "baseRepository": "BAWES-Universe/universe-3d",
+  "base": "bc715ff6ccc0c3d2537e4c003cb4a7bb82745a34",
+  "branch": "external/shell-polish",
+  "inspectionDate": "2026-10-04",
+  "references": [
+    {
+      "repository": "BAWES-Universe/workadventure-universe",
+      "pr": 613,
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/pull/613",
+      "title": "Batch 1 fixes: buttons stay put, Orbit toggles, phone corners",
+      "head": "948e8f1f71912d8ea19ac105b85e17c1446d3bc2",
+      "base": "9a68beea975560480c2c4dd3f23aeb50ef6f330b",
+      "baseBranch": "claude/project-thread-ioll0t",
+      "headBranch": "claude/project-thread-ioll0t-round5",
+      "state": "closed",
+      "merged": true,
+      "mergeCommit": "8555615018063518e1a027f0f86e7e4e07651be2",
+      "deploymentVerified": false
+    },
+    {
+      "repository": "BAWES-Universe/workadventure-universe",
+      "pr": 620,
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/pull/620",
+      "title": "Remove the \"Keep the bar in view\" switch: bar in view is the only desktop layout",
+      "head": "662e8b72e015f601a65b263ed4f13370668422cd",
+      "base": "09d6c170f96c0d12b77e35959524bd263727c5cd",
+      "baseBranch": "claude/project-thread-ioll0t",
+      "headBranch": "claude/project-thread-ioll0t-barinview",
+      "state": "closed",
+      "merged": true,
+      "mergeCommit": "5deba9d7126254862dd9af3d47207d249fb483e4",
+      "deploymentVerified": false
+    },
+    {
+      "repository": "BAWES-Universe/workadventure-universe",
+      "pr": 625,
+      "url": "https://github.com/BAWES-Universe/workadventure-universe/pull/625",
+      "title": "Look around the map: its own simple mode instead of the editor",
+      "head": "e2ed189d6c2985a7717663bf51889f9ec1643f54",
+      "base": "d71da807d1e44aa557b17c4c70eeb2526a024047",
+      "baseBranch": "claude/project-thread-ioll0t",
+      "headBranch": "claude/project-thread-pkusxh",
+      "state": "open",
+      "merged": false,
+      "mergeCommit": "5e7dd2c605334cc7b9c51d77bc54896be1895221",
+      "deploymentVerified": false
+    }
+  ]
+}

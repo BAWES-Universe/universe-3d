@@ -1253,3 +1253,27 @@ body:has(#editor.editor-workbench:not([hidden])) #toast { pointer-events: none; 
  .builder-conflict-values p { margin: 0; }
  .builder-conflict-values details { grid-column: 2; }
 }
+
+/* Editor polish: feedback belongs beside the controls that caused it. */
+.editor-polish-feedback {
+  display: none; flex: 0 0 auto; padding: 9px 12px;
+  border-top: 1px solid var(--u-secondary-border);
+  color: var(--u-text-soft); background: var(--u-surface-flat);
+  font-size: 11px; line-height: 1.45; overflow-wrap: anywhere;
+  max-height: 88px; overflow: auto; overscroll-behavior: contain;
+}
+.editor-polish-feedback.invalid { display: block; color: var(--u-muted-coral); }
+#editor.editor-workbench[data-compact=true] .editor-polish-feedback { display: block; }
+.builder-toolbelt button[aria-label=Undo] .builder-extra-label,
+.builder-toolbelt button[aria-label=Redo] .builder-extra-label { display: inline; }
+.builder-toolbelt button:is([aria-label=Undo],[aria-label=Redo]) { display: flex; align-items: center; gap: 5px; }
+.editor-workbench :is(input,select,textarea,summary):focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.builder-inspector-heading strong { min-width: 0; overflow-wrap: anywhere; }
+.editor-workbench .inspector .editor-actions { display: flex; gap: 6px; }
+.editor-workbench .inspector .editor-actions button { flex: 1; min-width: 0; min-height: 44px; white-space: normal; }
+@media (pointer: coarse) {
+  .editor-workbench .inspector .editor-actions button { min-height: 48px; }
+}
+
+.editor-polish-feedback[hidden] { display: none !important; }
+#editor.editor-workbench[data-compact=true] .editor-polish-selection-summary { display: none; }
