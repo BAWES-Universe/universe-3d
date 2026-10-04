@@ -65,7 +65,7 @@ try {
   await saved();
   assert.equal(await page.evaluate(() => editor.isOpen()), true);
   assert.equal(await field('name').inputValue(), 'Kept after close failure');
-  assert.match(await page.locator('.resident-error').innerText(), /Connection unavailable/);
+  assert.match(await page.locator('.resident-error:not([hidden])').innerText(), /Connection unavailable/);
   const failedId = (await mutations()).at(-1).args.body.clientOperationId;
   await page.evaluate(() => { manual = false; });
   await page.getByRole('button', { name: 'Save and close residents' }).click();
@@ -195,7 +195,7 @@ try {
   await page.evaluate(() => editor.open());
   assert.equal(await field('name').inputValue(), 'Explicit Create in flight');
   await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
-  assert.match(await page.locator('.resident-error').innerText(), /not been acknowledged/);
+  assert.match(await page.locator('.resident-error:not([hidden])').innerText(), /not been acknowledged/);
   assert.equal(await field('name').inputValue(), 'Explicit Create in flight');
   await page.getByTestId('bot-save').click(); await saved();
   const inFlightRequests = await mutations();
@@ -273,7 +273,7 @@ try {
   assert.equal(await page.evaluate(() => editor.setRoom(room('beta'))), false);
   assert.equal(await page.locator('.resident-room').innerText(), 'The Commons');
   assert.equal(await field('name').inputValue(), 'Stay here until saved');
-  assert.match(await page.locator('.resident-error').innerText(), /Room save failed/);
+  assert.match(await page.locator('.resident-error:not([hidden])').innerText(), /Room save failed/);
   await page.evaluate(() => { window.staleInput = document.querySelector('[data-bot-field="name"]'); });
   assert.equal(await page.evaluate(() => editor.setRoom(room('beta'))), true);
   await page.locator('[data-bot-id="ocean"]').click();
@@ -312,7 +312,8 @@ try {
   check('Pointer map dragging updates the same sidebar coordinates through SVG redraws');
 
   await field('behavior').selectOption('social');
-  assert.match(await page.locator('.resident-detail').innerText(), /remains silent/);
+  assert.match(await page.locator('.resident-detail').innerText(), /Public resident conversation is not connected/);
+  assert.match(await page.locator('.resident-detail').innerText(), /No provider is attached[\s\S]*not executed/);
   assert.match(await page.locator('.resident-detail').innerText(), /Do not enter passwords or API keys/);
   await field('permissions.pause').uncheck();
   assert.equal(await page.locator('[data-live-command="pause"]').isDisabled(), true);
@@ -326,14 +327,14 @@ try {
   await page.locator('[data-bot-id="moss"]').click();
   await page.evaluate(() => { failNext = { status: 409, code: 'BOT_INACTIVE', message: 'A person must be in the room' }; });
   await page.locator('[data-live-command="pause"]').click();
-  await page.waitForFunction(() => document.querySelector('.resident-error').textContent.includes('A person'));
+  await page.waitForFunction(() => document.querySelector('.resident-error:not([hidden])')?.textContent.includes('A person'));
   assert.equal(await page.locator('.resident-recovery').isHidden(), true);
   await field('name').fill('Still editable after inactive command');
   assert.equal(await page.getByTestId('bot-save').isEnabled(), true);
   await page.getByTestId('bot-save').click(); await saved();
   await page.evaluate(() => { uncertainNext = true; });
   await page.locator('[data-live-command="pause"]').click();
-  await page.waitForFunction(() => document.querySelector('.resident-error').textContent.includes('Connection lost'));
+  await page.waitForFunction(() => document.querySelector('.resident-error:not([hidden])')?.textContent.includes('Connection lost'));
   const firstCommand = (await mutations()).at(-1);
   await page.locator('[data-bot-id="rose"]').click();
   await field('enabled').check();
@@ -396,7 +397,7 @@ try {
   await page.evaluate(() => editor.setRoom(room('forbidden')));
   assert.equal(await page.getByTestId('bot-create').isDisabled(), true);
   assert.equal(await page.locator('[data-bot-id]').count(), 0);
-  assert.match(await page.locator('.resident-error').innerText(), /cannot manage/);
+  assert.match(await page.locator('.resident-error:not([hidden])').innerText(), /cannot manage/);
   assert.equal(await page.evaluate(() => editor.select(null)), false);
   check('Server-denied room capability clears prior catalog and blocks creation and selection');
   assert.deepEqual(errors, []);

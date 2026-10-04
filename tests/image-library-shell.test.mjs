@@ -27,7 +27,7 @@ test('transport uses the mounted authenticated room routes and exact upload enve
  await transport.reconcileCreate({roomId:'room_a',operationId:'op_a',signal});await transport.readImage({roomId:'room_a',assetId:'asset_a',versionId:'version_a',signal});
  assert.deepEqual(calls.map(call=>call.url),['/api/rooms/room_a/assets?query=green%20fern','/api/rooms/room_a/assets','/api/rooms/room_a/assets/operations/op_a','/api/rooms/room_a/assets/asset_a/versions/version_a/image']);
  assert.deepEqual(JSON.parse(calls[1].options.body),{draft,pngBase64:'AP8R',mediaType:'image/png',operationId:'op_a'});
- for(const {options}of calls){assert.equal(options.credentials,'same-origin');assert.equal(options.mode,'same-origin');assert.equal(options.signal,signal);assert.equal(options.cache,'no-store');}
+ for(const {options}of calls){assert.equal(options.credentials,'same-origin');assert.equal(options.mode,'same-origin');assert.equal(options.signal,signal);assert.equal(options.cache,'no-store');assert.equal(options.headers['X-Universe-Client-Capabilities'],'image-physical-size-v1');}
  assert.equal(calls[1].options.headers['Content-Type'],'application/json');
 });
 
@@ -167,4 +167,32 @@ test('legacy upload receipts with a newer lifecycle revision never replace known
  assert.equal((await f.service.reconcileCreate({roomId:'room_a'})).entry.version.versionId,'version_1');
  const recovered=await f.service.reconcileVersion({roomId:'room_a',assetId:'asset_a'});assert.equal(recovered.entry.version.versionId,'version_3');assert.equal(recovered.entry.revision,4);
  assert.equal(f.state.room.imageDefinitions['asset_a:version_1'].version.versionId,'version_1');assert.equal(f.state.room.imageDefinitions['asset_a:version_3'].version.versionId,'version_3');f.shell.dispose();
+});
+
+
+test('image protocol errors preserve426 uncertainty; disabled publishing is a definite rejection',async()=>{
+ for(const [status,code,definitive] of [[426,'CLIENT_RELOAD_REQUIRED',false],[409,'IMAGE_PHYSICAL_SIZE_DISABLED',true]]){
+  const transport=createImageAssetTransport({request:async()=>({ok:false,status,json:async()=>({code,message:'Policy changed'})})});
+  await assert.rejects(transport.create({roomId:'r',draft:{},bytes:new Uint8Array([1]),mediaType:'image/png',operationId:'op'}),error=>error.status===status&&error.code===code&&(error.definitive===true)===definitive&&error.data.code===code);
+ }
+});
+
+test('size availability changes refresh controls without replacing the room draft scope',()=>{
+ const f=fixture();const epoch=f.context().roomEpoch;assert.equal(f.context().capabilities.canSize,false);
+ f.state.imagePhysicalSize={enabled:true};f.shell.syncAuthority();assert.equal(f.context().capabilities.canSize,true);assert.equal(f.context().roomEpoch,epoch);
+ f.state.imagePhysicalSize={enabled:false};f.shell.syncAuthority();assert.equal(f.context().capabilities.canSize,false);assert.equal(f.context().roomEpoch,epoch);f.shell.dispose();
+});
+
+test('reload callback can capture image recovery before suspension retires the panel',async()=>{
+ globalThis.MutationObserver=class{observe(){}disconnect(){}};const root={hidden:true,contains:()=>false},state={user:{id:'alice'},ready:true,imagePhysicalSize:{enabled:true},room:{id:'room_a',role:'owner',scene:scene()},scene:scene()};
+ let props,recovery={operationId:'keep-this-identity',state:'uncertain'},captured;
+ const reload=Object.assign(Error('Reload'),{status:426,code:'CLIENT_RELOAD_REQUIRED'});
+ const shell=mountImageLibraryShell({root,getState:()=>state,getRenderer:()=>null,onChoose:()=>true,onAuthorityLost:()=>{captured=shell.getRecoverySnapshot();},transport:{list:async()=>{throw reload},create:async()=>entry(),readImage:async()=>new Blob(['png'],{type:'image/png'}),reconcileCreate:async()=>({status:'not-found'})},mountPanel:p=>{props=p;return{setOpen:value=>root.hidden=!value,attachRoom(){if(!p.getContext().capabilities.canRead)recovery=null;},getRecoverySnapshot:()=>recovery,dispose(){}};}});
+ shell.acceptRoom();await assert.rejects(props.service.list({roomId:'room_a'}),error=>error===reload);assert.deepEqual(captured,{operationId:'keep-this-identity',state:'uncertain'});assert.equal(recovery,null);shell.dispose();
+});
+
+
+test('enabled size policy never activates an unreadable or signed-out library context',()=>{
+ const f=fixture();f.state.imagePhysicalSize={enabled:true};f.state.ready=false;f.shell.syncAuthority();assert.equal(f.context().capabilities.canSize,false);
+ f.state.user=null;f.state.room=null;f.shell.syncAuthority();assert.equal(f.context().capabilities.canSize,false);assert(Object.values(f.context().capabilities).every(value=>value===false));f.shell.dispose();
 });

@@ -1,7 +1,21 @@
 /** Pure v1 metadata contract. Shape validation does not establish authorization or decode PNG bytes. */
 export const IMAGE_ASSET_SCHEMA_VERSION = 1;
-export const IMAGE_ASSET_LIMITS = Object.freeze({maxBytes: 5 * 1024 * 1024, maxDimension: 2048, maxPixels: 4194304, maxCells: 4096, maxName: 120, maxTags: 20, maxTag: 40, maxCoordinate: 1000000});
+export const IMAGE_ASSET_LIMITS = Object.freeze({minMetres: 0.0001, maxMetres: 64, maxBytes: 5 * 1024 * 1024, maxDimension: 2048, maxPixels: 4194304, maxCells: 4096, maxName: 120, maxTags: 20, maxTag: 40, maxCoordinate: 1000000});
 export const IMAGE_PIXELS_PER_METRE = 32;
+
+/** Absent dimensions identify legacy versions; never materialize them into saved metadata. */
+export function imagePhysicalSize(version) {
+  return {widthMetres: version.widthMetres ?? version.widthPixels / IMAGE_PIXELS_PER_METRE,
+    heightMetres: version.heightMetres ?? version.heightPixels / IMAGE_PIXELS_PER_METRE};
+}
+/** A starting suggestion, not a placement/obstruction guarantee. */
+export function suggestImagePhysicalSize(widthPixels, heightPixels, bounds) {
+  const roomLimit = bounds && [bounds.width, bounds.depth].every(n => Number.isFinite(n) && n > 0)
+    ? Math.min(bounds.width, bounds.depth) / 4 : 2;
+  const longest = Math.max(IMAGE_ASSET_LIMITS.minMetres * Math.max(widthPixels, heightPixels) / Math.min(widthPixels, heightPixels), Math.min(2, roomLimit));
+  const scale = longest / Math.max(widthPixels, heightPixels);
+  return {widthMetres: widthPixels * scale, heightMetres: heightPixels * scale};
+}
 
 export class ImageAssetValidationError extends Error {
   constructor(field, message, code = 'INVALID_IMAGE_ASSET') {
@@ -59,7 +73,7 @@ function tags(raw = []) {
   if (result.length > IMAGE_ASSET_LIMITS.maxTags) fail('draft.tags', 'Use at most 20 unique tags');
   return result;
 }
-const DRAFT_FIELDS = ['name', 'tags', 'representation', 'depthPreset', 'depthPivot', 'floating', 'collisionGrid'];
+const DRAFT_FIELDS = ['name', 'tags', 'representation', 'depthPreset', 'depthPivot', 'floating', 'collisionGrid', 'widthMetres', 'heightMetres'];
 /** Mutable discovery text; never substitutes version geometry, bytes, or identity. */
 export function normalizeImageLibraryMetadata(raw) {
   keys(raw, ['name', 'description', 'tags'], 'metadata');
@@ -77,6 +91,10 @@ export function normalizeImageAssetDraft(raw, decodedImageInfo) {
   const byteLength = integer(decodedImageInfo.byteLength, 'image.byteLength', 1, maxBytes);
   if (widthPixels * heightPixels > maxPixels) fail('image.pixels', 'Image exceeds the decoded pixel limit');
   if (decodedImageInfo.mediaType !== 'image/png') fail('image.mediaType', 'Only fully validated PNG images are supported', 'UNSUPPORTED_IMAGE_FORMAT');
+  const physical = {};
+  if (own(raw, 'widthMetres') || own(raw, 'heightMetres')) {
+    for (const key of ['widthMetres', 'heightMetres']) physical[key] = finite(raw[key], `draft.${key}`, IMAGE_ASSET_LIMITS.minMetres, IMAGE_ASSET_LIMITS.maxMetres);
+  }
   const name = text(raw.name, 'draft.name', IMAGE_ASSET_LIMITS.maxName);
   const depthPreset = raw.depthPreset === undefined ? 'standing' : raw.depthPreset;
   if (!['standing', 'floor', 'custom'].includes(depthPreset)) fail('draft.depthPreset', 'Choose standing, floor, or custom', 'UNSUPPORTED_IMAGE_REPRESENTATION');
@@ -101,17 +119,17 @@ export function normalizeImageAssetDraft(raw, decodedImageInfo) {
       collisionGrid.push(output);
     }
   }
-  return freezeImageRecord({name, tags: tags(raw.tags), representation, depthPreset, depthPivot, floating, collisionGrid, widthPixels, heightPixels, byteLength, mediaType: 'image/png'});
+  return freezeImageRecord({...physical, name, tags: tags(raw.tags), representation, depthPreset, depthPivot, floating, collisionGrid, widthPixels, heightPixels, byteLength, mediaType: 'image/png'});
 }
 
 /** Setup-only changes inherit validated image dimensions and definition floating mode. */
 export function normalizeImageAssetSetup(raw, sourceVersion) {
   const fields = ['depthPreset', 'depthPivot', 'collisionGrid'];
-  keys(raw, fields, 'setup'); required(raw, fields, 'setup');
+  keys(raw, [...fields, 'widthMetres', 'heightMetres'], 'setup'); required(raw, fields, 'setup');
   record(sourceVersion, 'sourceVersion');
-  const normalized = normalizeImageAssetDraft({name: sourceVersion.name, tags: sourceVersion.tags, floating: sourceVersion.floating, ...raw},
+  const normalized = normalizeImageAssetDraft({name: sourceVersion.name, tags: sourceVersion.tags, floating: sourceVersion.floating, ...(Object.hasOwn(raw, 'widthMetres') || Object.hasOwn(raw, 'heightMetres') ? {} : Object.hasOwn(sourceVersion, 'widthMetres') ? imagePhysicalSize(sourceVersion) : {}), ...raw},
     {width: sourceVersion.widthPixels, height: sourceVersion.heightPixels, byteLength: sourceVersion.byteLength, mediaType: sourceVersion.mediaType});
-  return freezeImageRecord({representation: normalized.representation, depthPreset: normalized.depthPreset, depthPivot: normalized.depthPivot, collisionGrid: normalized.collisionGrid});
+  return freezeImageRecord({...(Object.hasOwn(normalized, 'widthMetres') ? imagePhysicalSize(normalized) : {}), representation: normalized.representation, depthPreset: normalized.depthPreset, depthPivot: normalized.depthPivot, collisionGrid: normalized.collisionGrid});
 }
 
 export function validateAssetReference(raw) {
@@ -122,7 +140,7 @@ const DEFINITION_FIELDS = ['schemaVersion', 'assetId', 'roomId', 'createdBy', 'c
 const VERSION_FIELDS = [...DRAFT_FIELDS, 'widthPixels', 'heightPixels', 'byteLength', 'mediaType', 'schemaVersion', 'assetId', 'roomId', 'versionId', 'sequence', 'sha256', 'createdBy', 'createdAt'];
 export function validateImageDefinition(definition, version) {
   keys(definition, DEFINITION_FIELDS, 'definition'); keys(version, VERSION_FIELDS, 'version');
-  required(definition, DEFINITION_FIELDS.filter(key => key !== 'provenance'), 'definition'); required(version, VERSION_FIELDS, 'version');
+  required(definition, DEFINITION_FIELDS.filter(key => key !== 'provenance'), 'definition'); required(version, VERSION_FIELDS.filter(key => !['widthMetres', 'heightMetres'].includes(key)), 'version');
   if (definition.schemaVersion !== 1 || version.schemaVersion !== 1) fail('schemaVersion', 'Unsupported image asset schema version', 'UNSUPPORTED_IMAGE_SCHEMA');
   if (definition.originKind !== 'upload') fail('definition.originKind', 'Only room-uploaded image objects are supported', 'UNSUPPORTED_IMAGE_ORIGIN');
   const def = {schemaVersion: 1, assetId: id(definition.assetId, 'definition.assetId'), roomId: id(definition.roomId, 'definition.roomId'), createdBy: id(definition.createdBy, 'definition.createdBy'), createdAt: date(definition.createdAt, 'definition.createdAt'), originKind: 'upload'};
@@ -134,7 +152,7 @@ export function validateImageDefinition(definition, version) {
   if (version.assetId !== def.assetId || version.roomId !== def.roomId) fail('version.assetId', 'Version must belong to the same room and definition', 'IMAGE_ASSET_IDENTITY_MISMATCH');
   if (typeof version.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(version.sha256)) fail('version.sha256', 'Version must carry a lowercase SHA-256 digest');
   const draft = {};
-  for (const key of DRAFT_FIELDS) draft[key] = version[key];
+  for (const key of DRAFT_FIELDS) if (own(version, key)) draft[key] = version[key];
   const metadata = normalizeImageAssetDraft(draft, {width: version.widthPixels, height: version.heightPixels, byteLength: version.byteLength, mediaType: version.mediaType});
   const ver = {...metadata, schemaVersion: 1, assetId: def.assetId, roomId: def.roomId, versionId: id(version.versionId, 'version.versionId'), sequence: integer(version.sequence, 'version.sequence', 1, Number.MAX_SAFE_INTEGER), sha256: version.sha256, createdBy: id(version.createdBy, 'version.createdBy'), createdAt: date(version.createdAt, 'version.createdAt')};
   return freezeImageRecord({schemaVersion: 1, definition: def, version: ver});

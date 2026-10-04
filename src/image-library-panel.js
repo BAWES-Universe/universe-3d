@@ -1,5 +1,5 @@
 // Accessible image-library boundary C. See ui/README.md for the frozen injection and async contract.
-import { IMAGE_ASSET_LIMITS, normalizeImageAssetDraft, validateResolvedImageAsset, normalizeImageLibraryMetadata, imageLibraryMetadata } from "./image-asset-schema.js";
+import { IMAGE_ASSET_LIMITS, imagePhysicalSize, suggestImagePhysicalSize, normalizeImageAssetDraft, validateResolvedImageAsset, normalizeImageLibraryMetadata, imageLibraryMetadata } from "./image-asset-schema.js";
 import { searchImageLibrary } from "./image-library.js";
 import { decodeLocalPng } from "./image-library-client.js";
 import { mountImageSetup } from "./image-library-setup.js";
@@ -15,7 +15,7 @@ const ownerOf = (ctx) => JSON.stringify([ctx?.accountId ?? null, ctx?.roomId ?? 
 const context = (get) => {
   const ctx = get() || {};
   if (Object.values(ctx.capabilities || {}).some(Boolean) && (typeof ctx.roomId !== "string" || !ctx.roomId || typeof ctx.accountId !== "string" || !ctx.accountId || !["string", "number"].includes(typeof ctx.roomEpoch))) throw new TypeError("An enabled library requires roomId, accountId and roomEpoch");
-  return { roomId: ctx.roomId, roomEpoch: ctx.roomEpoch, accountId: ctx.accountId, capabilities: { ...ctx.capabilities } };
+  return { roomId: ctx.roomId, roomEpoch: ctx.roomEpoch, accountId: ctx.accountId, roomBounds: ctx.roomBounds, capabilities: { ...ctx.capabilities } };
 };
 function mountImageLibrary({ root, getContext, service, decodePreview = decodeLocalPng, onChoose, onStatus = () => {
 }, icon = null }) {
@@ -26,6 +26,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   let entries = [], listEpoch = 0, decodeEpoch = 0, preview = null, file = null, grid = null, draftVisible = false, submitting = false, composing = false;
   let listController = null, decodeController = null, uploadController = null, listReady = false;
   const pendingByOwner = /* @__PURE__ */ new Map(), thumbURLs = /* @__PURE__ */ new Set(), thumbControllers = /* @__PURE__ */ new Set();
+  let explicitSize = false;
   let pending = null, editing = null, managementBusy = false, managementConflict = false, managementEpoch = 0, managementController = null;
   root.classList.add("u-image-library");
   root.hidden = true;
@@ -120,6 +121,28 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   name.autocomplete = "off";
   const tags = field("Tags", el("input"), "tags", "Separate tags with commas. Up to 20 tags.");
   tags.autocomplete = "off";
+  const width = field("Width (metres)", el("input"), "width-metres");
+  const height = field("Height (metres)", el("input"), "height-metres");
+  for (const input of [width, height]) { input.type = "number"; input.min = String(IMAGE_ASSET_LIMITS.minMetres); input.max = String(IMAGE_ASSET_LIMITS.maxMetres); input.step = "any"; }
+  const aspect = field("Lock aspect ratio", el("input"), "aspect"); aspect.type = "checkbox"; aspect.checked = true;
+  const sizeAvailability = el("p", "uil-note"); fields.append(sizeAvailability);
+  function showSize() {
+    if (!preview) return;
+    dimensions.textContent = `${preview.width} × ${preview.height} px preserved · ${Number(width.value).toLocaleString(undefined, {maximumFractionDigits: 4})} × ${Number(height.value).toLocaleString(undefined, {maximumFractionDigits: 4})} m${explicitSize ? "" : " · legacy 32 px/m"} · ${ctx.roomBounds ? `Room ${ctx.roomBounds.width} × ${ctx.roomBounds.depth} m. ` : ''}Full rectangle reserves floor space. Placement still checks boundaries, obstacles and permissions.`;
+    previewImage.style.aspectRatio = `${Number(width.value)} / ${Number(height.value)}`;
+    previewImage.style.objectFit = 'fill';
+  }
+  function resizeFrom(input) {
+    if (!sync() || !ctx.capabilities.canManage || ctx.capabilities.canSize===false || pending || submitting) return;
+    explicitSize = true;
+    if (preview && aspect.checked && Number(input.value) > 0) {
+      if (input === width) height.value = String(Number(width.value) * preview.height / preview.width);
+      else width.value = String(Number(height.value) * preview.width / preview.height);
+    }
+    showSize(); gate();
+  }
+  width.oninput = () => resizeFrom(width); height.oninput = () => resizeFrom(height);
+  aspect.onchange = () => { if (aspect.checked) resizeFrom(width); };
   const depth = field("Representation and depth", el("select"), "depth");
   for (const [value, text] of [["standing", "Upright panel \xB7 standing"], ["floor", "Floor decal \xB7 on the floor"], ["custom", "Upright panel \xB7 custom depth"]]) {
     const o = el("option", null, text);
@@ -281,6 +304,9 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     gate();
     return true;
   }
+  function sizingBlocked(draft) {
+    return ctx.capabilities.canSize===false && (draft ? Object.hasOwn(draft, "widthMetres") || Object.hasOwn(draft, "heightMetres") : explicitSize);
+  }
   function gate() {
     const caps = ctx.capabilities, locked = submitting || !!pending;
     add.disabled = !caps.canManage;
@@ -289,11 +315,13 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     chooser.disabled = !caps.canManage || locked;
     fileInput.disabled = chooser.disabled;
     fields.disabled = !caps.canManage || locked;
-    upload.disabled = !caps.canManage || !file || !preview || locked;
+    for (const input of [width, height, aspect]) input.disabled = fields.disabled || caps.canSize===false;
+    sizeAvailability.textContent = caps.canSize===false ? sizingBlocked(pending?.draft) ? "Physical sizing is disabled on this server. This sized draft is preserved and cannot be uploaded until sizing is enabled. You can still check an earlier upload receipt." : "Physical sizing is disabled on this server. This PNG uses the original 32 pixels per metre; no physical dimensions will be added." : !explicitSize && file ? "This draft keeps its original 32 pixels per metre. Change a size field to use explicit physical sizing." : "";
+    upload.disabled = !caps.canManage || sizingBlocked() || !file || !preview || locked;
     cancel.textContent = pending ? "Back to library" : "Cancel draft";
-    permission.textContent = !caps.canRead ? "You cannot read this room\u2019s image library." : !caps.canPlace ? "You can view these image objects. Placement is not available for your current role." : !caps.canManage ? "You can place approved room images. Only full room editors can upload and manage the library." : "Room image objects can be reused by people with placement permission.";
+    permission.textContent = !caps.canRead ? "You cannot read this room\u2019s image library." : !caps.canPlace ? "You can view these image objects. Placement is not available for your current role." : !caps.canManage ? "You can place approved room images. Only full room editors can upload and manage the library." : caps.canSize===false ? "Physical sizing is disabled on this server. Ordinary PNG uploads keep the original 32 pixels per metre; existing sized drafts are preserved." : "Room image objects can be reused by people with placement permission.";
     checkUpload.disabled = submitting || !caps.canManage;
-    retry.disabled = submitting || !caps.canManage;
+    retry.disabled = submitting || !caps.canManage || sizingBlocked(pending?.draft);
     statusLabel.hidden = !caps.canManage;
     libraryStatus.disabled = !caps.canRead || managementBusy;
     managementFields.disabled = !caps.canManage || managementBusy;
@@ -304,16 +332,18 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     collisions.disabled = fields.disabled || floating.checked || !preview || preview.width % 32 !== 0 || preview.height % 32 !== 0;
   }
   function draftValues() {
-    return { name: name.value, tags: tags.value, depthPreset: depth.value, representation: depth.value === "floor" ? "floor" : "upright", depthPivot: depth.value === "floor" ? 0.5 : depth.value === "standing" ? 1 : pivot.value.trim() ? Number(pivot.value) : NaN, floating: floating.checked, collisionGrid: collisions.checked && !floating.checked ? grid : null };
+    return { ...(explicitSize ? {widthMetres: Number(width.value), heightMetres: Number(height.value)} : {}), name: name.value, tags: tags.value, depthPreset: depth.value, representation: depth.value === "floor" ? "floor" : "upright", depthPivot: depth.value === "floor" ? 0.5 : depth.value === "standing" ? 1 : pivot.value.trim() ? Number(pivot.value) : NaN, floating: floating.checked, collisionGrid: collisions.checked && !floating.checked ? grid : null };
   }
   function resetDraft() {
     decodeController?.abort();
     decodeEpoch++;
     releasePreview();
     file = null;
+    explicitSize = false;
     grid = null;
     pending = null;
     submitting = false;
+    width.value = ""; height.value = ""; aspect.checked = true;
     name.value = "";
     tags.value = "";
     depth.value = "standing";
@@ -413,7 +443,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   async function selectFile(selected) {
     if (!sync() || !ctx.capabilities.canManage || pending || submitting) return;
     clearError();
-    const captured = scope, serial = ++decodeEpoch;
+    const captured = scope, serial = ++decodeEpoch, usePhysicalSize = file ? explicitSize : ctx.capabilities.canSize!==false;
     decodeController?.abort();
     decodeController = new AbortController();
     announce("Reading local PNG preview\u2026");
@@ -428,12 +458,14 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       old?.dispose?.();
       preview = next;
       file = selected;
+      explicitSize = usePhysicalSize;
       grid = null;
       collisions.checked = false;
       previewImage.src = next.previewUrl;
       previewBox.hidden = false;
       name.value = name.value || selected.name.replace(/\.png$/i, "");
-      dimensions.textContent = `${next.width} \xD7 ${next.height} px \xB7 ${next.width / 32} \xD7 ${next.height / 32} m at 32 px per metre`;
+      const size = explicitSize ? suggestImagePhysicalSize(next.width, next.height, ctx.roomBounds) : imagePhysicalSize({widthPixels: next.width, heightPixels: next.height});
+      width.value = String(size.widthMetres); height.value = String(size.heightMetres); aspect.checked = true; showSize();
       announce("Local preview ready. Configure it before uploading.");
       renderGrid();
       gate();
@@ -498,6 +530,8 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       const text = el("div", "uil-card-copy");
       const metadata = imageLibraryMetadata(entry);
       text.append(el("strong", null, metadata.name), el("span", "uil-note", metadata.description), el("span", "uil-note", metadata.tags.join(", ") || "No tags"), el("span", "uil-note", entry.version.representation === "floor" ? "Floor decal" : "Upright panel"), el('span', 'uil-note', `Version ${entry.version.sequence} · library revision ${entry.revision || 1}`));
+      const size = imagePhysicalSize(entry.version);
+      text.append(el('span', 'uil-note', `${size.widthMetres.toLocaleString()} × ${size.heightMetres.toLocaleString()} m · ${entry.version.widthPixels} × ${entry.version.heightPixels} px`));
       const use = button(`Place ${metadata.name} · version ${entry.version.sequence}`, "Plus");
       use.setAttribute("aria-label", `Place ${metadata.name} (${entry.definition.assetId})`);
       use.onclick = () => {
@@ -578,7 +612,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       if (result?.status !== "not-found") throw new Error("Upload status is still unknown");
       operation.state = "retryable";
       retry.hidden = false;
-      showError("No committed receipt was found yet; the original request may still finish. Retry sends the same unchanged upload and operation ID.");
+      showError(sizingBlocked(operation.draft) ? "No committed receipt was found yet; the original request may still finish. Physical sizing is disabled, so retry is blocked. Your exact sized draft and operation ID are preserved; you can check again." : "No committed receipt was found yet; the original request may still finish. Retry sends the same unchanged upload and operation ID.");
       await refresh();
     } catch (error) {
       if (isCurrent(captured) && pending === operation) showError("Could not confirm upload status. Your unchanged submission is preserved. Check again before retrying.");
@@ -590,6 +624,8 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     }
   }
   async function send(operation) {
+    if (!sync() || !ctx.capabilities.canManage) return;
+    if (sizingBlocked(operation.draft)) { showError("Physical sizing is disabled. Your exact sized draft is preserved; uploading it is blocked until sizing is enabled."); return; }
     const captured = scope;
     submitting = true;
     pending = operation;
@@ -609,7 +645,8 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     } catch (error) {
       operation.state = "uncertain";
       if (!isCurrent(captured) || pending !== operation) return;
-      if (error.definitive === true) {
+      if(error.code==='CLIENT_RELOAD_REQUIRED'){operation.state="reload-required";showError(error);announce("Reload is required. The exact submission is kept for recovery; do not resend it from this page.");}
+      else if (error.definitive === true) {
         pendingByOwner.delete(operation.owner);
         pending = null;
         showError(error);
@@ -628,7 +665,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     }
   }
   async function submit() {
-    if (!sync() || !ctx.capabilities.canManage || submitting || pending) return;
+    if (!sync() || !ctx.capabilities.canManage || sizingBlocked() || submitting || pending) return;
     clearError();
     if (!file || !preview) {
       showError("Choose a PNG image first.");
@@ -754,7 +791,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   cancel.onclick = cancelDraft;
   checkUpload.onclick = reconcile;
   retry.onclick = () => {
-    if (sync() && pending?.state === "retryable" && !submitting && ctx.capabilities.canManage) send(pending);
+    if (sync() && pending?.state === "retryable" && !submitting && ctx.capabilities.canManage && !sizingBlocked(pending.draft)) send(pending);
   };
   form.onsubmit = (e) => {
     e.preventDefault();
@@ -813,8 +850,16 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     root.replaceChildren();
     root.hidden = true;
   }
+  function getRecoverySnapshot(){
+    if(ownerOf(context(getContext))!==ownerOf(ctx))return null;
+    const operation=pending||pendingByOwner.get(ownerOf(ctx)),setupDrafts=setupEditor.getRecoverySnapshot();
+    if(!file&&!operation&&!setupDrafts.length)return null;
+    return {format:'universe-image-recovery',version:1,accountId:ctx.accountId,roomId:ctx.roomId,
+      uploadDraft:file?{file,fields:{...structuredClone(draftValues()),widthInput:width.value,heightInput:height.value},name:file.name,type:file.type,lastModified:file.lastModified}:null,
+      pendingUpload:operation?{operationId:operation.operationId,draft:structuredClone(operation.draft),bytes:operation.bytes.slice(),state:'uncertain',roomId:ctx.roomId}:null,setupDrafts};
+  }
   gate();
-  return Object.freeze({ attachRoom, setOpen, refresh, cancelDraft, dispose });
+  return Object.freeze({ getRecoverySnapshot, attachRoom, setOpen, refresh, cancelDraft, dispose });
 }
 export {
   mountImageLibrary

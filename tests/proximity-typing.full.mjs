@@ -30,11 +30,11 @@ try{
   await alice.bringToFront();await composer(alice).fill('Retained through reconnect');await shows(bob,'Mira');
   const before=await alice.evaluate(()=>{const state=__universe.getState();return{admissionId:state.admissionId,position:state.position};});
   const starts=requests.filter(r=>r.body.isTyping).length;
-  let block=true;const blockEvents=route=>block?route.abort('internetdisconnected'):route.continue();await alice.route('**/api/events',blockEvents);
+  let block=true;const blockEvents=route=>block?route.abort('internetdisconnected'):route.continue();await alice.route(/\/api\/events(?:\?.*)?$/,blockEvents);
   app.server.closeAllConnections();
   await alice.waitForFunction(()=>__universe.getState().online===false);
   await alice.waitForFunction(()=>document.querySelector('[aria-label="Send nearby message"]')?.disabled===true);await clears(bob);
-  block=false;await alice.unroute('**/api/events',blockEvents);
+  block=false;await alice.unroute(/\/api\/events(?:\?.*)?$/,blockEvents);
   await alice.waitForFunction(()=>__universe.getState().online===true,null,{timeout:15000});
   await nearby(bob);await nearby(alice);
   assert.deepEqual(await alice.evaluate(()=>{const state=__universe.getState();return{admissionId:state.admissionId,position:state.position};}),before);

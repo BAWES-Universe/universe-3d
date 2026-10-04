@@ -1,0 +1,80 @@
+name: Preview deployment controller
+on:
+  workflow_run:
+    workflows: [Preview image release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Reconcile only the approved baseline or an explicitly reviewed historical release
+        required: true
+        type: choice
+        options: [approved-baseline, reviewed-release]
+permissions: {}
+# Never cancel an active SQLite mutation. The live adapter additionally MUST hold
+# a durable fenced resource lease shared by every operator/controller mutation.
+concurrency:
+  group: universe-3d-preview-resource
+  cancel-in-progress: false
+env:
+  UNIVERSE_PREVIEW_TRUSTED_REVISION: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+jobs:
+  provenance:
+    if: >-
+      vars.UNIVERSE_PREVIEW_ENABLED == 'OWNER_APPROVED' &&
+      github.ref == 'refs/heads/main' &&
+      github.workflow_sha == vars.UNIVERSE_PREVIEW_TRUSTED_REVISION
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {contents: read, actions: read, pull-requests: read, issues: read}
+    outputs:
+      ready: ${{ steps.verify.outputs.ready }}
+      artifactNeeded: ${{ steps.verify.outputs.artifactNeeded }}
+      releaseRun: ${{ steps.verify.outputs.releaseRun }}
+      releaseAttempt: ${{ steps.verify.outputs.releaseAttempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      - id: verify
+        run: node deploy/preview/cli.mjs verify-upstream
+        env: {GH_TOKEN: '${{ github.token }}'}
+  deploy:
+    needs: provenance
+    if: needs.provenance.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Separate setup must restrict this environment to the protected main ref.
+    # No credentials are currently provisioned or consumed by the stub adapter.
+    environment: universe-3d-preview
+    permissions: {contents: read, actions: read, pull-requests: read, issues: read}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      # Data only, from one API-verified successful run and attempt, outside code.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: needs.provenance.outputs.artifactNeeded == 'true'
+        with:
+          name: release-${{ needs.provenance.outputs.releaseRun }}-${{ needs.provenance.outputs.releaseAttempt }}
+          run-id: ${{ needs.provenance.outputs.releaseRun }}
+          github-token: ${{ github.token }}
+          path: input
+      - name: Revalidate provenance and desired generation inside resource lock
+        run: node deploy/preview/cli.mjs controller input/release.json receipt.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Environment-only, never repository secret or secrets:inherit.
+          COOLIFY_TOKEN: ${{ secrets.UNIVERSE_PREVIEW_COOLIFY_TOKEN }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: preview-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: receipt.json
+          if-no-files-found: warn

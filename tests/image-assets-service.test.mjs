@@ -260,3 +260,34 @@ test('HTTP session/role checks cover the body-read await before image validation
   request.req.emit('end'); await request.pending;
   assert.equal(request.res.status, 403); assert.deepEqual(f.repo.usage('room-a'), { definitions: 0, bytes: 0 });
 });
+
+test('physical write switch defaults off, preserves legacy creation and allows receipt reads without new sized writes',async t=>{
+ let enabled=false,decodes=0;
+ const f=fixture(t,{isPhysicalSizeEnabled:()=>enabled,validateImage:(...args)=>{decodes++;return validatePng(...args);}});
+ const sized=f.upload({operationId:'sized',draft:{name:'Sized',widthMetres:2,heightMetres:3}});
+ await assert.rejects(f.service.create(sized),code('IMAGE_PHYSICAL_SIZE_DISABLED'));assert.equal(decodes,0);assert.equal(f.repo.usage('room-a').definitions,0);
+ const legacy=await f.service.create(f.upload({operationId:'legacy'}));assert.equal(Object.hasOwn(legacy.version,'widthMetres'),false);
+ enabled=true;const entry=await f.service.create(sized);const before=f.repo.usage('room-a');enabled=false;
+ assert.deepEqual(await f.service.create(sized),entry,'exact committed receipt is still recoverable');
+ await assert.rejects(f.service.createVersion({...f.context,assetId:entry.definition.assetId,change:{operationId:'inherited-size',expectedRevision:entry.revision,expectedVersionId:entry.version.versionId,setup:{depthPreset:'floor',depthPivot:.5,collisionGrid:null}}}),code('IMAGE_PHYSICAL_SIZE_DISABLED'));
+ assert.deepEqual(f.repo.usage('room-a'),before);assert.equal(f.repo.getOperation('room-a','alice','inherited-size'),null);
+});
+
+test('disable during PNG decode and client retirement during decode both reject before reservation or commit',async t=>{
+ for(const kind of ['disable','retire'])await t.test(kind,async t=>{
+  const hold=deferred(),entered=deferred();let enabled=true,retired=false;
+  const f=fixture(t,{isPhysicalSizeEnabled:()=>enabled,validateImage:async(...args)=>{entered.resolve();await hold.promise;return validatePng(...args);}});
+  const work=f.service.create(f.upload({operationId:'held-'+kind,draft:{name:'Held',widthMetres:2,heightMetres:3},checkClient:()=>{if(retired){const e=Error('Reload');e.status=426;e.code='CLIENT_RELOAD_REQUIRED';throw e;}}}));
+  await entered.promise;if(kind==='disable')enabled=false;else retired=true;hold.resolve();
+  await assert.rejects(work,code(kind==='disable'?'IMAGE_PHYSICAL_SIZE_DISABLED':'CLIENT_RELOAD_REQUIRED'));
+  assert.equal(f.repo.usage('room-a').definitions,0);assert.equal(f.repo.getOperation('room-a','alice','held-'+kind),null);assert.equal(f.events.length,0);
+ });
+});
+
+test('receipt committed during parallel decode remains recoverable after publishing is disabled',async t=>{
+ const hold=deferred(),entered=deferred();let enabled=true,decodes=0;
+ const f=fixture(t,{isPhysicalSizeEnabled:()=>enabled,validateImage:async(...args)=>{if(++decodes===2){entered.resolve();await hold.promise;}return validatePng(...args);}});
+ const input=f.upload({operationId:'parallel-size-receipt',draft:{name:'Parallel sized PNG',widthMetres:2,heightMetres:3}});
+ const first=f.service.create(input),second=f.service.create(input);await entered.promise;const committed=await first;enabled=false;hold.resolve();
+ assert.deepEqual(await second,committed,'a replay needs no newly enabled write');assert.equal(f.repo.usage('room-a').definitions,1);assert.equal(f.events.length,1);
+});

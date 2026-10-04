@@ -14,6 +14,7 @@ test('document client sends raw file with cookie credentials, Unicode filename a
   assert.equal(call.options.headers['X-File-Name'],'R%C3%A9sum%C3%A9.txt');
   assert.equal(call.options.headers['X-File-Type'],'text/plain');
   assert.equal(call.options.headers['Content-Type'],'application/octet-stream');
+  assert.equal(call.options.headers['X-Universe-Client-Capabilities'],'image-physical-size-v1');
   assert.match(FILE_ACCEPT,/\.pdf/);
 });
 
@@ -35,4 +36,14 @@ test('document listing and recoverable removal helpers use the room-scoped route
   assert.deepEqual(calls.map(call => call.path), ['/api/rooms/commons/files?includeDeleted=1','/api/rooms/commons/files/file-1','/api/rooms/commons/files/file-1/restore']);
   assert.equal(calls[1].options.method,'DELETE'); assert.equal(calls[2].options.method,'POST');
   assert.ok(calls.every(call => call.options.credentials === 'same-origin'));
+  assert.ok(calls.every(call => call.options.headers['X-Universe-Client-Capabilities'] === 'image-physical-size-v1'));
+});
+
+test('format rejection on a direct document request notifies the reload boundary before rejecting', async t => {
+  const oldFetch=globalThis.fetch,oldDispatch=globalThis.dispatchEvent;
+  t.after(()=>{globalThis.fetch=oldFetch;if(oldDispatch===undefined)delete globalThis.dispatchEvent;else globalThis.dispatchEvent=oldDispatch;});
+  const events=[];globalThis.dispatchEvent=event=>{events.push({type:event.type,detail:event.detail});return true;};
+  globalThis.fetch=async()=>({ok:false,status:426,json:async()=>({error:'CLIENT_RELOAD_REQUIRED',code:'CLIENT_RELOAD_REQUIRED',message:'Export and reload'})});
+  await assert.rejects(listRoomFiles('commons'),error=>error.status===426&&error.code==='CLIENT_RELOAD_REQUIRED');
+  assert.deepEqual(events,[{type:'universe-client-reload-required',detail:{error:'CLIENT_RELOAD_REQUIRED',code:'CLIENT_RELOAD_REQUIRED',message:'Export and reload'}}]);
 });

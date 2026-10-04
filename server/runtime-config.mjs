@@ -66,10 +66,13 @@ export function readRuntimeConfig(env = process.env, { root = process.cwd() } = 
   if (isPublic && (tlsMode !== 'external' || cookieSecure !== 'always')) fail('public mode requires explicit UNIVERSE_TLS_MODE=external and UNIVERSE_COOKIE_SECURE=always');
   if (tlsMode === 'external' && cookieSecure !== 'always') fail('external TLS requires Secure cookies unconditionally');
   const registrationMode = env.UNIVERSE_REGISTRATION_MODE ?? (isPublic ? 'disabled' : 'local-open');
-  if (!['local-open', 'disabled'].includes(registrationMode) || (isPublic && registrationMode !== 'disabled')) fail('public web registration must remain disabled; local-open is local-only');
+  if (!['local-open', 'disabled', 'invite-only'].includes(registrationMode) || (isPublic && registrationMode === 'local-open')) fail('registration must be disabled or invite-only publicly; local-open is local-only');
   const database = env.UNIVERSE_DB ?? resolve(root, 'data/universe.sqlite');
   if (isPublic && (env.UNIVERSE_DB === undefined || !isAbsolute(database) || database === ':memory:')) fail('public mode requires an explicit absolute UNIVERSE_DB path on dedicated persistent storage');
-  return Object.freeze({ mode, host, port, database, allowedHosts, allowedOrigins, tlsMode, cookieSecure, registrationMode });
+  const imagePhysicalSizeFlag=env.UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED??'0';
+  if(!['0','1'].includes(imagePhysicalSizeFlag))fail('UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED must be 0 or 1');
+  const imagePhysicalSizeEnabled=imagePhysicalSizeFlag==='1';
+  return Object.freeze({ mode, host, port, database, allowedHosts, allowedOrigins, tlsMode, cookieSecure, registrationMode, imagePhysicalSizeEnabled });
 }
 
 function reject(code, message) {
@@ -86,7 +89,15 @@ export function createRequestSecurity(config, { listeningPort = () => config.por
       const localSuffix = port === 80 ? '' : `:${port}`;
       const hosts = config.allowedHosts ?? ['127.0.0.1', 'localhost', '[::1]'].map(host => host + localSuffix);
       if (!authority || !hosts.includes(authority)) reject('HOST_REJECTED', 'The request Host is not allowed');
-      if (req.headers['sec-fetch-site'] === 'cross-site') reject('ORIGIN_REJECTED', 'Cross-site requests are not allowed');
+      // An invitation is commonly opened from another origin. This sole safe
+      // navigation serves a non-consuming document; APIs, frames, resources,
+      // query-bearing URLs and all mutations keep the existing rejection.
+      const invitationNavigation = config.registrationMode === 'invite-only' &&
+        req.method === 'GET' && req.url === '/join.html' &&
+        req.headers['sec-fetch-mode'] === 'navigate' &&
+        req.headers['sec-fetch-dest'] === 'document' &&
+        req.headers['sec-fetch-user'] === '?1';
+      if (req.headers['sec-fetch-site'] === 'cross-site' && !invitationNavigation) reject('ORIGIN_REJECTED', 'Cross-site requests are not allowed');
       const suppliedOrigin = req.headers.origin;
       const origin = suppliedOrigin === undefined ? null : parseOrigin(suppliedOrigin);
       const origins = config.allowedOrigins ?? [`${req.socket?.encrypted ? 'https' : 'http'}://${authority}`];

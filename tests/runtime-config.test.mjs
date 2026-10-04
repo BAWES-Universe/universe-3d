@@ -50,6 +50,24 @@ test('public configuration fails closed on every missing security requirement', 
   assert.throws(() => readRuntimeConfig({ UNIVERSE_ALLOWED_HOSTS: 'localhost:4190' }), /both Host and Origin/);
 });
 
+test('invite-only is opt-in and permits only the exact user-activated landing navigation', () => {
+  const config=readRuntimeConfig(publicEnv({UNIVERSE_REGISTRATION_MODE:'invite-only'}));
+  assert.equal(config.registrationMode,'invite-only');
+  assert.equal(readRuntimeConfig({UNIVERSE_REGISTRATION_MODE:'invite-only'}).registrationMode,'invite-only');
+  const security=createRequestSecurity(config);
+  const headers={'sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document','sec-fetch-user':'?1'};
+  security.assertRequest(request(headers,{url:'/join.html'}));
+  for(const url of ['/','/join.html?invite=opaque','/join.html/','/api/site-admission/check','/site-admission.js','/%6aoin.html'])rejected(()=>security.assertRequest(request(headers,{url})),'ORIGIN_REJECTED');
+  for(const method of ['HEAD','POST','OPTIONS'])rejected(()=>security.assertRequest(request(headers,{url:'/join.html',method})),'ORIGIN_REJECTED');
+  for(const changed of [{'sec-fetch-mode':'cors'},{'sec-fetch-dest':'iframe'},{'sec-fetch-user':undefined}])rejected(()=>security.assertRequest(request({...headers,...changed},{url:'/join.html'})),'ORIGIN_REJECTED');
+  rejected(()=>security.assertRequest(request({...headers,origin:'https://evil.test'},{url:'/join.html'})),'ORIGIN_REJECTED');
+  rejected(()=>security.assertRequest(request({...headers,host:'evil.test'},{url:'/join.html'})),'HOST_REJECTED');
+  const disabled=createRequestSecurity(readRuntimeConfig(publicEnv()));
+  rejected(()=>disabled.assertRequest(request(headers,{url:'/join.html'})),'ORIGIN_REJECTED');
+  // Older browsers without Fetch Metadata keep the existing safe GET policy.
+  security.assertRequest(request({},{url:'/join.html'}));
+});
+
 test('public requests enforce exact Host, HTTPS Origin, and same-host mutations', () => {
   const security = createRequestSecurity(readRuntimeConfig(publicEnv()));
   security.assertRequest(request()); // Health check and navigation may omit Origin.
@@ -76,4 +94,11 @@ test('authority/origin parsers reject wildcard, credential, malformed IPv6 and U
   assert.equal(parseAuthority('[::1]:4190'), '[::1]:4190');
   for (const origin of ['null', 'file://test', 'https://example.test:443', 'https://EXAMPLE.test', 'https://example.test#hash', 'https://example.test?query']) assert.equal(parseOrigin(origin), null, origin);
   assert.equal(parseOrigin('https://example.test:8443'), 'https://example.test:8443');
+});
+
+test('physical image sizing is explicitly default off and accepts only the documented process flag',()=>{
+ assert.equal(readRuntimeConfig({}).imagePhysicalSizeEnabled,false);
+ assert.equal(readRuntimeConfig({UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED:'1'}).imagePhysicalSizeEnabled,true);
+ assert.equal(readRuntimeConfig({UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED:'0'}).imagePhysicalSizeEnabled,false);
+ for(const value of ['true','false','2','',1])assert.throws(()=>readRuntimeConfig({UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED:value}),/UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED/);
 });

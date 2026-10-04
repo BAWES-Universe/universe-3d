@@ -18,6 +18,16 @@ const config = { mode: 'public', registrationMode: 'disabled' };
 const gate = store => createAccessGate({ store, config });
 const code = expected => error => error.code === expected;
 
+test('invite-only never opens legacy guest or account upgrade routes',t=>{
+ const store=new Store(':memory:',seedWorlds);t.after(()=>store.close());
+ for(const mode of ['local','public']){
+  const admission=createAccessGate({store,config:{mode,registrationMode:'invite-only'}});
+  assert.throws(()=>admission.assertGuestCreationAllowed(),code('GUEST_CREATION_DISABLED'));
+  assert.throws(()=>admission.assertRegistrationAllowed(),code('REGISTRATION_DISABLED'));
+  assert.equal(admission.publicPolicy().registration,false);
+ }
+});
+
 test('public admission defaults closed and requires controlled owner bootstrap', async t => {
   const store = new Store(':memory:', seedWorlds); t.after(() => store.close());
   assert.throws(() => gate(store).assertReady(), code('OPERATOR_BOOTSTRAP_REQUIRED'));

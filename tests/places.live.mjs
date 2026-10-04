@@ -15,7 +15,7 @@ window.gameKeys=[];window.addEventListener('keydown',event=>window.gameKeys.push
 const places=window.places=mountPlaces({root:document.querySelector('#root'),api,getState:()=>state,onNavigate:async id=>{state.room=(await api('/api/rooms/'+id+'/join',{method:'POST',body:{}})).room},toast:message=>{window.lastToast=message},onChanged:async()=>Object.assign(state,await api('/api/session'))});
 document.querySelector('#open').onclick=()=>places.open('explore');
 window.events=new EventSource('/api/events');for(const type of ['catalog','invitation','membership','role','access-revoked'])window.events.addEventListener(type,event=>places.onEvent({type,data:JSON.parse(event.data)}));window.ready=true;`);
-for (const file of ['places.js', 'places.css']) await writeFile(join(dir, file), await readFile(new URL(`../src/${file}`, import.meta.url)));
+for (const file of ['places.js', 'places.css', 'place-creation-flow.js']) await writeFile(join(dir, file), await readFile(new URL(`../src/${file}`, import.meta.url)));
 const scene = {version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:0},objects:[],areas:[]};
 let serverTime=Date.now();
 const app = createGameServer({clock:()=>serverTime,database: ':memory:', seeds: [{id:'w1',name:'Moon world',rooms:[{id:'r1',name:'Moon garden',scene},{id:'r2',name:'Quiet room',scene}]}],dist:dir});

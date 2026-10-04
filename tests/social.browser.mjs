@@ -36,7 +36,7 @@ window.api=async(path,options={})=>{
 window.social=mountSocial({root:document.querySelector('#root'),api:window.api,getState:()=>window.state,onNavigate:async id=>{const room=window.state.worlds.flatMap(w=>w.rooms).find(r=>r.id===id);window.state.room={...room,worldId:'w1',ownerId:'me'};window.social.render()},toast:(...args)=>window.toasts.push(args)});
 </script></body></html>`;
 const server = http.createServer(async (req, res) => {
-  if (req.url === '/social.js' || req.url === '/social.css' || req.url === '/permissions.js' || req.url === '/proximity-text.js' || req.url === '/proximity-typing.js') {
+  if (req.url === '/social-sheet-layout.js' || req.url === '/universe-icons.js' || req.url === '/social.js' || req.url === '/social.css' || req.url === '/permissions.js' || req.url === '/proximity-text.js' || req.url === '/proximity-typing.js') {
     res.setHeader('Content-Type', req.url.endsWith('.css') ? 'text/css' : 'text/javascript');
     res.end(await readFile(new URL(`../src${req.url}`, import.meta.url)));
   } else if (req.url.startsWith('/assets/')) { res.statusCode = 204; res.end(); }
@@ -110,6 +110,7 @@ try {
   });
   await check('inert Room chat counts new messages once and retains mounted draft, selection and history', () => checkCoveredChat('room'));
   await check('own message editing preserves the separate unsent draft', async () => {
+    await page.locator('[data-message-id="m2"] summary').click();
     await page.locator('[data-message-id="m2"]').getByRole('button', { name: 'Edit your message' }).click();
     await page.getByRole('textbox', { name: 'Message the room' }).fill('Welcome, everyone');
     await page.getByRole('button', { name: 'Save edited message' }).click();
@@ -117,6 +118,7 @@ try {
     assert.equal(await page.getByRole('textbox', { name: 'Message the room' }).inputValue(), 'A newer draft');
   });
   await check('server-confirmed reaction toggles and own deletion works', async () => {
+    await page.locator('[data-message-id="m2"] summary').click();
     await page.locator('[data-message-id="m2"]').getByRole('button', { name: 'Add 👍 reaction', exact: true }).click();
     assert.equal(await page.locator('[data-message-id="m2"]').getByRole('button', { name: 'Remove 👍 reaction (1)', exact: true }).getAttribute('aria-pressed'), 'true');
     await page.locator('[data-message-id="m2"]').getByRole('button', { name: 'Delete your message' }).click();
@@ -130,6 +132,7 @@ try {
     assert.equal(await page.getByRole('textbox', { name: 'Message the room' }).inputValue(), 'A newer draft');
   });
   await check('emotes use the actual room API', async () => {
+    await page.locator('summary[aria-label="Avatar emotes"]').click();
     await page.getByRole('button', { name: 'Show 👋 emote' }).click();
     assert(await page.evaluate(() => window.calls.some(c => c.path === '/api/rooms/r1/emote' && c.body.emoji === '👋')));
   });

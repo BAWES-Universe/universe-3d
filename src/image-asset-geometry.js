@@ -1,4 +1,4 @@
-import {IMAGE_PIXELS_PER_METRE, ImageAssetValidationError, canRenderImageReference, freezeImageRecord, validateImageInstance, validateResolvedImageAsset} from './image-asset-schema.js';
+import {imagePhysicalSize, ImageAssetValidationError, canRenderImageReference, freezeImageRecord, validateImageInstance, validateResolvedImageAsset} from './image-asset-schema.js';
 
 // Flat decals sit above walkable surface sheets (0–0.04m), below raised props/rugs.
 // This is a shared geometry policy, not a renderer depth-test override.
@@ -30,14 +30,15 @@ function worldBounds(corners) {
 export function resolveImagePlacement(resolved, rawInstance) {
   const asset = validateResolvedImageAsset(resolved), instance = validateImageInstance(rawInstance);
   if (!canRenderImageReference(instance.assetRef, asset)) throw new ImageAssetValidationError('instance.assetRef', 'The exact readable asset version is required', 'UNAVAILABLE_IMAGE_REFERENCE');
-  const version = asset.version, width = version.widthPixels / IMAGE_PIXELS_PER_METRE, depth = version.heightPixels / IMAGE_PIXELS_PER_METRE;
+  const version = asset.version, {widthMetres: width, heightMetres: depth} = imagePhysicalSize(version);
+  const cellWidth = width / (version.widthPixels / 32), cellDepth = depth / (version.heightPixels / 32);
   const editBounds = groundBounds(localRectangle(-width / 2, -depth / 2, width / 2, depth / 2, instance));
   const collisionCells = [];
   for (let row = 0; row < (version.collisionGrid?.length ?? 0); row++) {
     for (let col = 0; col < version.collisionGrid[row].length; col++) {
       if (version.collisionGrid[row][col] !== 1) continue;
-      const minU = col - width / 2, minV = row - depth / 2;
-      collisionCells.push({row, col, ...groundBounds(localRectangle(minU, minV, minU + 1, minV + 1, instance))});
+      const minU = col * cellWidth - width / 2, minV = row * cellDepth - depth / 2;
+      collisionCells.push({row, col, ...groundBounds(localRectangle(minU, minV, minU + cellWidth, minV + cellDepth, instance))});
     }
   }
   const upright = version.representation === 'upright', pivotZ = (version.depthPivot - 0.5) * depth;

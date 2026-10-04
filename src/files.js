@@ -2,8 +2,9 @@ export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.json';
 
 async function request(path, options = {}) {
-  const response = await fetch(path, { credentials: 'same-origin', ...options });
+  const response = await fetch(path, { credentials: 'same-origin', ...options, headers:clientProtocolHeaders(options.headers) });
   const data = await response.json();
+  reportClientReloadRequired(data);
   if (!response.ok) throw Object.assign(new Error(data.message || 'Document request failed'), { status: response.status, code: data.code });
   return data;
 }
@@ -44,3 +45,4 @@ export function roomDocumentLink(file) {
   link.setAttribute('aria-label', `Download ${file.name} (${Math.ceil(file.size / 1024)} KB)`);
   return link;
 }
+import {clientProtocolHeaders,reportClientReloadRequired} from './client-protocol.js';

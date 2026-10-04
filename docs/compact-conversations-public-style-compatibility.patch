@@ -1,0 +1,14 @@
+diff --git a/public/style.css b/public/style.css
+index e63fe6a..98f416e 100644
+--- a/public/style.css
++++ b/public/style.css
+@@ -1228,9 +1228,6 @@ kbd {
+   .social-shell .social-toolbar {
+     flex-shrink: 0;
+   }
+-  .social-shell .social-emotes {
+-    display: none !important;
+-  }
+ }
+ #quest-open {
+   position: absolute;

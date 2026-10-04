@@ -1,3 +1,4 @@
+import {clientProtocolHeaders} from '../src/client-protocol.js';
 /** Actual-game image lifecycle acceptance, run serially on the software GPU.
  * User-flow claims use native mouse/keyboard/file-chooser input only. Browser
  * evaluation reads state, projections or DOM; it never invokes application actions.
@@ -17,7 +18,7 @@ const dist=process.env.UNIVERSE_IMAGE_LIFECYCLE_DIST||new URL('../dist',import.m
 await mkdir(out,{recursive:true});
 const seeds=structuredClone(seedWorlds),roomId='image-lifecycle-court',roomName='Image lifecycle court';
 seeds[0].rooms.push({id:roomId,name:roomName,scene:{...emptyScene(),bounds:{width:8,depth:16},spawn:{x:0,z:4}}});
-const app=createGameServer({seeds,dist}),address=await app.listen(0),base=`http://127.0.0.1:${address.port}`;
+const app=createGameServer({seeds,dist,imagePhysicalSizeEnabled:true}),address=await app.listen(0),base=`http://127.0.0.1:${address.port}`;
 const browser=await launch(),context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage();
 page.setDefaultTimeout(15000);
 const checks=[],errors=[],mutations=[];
@@ -34,6 +35,7 @@ page.on('request',request=>{
  if(['POST','PATCH'].includes(request.method())&&/\/assets(?:\/[^/]+)?$/.test(path))mutations.push({method:request.method(),path,body:JSON.parse(request.postData())});
 });
 const root=page.locator('#image-library');
+const fixtureRequest=(method,url,options={})=>page.request[method](url,{...options,headers:clientProtocolHeaders(options.headers)});
 const state=()=>page.evaluate(()=>window.__universe.getState());
 const editor=()=>page.evaluate(()=>window.__universe.getEditor());
 const persist=()=>writeFile(out+'/results.json',JSON.stringify(results,null,2));
@@ -56,7 +58,7 @@ async function filter(status,query=''){
  await page.waitForFunction(()=>document.querySelector('#image-library .uil-cards')?.getAttribute('aria-busy')!=='true');
 }
 async function list(status='active'){
- const response=await page.request.get(base+`/api/rooms/${roomId}/assets?status=${status}`);
+ const response=await fixtureRequest('get',base+`/api/rooms/${roomId}/assets?status=${status}`);
  assert.equal(response.status(),200);return(await response.json()).entries;
 }
 async function entry(id,status='active'){const value=(await list(status)).find(value=>value.definition.assetId===id);assert(value,`${id} appears in ${status} API projection`);return value;}
@@ -130,6 +132,7 @@ try{
  const chooser=page.waitForEvent('filechooser');await root.getByRole('button',{name:'Choose PNG',exact:true}).click();
  await(await chooser).setFiles({name:'Lifecycle original wall.png',mimeType:'image/png',buffer:bytes});
  await root.getByAltText('Local image preview').waitFor();
+ await root.getByRole('spinbutton',{name:'Width (metres)',exact:true}).fill('8');assert.equal(await root.getByRole('spinbutton',{name:'Height (metres)',exact:true}).inputValue(),'2');
  await root.getByRole('textbox',{name:'Name',exact:true}).fill(originalName);
  await root.getByRole('textbox',{name:'Tags',exact:true}).fill('lifecycle, local');
  await root.getByRole('combobox',{name:'Representation and depth',exact:true}).selectOption('floor');
@@ -142,6 +145,7 @@ try{
  assert.equal(mutations.filter(m=>m.method==='POST').length,1);
  assert.deepEqual((await state()).scene,sceneBefore,'upload cannot place an object');
  const original=(await list())[0],id=original.definition.assetId;
+ assert.equal(original.version.widthMetres,8);assert.equal(original.version.heightMetres,2);
  assert.equal(original.metadata.name,originalName);assert.equal(original.metadata.description,'');assert.deepEqual(original.metadata.tags,['lifecycle','local']);
  assert.deepEqual(original.version.collisionGrid,[Array(8).fill(1),Array(8).fill(0)]);
  assert.equal(original.version.sha256,createHash('sha256').update(bytes).digest('hex'));
@@ -187,7 +191,7 @@ try{
  await root.getByRole('textbox',{name:'Description',exact:true}).fill(localDraft.description);
  await root.getByRole('textbox',{name:'Asset tags',exact:true}).fill(localDraft.tags);
  const concurrentMetadata={name:'Concurrent curator label',description:'A newer revision from the local concurrency fixture',tags:['ConcurrentTag']};
- const concurrent=await page.request.patch(base+assetPath(id),{data:{expectedRevision:edited.revision,metadata:concurrentMetadata}});
+ const concurrent=await fixtureRequest('patch',base+assetPath(id),{data:{expectedRevision:edited.revision,metadata:concurrentMetadata}});
  assert.equal(concurrent.status(),200);const concurrentEntry=await concurrent.json();
  const beforeConflict=mutations.length;
  await root.getByRole('button',{name:'Save details',exact:true}).click();
@@ -243,7 +247,7 @@ try{
  await page.locator('#game').focus();await page.keyboard.press('d');
  assert.notEqual((await editor()).tool,'duplicate');assert.deepEqual((await state()).scene,pinned);
  assert.match(await page.locator('#toast').innerText(),/archiv|restor/i);
- const imageResponse=await page.request.get(base+assetPath(id)+`/versions/${original.version.versionId}/image`);
+ const imageResponse=await fixtureRequest('get',base+assetPath(id)+`/versions/${original.version.versionId}/image`);
  assert.equal(imageResponse.status(),200);assert.deepEqual(await imageResponse.body(),bytes);
  await report('Archive cancellation and Escape are safe; repeated explicit confirmation commits once, hides active placement, preserves archived thumbnail and exact PNG, rendering and picking, and blocks keyboard duplication',{archivedPixels});
 

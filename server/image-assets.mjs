@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { normalizeImageAssetDraft, normalizeImageAssetSetup, normalizeImageLibraryMetadata, validateResolvedImageAsset, validateAssetReference, validateImageInstance } from '../src/image-asset-schema.js';
+import { imagePhysicalSize, normalizeImageAssetDraft, normalizeImageAssetSetup, normalizeImageLibraryMetadata, validateResolvedImageAsset, validateAssetReference, validateImageInstance } from '../src/image-asset-schema.js';
 import { searchImageLibrary } from '../src/image-library.js';
 
 export const IMAGE_ASSET_LIMITS = Object.freeze({ maxBytes: 5 * 1024 * 1024, maxRoomBytes: 50 * 1024 * 1024, maxRoomDefinitions: 100, maxVersionsPerAsset: 100, maxSceneObjects: 2000 });
@@ -65,7 +65,7 @@ export const imageReferenceKey = reference => `${reference.assetId}:${reference.
  * validateImage is REQUIRED and must fully decode bounded bytes. Wire the
  * provided restrictive validatePng or a vetted decoder; never a signature test.
  */
-export function createImageAssetService({ repo, authorizeRead, authorizeManage, resolveSession, validateImage, now = Date.now, newId = randomUUID, transaction, afterCommit = () => {}, isPinned = () => false, limits = {} }) {
+export function createImageAssetService({ repo, authorizeRead, authorizeManage, resolveSession, validateImage, now = Date.now, newId = randomUUID, transaction, afterCommit = () => {}, isPinned = () => false, isPhysicalSizeEnabled = () => false, limits = {} }) {
   for (const [name, value] of Object.entries({ authorizeRead, authorizeManage, resolveSession, validateImage, isPinned })) if (typeof value !== 'function') throw new TypeError(`${name} is required`);
   if (!repo || typeof repo.transaction !== 'function') throw new TypeError('An image repository is required');
   const commitTransaction = transaction ?? (fn => repo.transaction(fn));
@@ -77,9 +77,10 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
   function identity(args) {
     identifier(args.roomId, 'room'); identifier(args.userId, 'actor');
     if (typeof args.sessionIdentity !== 'string' || !args.sessionIdentity || args.sessionIdentity.length > 2048) fail(401, 'IMAGE_SESSION', 'An active room session is required');
-    return Object.freeze({ roomId: args.roomId, userId: args.userId, sessionIdentity: args.sessionIdentity });
+    return Object.freeze({ roomId: args.roomId, userId: args.userId, sessionIdentity: args.sessionIdentity, checkClient: args.checkClient });
   }
   function authority(context, manage = false, expectedStamp) {
+    context.checkClient?.();
     const session = sync(resolveSession(context.sessionIdentity), 'resolveSession');
     if (!session || session.userId !== context.userId || session.currentRoomId !== context.roomId || !Number.isFinite(session.expiresAt) || session.expiresAt <= now()) fail(401, 'IMAGE_SESSION', 'The room session is no longer active');
     const stamp = canonical({ userId: session.userId, roomId: session.currentRoomId, epoch: session.sessionEpoch ?? null });
@@ -113,6 +114,7 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
     return Object.freeze({ status: 'committed', entry,
       published: Object.freeze({ assetId: previous.assetId, versionId: previous.versionId, sequence: committed.version.sequence }) });
   }
+  function assertPhysicalWrite(value){if((Object.hasOwn(value,'widthMetres')||Object.hasOwn(value,'heightMetres'))&&sync(isPhysicalSizeEnabled(),'isPhysicalSizeEnabled')!==true)fail(409,'IMAGE_PHYSICAL_SIZE_DISABLED','Physical image size publishing is disabled on this server. Your draft is kept.');}
   const service = {
     // Transport uses this before awaiting a body. Returned stamp is server-only.
     checkAccess(args, { manage = false } = {}) { return authority(identity(args), manage); },
@@ -164,8 +166,9 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
         if (before.version.versionId !== change.expectedVersionId) fail(409, 'IMAGE_VERSION_CONFLICT', 'The source version changed. Review its latest setup before trying again.');
         if (before.revision >= Number.MAX_SAFE_INTEGER) fail(409, 'IMAGE_REVISION_LIMIT', 'The image revision limit has been reached');
         const setup = normalizeImageAssetSetup(change.setup, before.version);
-        const existingSetup = Object.fromEntries(Object.keys(setup).map(key => [key, before.version[key]]));
-        if (canonical(setup) === canonical(existingSetup)) fail(400, 'IMAGE_SETUP_UNCHANGED', 'Change the depth or collision setup before saving a new version');
+        assertPhysicalWrite({...before.version,...setup});
+        const existingSetup = Object.fromEntries(Object.keys(setup).map(key => [key, ['widthMetres', 'heightMetres'].includes(key) ? imagePhysicalSize(before.version)[key] : before.version[key]]));
+        if (canonical(setup) === canonical(existingSetup)) fail(400, 'IMAGE_SETUP_UNCHANGED', 'Change the size, depth or collision setup before saving a new version');
         // Bound metadata/receipt rows even for tiny PNGs. Retained history is
         // never reclaimed by archiving and every version stores a full BLOB.
         const stats = repo.versionStats(context.roomId, assetId), usage = repo.usage(context.roomId);
@@ -202,6 +205,7 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
       const digest = createHash('sha256').update(canonical({ draft, mediaType, sha256 })).digest('hex');
       const existing = replay(context, operationId, digest);
       if (existing) return existing;
+      assertPhysicalWrite(draft);
       const decoded = await validateImage(Buffer.from(bytes), { mediaType });
       // Injected decoder is trusted, but cannot substitute bytes or media claims.
       if (!decoded || decoded.mediaType !== 'image/png' || decoded.byteLength !== bytes.length) fail(400, 'IMAGE_DECODE', 'Image decoder returned inconsistent image information');
@@ -213,6 +217,7 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
         authority(context, true, stamp);
         const duplicate = replay(context, operationId, digest);
         if (duplicate) return duplicate;
+        assertPhysicalWrite(metadata);
         const usage = repo.usage(context.roomId);
         if (usage.definitions >= cap.maxRoomDefinitions || usage.bytes + bytes.length > cap.maxRoomBytes) fail(409, 'IMAGE_ROOM_QUOTA', 'Room image storage quota has been reached');
         const createdAt = new Date(now()).toISOString(), assetId = newId(), versionId = newId();
@@ -349,7 +354,7 @@ function readImageJson(req, { limit = IMAGE_UPLOAD_JSON_LIMIT, upload = true, se
  * {userId,sessionIdentity}. It must not accept identity from JSON or query args.
  * Return false for other routes so the host router can continue.
  */
-export function createImageAssetHttpHandler({ service, getIdentity }) {
+export function createImageAssetHttpHandler({ service, getIdentity, assertCompatible=()=>{} }) {
   if (typeof getIdentity !== 'function') throw new TypeError('A trusted request identity adapter is required');
   const json = (res, status, payload) => {
     const body = JSON.stringify(payload);
@@ -362,36 +367,38 @@ export function createImageAssetHttpHandler({ service, getIdentity }) {
     const versionMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]{1,128})\/assets\/([A-Za-z0-9_-]{1,128})\/versions(?:\/operations\/([A-Za-z0-9_-]{1,128}))?$/);
     if (!match && !versionMatch) return false;
     const [, roomId, operationId, assetId, versionId] = match ?? [null, versionMatch[1], null, versionMatch[2], null];
+    const reply=(status,payload)=>{if(status<400)assertCompatible(req);json(res,status,payload);};
     try {
+      assertCompatible(req);
       const authenticated = sync(getIdentity(req), 'getIdentity');
-      const context = { userId: authenticated?.userId, sessionIdentity: authenticated?.sessionIdentity, roomId };
+      const context = { userId: authenticated?.userId, sessionIdentity: authenticated?.sessionIdentity, roomId, checkClient:()=>assertCompatible(req) };
       if (versionMatch) {
-        if (versionMatch[3] && req.method === 'GET') json(res, 200, service.reconcileVersion({ ...context, assetId, operationId: versionMatch[3] }));
+        if (versionMatch[3] && req.method === 'GET') reply(200, service.reconcileVersion({ ...context, assetId, operationId: versionMatch[3] }));
         else if (!versionMatch[3] && req.method === 'POST') {
           const expectedSessionStamp = service.checkAccess(context, { manage: true });
           const change = await readImageJson(req, { limit: IMAGE_UPDATE_JSON_LIMIT, setupVersion: true });
-          json(res, 201, await service.createVersion({ ...context, assetId, change, expectedSessionStamp }));
-        } else json(res, 405, { error: { code: 'IMAGE_METHOD', message: 'Image asset method is unsupported' } });
-      } else if (!assetId && !operationId && req.method === 'GET') json(res, 200, service.list({ ...context, query: url.searchParams.get('query') ?? '', status: url.searchParams.get('status') ?? 'active' }));
-      else if (operationId && req.method === 'GET') json(res, 200, service.reconcileCreate({ ...context, operationId }));
+          reply(201, await service.createVersion({ ...context, assetId, change, expectedSessionStamp }));
+        } else reply(405, { error: { code: 'IMAGE_METHOD', message: 'Image asset method is unsupported' } });
+      } else if (!assetId && !operationId && req.method === 'GET') reply(200, service.list({ ...context, query: url.searchParams.get('query') ?? '', status: url.searchParams.get('status') ?? 'active' }));
+      else if (operationId && req.method === 'GET') reply(200, service.reconcileCreate({ ...context, operationId }));
       else if (!assetId && !operationId && req.method === 'POST') {
         const expectedSessionStamp = service.checkAccess(context, { manage: true });
         const upload = await readImageJson(req);
         const entry = await service.create({ ...upload, ...context, expectedSessionStamp });
-        json(res, 201, entry);
+        reply(201, entry);
       } else if (assetId && !versionId && req.method === 'PATCH') {
         const expectedSessionStamp = service.checkAccess(context, { manage: true });
         const change = await readImageJson(req, { limit: IMAGE_UPDATE_JSON_LIMIT, upload: false });
         const entry = await service.update({ ...context, assetId, change, expectedSessionStamp });
-        json(res, 200, entry);
+        reply(200, entry);
       } else if (assetId && versionId && ['GET', 'HEAD'].includes(req.method)) {
         const result = service.readImage({ ...context, assetId, versionId, head: req.method === 'HEAD' });
         res.writeHead(200, result.headers); res.end(result.bytes);
-      } else { json(res, 405, { error: { code: 'IMAGE_METHOD', message: 'Image asset method is unsupported' } }); }
+      } else { reply(405, { error: { code: 'IMAGE_METHOD', message: 'Image asset method is unsupported' } }); }
     } catch (error) {
       req.resume();
       const status = Number.isInteger(error.status) ? error.status : error.name === 'ImageAssetValidationError' ? 400 : 500;
-      if (!res.headersSent) json(res, status, { error: { code: status === 500 ? 'IMAGE_INTERNAL' : error.code ?? 'IMAGE_INVALID', message: status === 500 ? 'Image request could not be completed' : error.message } });
+      if (!res.headersSent) reply(status, { error: { code: status === 500 ? 'IMAGE_INTERNAL' : error.code ?? 'IMAGE_INVALID', message: status === 500 ? 'Image request could not be completed' : error.message } });
       else res.destroy();
     }
     return true;

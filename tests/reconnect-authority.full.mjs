@@ -16,7 +16,7 @@ await mkdir(out,{recursive:true});
 const app=createGameServer({database:':memory:',seeds:seedWorlds,dist:new URL('../dist',import.meta.url).pathname,questsEnabled:false});
 const streams=new Set(),streamLog=[];
 app.server.on('request',(req,res)=>{
- if(req.url!=='/api/events')return;
+ if(new URL(req.url,'http://127.0.0.1').pathname!=='/api/events')return;
  const entry={openedAt:Date.now(),closedAt:null,events:[]};streamLog.push(entry);streams.add(res);
  const write=res.write.bind(res);res.write=(chunk,...args)=>{entry.events.push(String(chunk));return write(chunk,...args);};
  res.once('close',()=>{entry.closedAt=Date.now();streams.delete(res);});
@@ -27,7 +27,7 @@ page.setDefaultTimeout(20000);page.setDefaultNavigationTimeout(60000);
 const checks=[],errors=[],heldCatalog=[],heldPlaces=[];let blockEvents=false,blockedRetries=0,revokedAt=null,beforeDraft=null,holdCatalog=false,holdPlaces=false;
 const result={scenario:connected?'connected-revocation':'missed-revocation-reconnect',source:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),bundleSha256:createHash('sha256').update(await readFile('dist/main.js')).digest('hex'),checks,errors,streamLog,limits:['Isolated local server, real HTTP; missed-event case destroys the actual SSE socket and blocks retries','Native Chromium keyboard/pointer input; browser evaluation only reads diagnostics','No cloud/offline emulation, hidden app actions, external audit scripts, production services or physical device claim']};
 page.on('pageerror',error=>errors.push(error.message));
-await editor.route('**/api/events',route=>{if(blockEvents){blockedRetries++;return route.abort('connectionrefused');}return route.continue();});
+await editor.route(/\/api\/events(?:\?.*)?$/,route=>{if(blockEvents){blockedRetries++;return route.abort('connectionrefused');}return route.continue();});
 await editor.route('**/api/worlds',async route=>{if(!holdCatalog)return route.continue();holdCatalog=false;const response=await route.fetch();heldCatalog.push({route,response});});
 await editor.route('**/api/universes?*',async route=>{if(!holdPlaces)return route.continue();holdPlaces=false;const response=await route.fetch();heldPlaces.push({route,response});});
 async function call(context,path,method='GET',data){const response=await context.request.fetch(base+path,{method,...(data===undefined?{}:{data})});const body=await response.json();assert(response.ok(),method+' '+path+' '+JSON.stringify(body));return body;}

@@ -1,5 +1,5 @@
 import {SILENT_MEDIA_MESSAGE} from './media-policy-copy.js';
-import {IMAGE_PIXELS_PER_METRE} from './image-asset-schema.js';
+import {imagePhysicalSize} from './image-asset-schema.js';
 import {cloneWithImageContext,imageGeometry,resolvedImage} from './image-asset-context.js';
 import {terrainBlocks} from './terrain.js';
 // Original standalone room layouts; source-native Woka identity is rendered as legacy sprites.
@@ -44,7 +44,7 @@ const assembly={...emptyScene('assembly'),objects:[
  ],areas:[area('stage','Assembly stage',0,-7,12,5,'stage',{meetingName:'assembly'}),area('audience','Assembly audience',0,0,17,9,'audience',{meetingName:'assembly'})]};
 export const seedWorlds=[{id:'universe',name:'Our Universe',rooms:[{id:'commons',name:'The Commons',scene:commons},{id:'studio',name:'The Studio',scene:studio},{id:'assembly',name:'Assembly',scene:assembly}]}];
 export const clone = cloneWithImageContext;
-export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');return{width:entry.version.widthPixels/IMAGE_PIXELS_PER_METRE,depth:entry.version.heightPixels/IMAGE_PIXELS_PER_METRE};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
+export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');const size=imagePhysicalSize(entry.version);return{width:size.widthMetres,depth:size.heightMetres};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
 export function collisionBox(o,scene){if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);if(Math.round((o.rotation||0)/90)%2)[width,depth]=[depth,width];return {x:o.x,z:o.z,width,depth};}
 export function contains(area,x,z,padding=0){return Math.abs(x-area.x)<=area.width/2+padding&&Math.abs(z-area.z)<=area.depth/2+padding;}
 export function collisionBoxes(scene,object){if(object.type==='image')return imageGeometry(scene,object).collisionCells;return CATALOG[object.type]?.solid?[collisionBox(object,scene)]:[];}

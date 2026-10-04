@@ -1,0 +1,216 @@
+name: Preview image release
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact selected source SHA (validated against live label state)
+        required: true
+      tree:
+        description: Exact selected source tree
+        required: true
+      generation:
+        description: Current label-selection generation
+        required: true
+permissions: {}
+concurrency:
+  group: universe-3d-preview-build-${{ inputs.sha }}
+  cancel-in-progress: false
+env:
+  UNIVERSE_PREVIEW_TRUSTED_REVISION: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+jobs:
+  select:
+    if: >-
+      vars.UNIVERSE_PREVIEW_ENABLED == 'OWNER_APPROVED' &&
+      github.ref == 'refs/heads/main' &&
+      github.workflow_sha == vars.UNIVERSE_PREVIEW_TRUSTED_REVISION
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {contents: read, pull-requests: read, issues: read}
+    outputs:
+      sha: ${{ steps.selection.outputs.sha }}
+      tree: ${{ steps.selection.outputs.tree }}
+      baseImage: ${{ steps.selection.outputs.baseImage }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      - id: selection
+        run: node deploy/preview/cli.mjs select selection.json
+        env: {GH_TOKEN: '${{ github.token }}'}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: selection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: selection.json
+          if-no-files-found: error
+  checks:
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Test exact source in a credential-free container
+        env:
+          SOURCE_SHA: ${{ needs.select.outputs.sha }}
+          SOURCE_TREE: ${{ needs.select.outputs.tree }}
+          BASE_IMAGE: ${{ needs.select.outputs.baseImage }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C source rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          # Only this disposable source copy is mounted; no runner env, token,
+          # Docker socket, trusted scripts, cache, credentials, or host network.
+          docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+            --pids-limit=512 --memory=3g --cpus=2 --tmpfs=/tmp:rw,nosuid,size=512m \
+            --user "$(id -u):$(id -g)" --volume "$GITHUB_WORKSPACE/source:/app:rw" \
+            --workdir /app --env HOME=/tmp "$BASE_IMAGE" sh -ec '
+              npm ci --no-audit --no-fund
+              npm run check
+              npm test
+              npm run build
+              npm run verify
+              npm run verify:container-files
+            '
+  build:
+    needs: [select, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {contents: read}
+    # Fresh runner and exact source: untrusted checks cannot rewrite packaging.
+    # No environment, package token, deployment secret, OIDC, or shared cache.
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify fresh exact source before packaging
+        env:
+          SOURCE_SHA: ${{ needs.select.outputs.sha }}
+          SOURCE_TREE: ${{ needs.select.outputs.tree }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C source rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+      - name: Build with trusted Dockerfile and immutable reviewed base
+        env:
+          SOURCE_SHA: ${{ needs.select.outputs.sha }}
+          SOURCE_TREE: ${{ needs.select.outputs.tree }}
+          BASE_IMAGE: ${{ needs.select.outputs.baseImage }}
+        run: |
+          docker build --file trusted/deploy/preview/Dockerfile \
+            --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "net.bawes.universe.source-tree=$SOURCE_TREE" \
+            --tag "universe-preview-build:$SOURCE_SHA" source
+          docker save "universe-preview-build:$SOURCE_SHA" --output image.tar
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: image.tar
+          if-no-files-found: error
+          retention-days: 3
+  publish:
+    needs: [select, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The only packages:write authority in the pipeline. Never executes the image.
+    permissions: {contents: read, pull-requests: read, issues: read, packages: write}
+    outputs:
+      digest: ${{ steps.pushed.outputs.digest }}
+      image: ${{ steps.validate.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: selection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: input
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: input
+      - id: validate
+        run: node deploy/preview/cli.mjs validate-build input/selection.json
+        env: {GH_TOKEN: '${{ github.token }}'}
+      - id: loaded
+        run: node deploy/preview/image.mjs load input/image.tar input/selection.json
+      - name: Publish one run-unique tag; deployment always uses the digest
+        env:
+          PACKAGE_TOKEN: ${{ github.token }}
+          IMAGE_ID: ${{ steps.loaded.outputs.imageId }}
+          IMAGE_TAG: ${{ steps.validate.outputs.tag }}
+        run: |
+          printf '%s' "$PACKAGE_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+          docker tag "$IMAGE_ID" "$IMAGE_TAG"
+          docker push "$IMAGE_TAG"
+      - id: pushed
+        env:
+          IMAGE_TAG: ${{ steps.validate.outputs.tag }}
+          EXPECTED_IMAGE: ${{ steps.validate.outputs.image }}
+        run: node deploy/preview/image.mjs digest "$IMAGE_TAG"
+  smoke:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {contents: read, packages: read}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      - name: Fetch immutable image then remove registry credential
+        env:
+          PACKAGE_TOKEN: ${{ github.token }}
+          PIN: ${{ needs.publish.outputs.image }}@${{ needs.publish.outputs.digest }}
+        run: |
+          printf '%s' "$PACKAGE_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+          docker pull "$PIN"
+      - name: Smoke exact digest without registry/deployment authority
+        env:
+          PIN: ${{ needs.publish.outputs.image }}@${{ needs.publish.outputs.digest }}
+        run: node deploy/preview/image.mjs smoke "$PIN"
+  record:
+    needs: [build, publish, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {contents: read, pull-requests: read, issues: read}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: selection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: input
+      - run: node deploy/preview/cli.mjs record input/selection.json release.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release.json
+          if-no-files-found: error
+          retention-days: 90

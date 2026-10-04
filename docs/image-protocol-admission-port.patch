@@ -1,0 +1,11 @@
+--- a/public/site-admission.js
++++ b/public/site-admission.js
+@@ -59,7 +59,7 @@
+         const response = await fetch(path, {
+           method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
+           redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal,
+-          headers: body === undefined ? {Accept:'application/json'} : {Accept:'application/json', 'Content-Type':'application/json'},
++          headers: body === undefined ? {Accept:'application/json', 'X-Universe-Client-Capabilities':'image-physical-size-v1'} : {Accept:'application/json', 'Content-Type':'application/json', 'X-Universe-Client-Capabilities':'image-physical-size-v1'},
+           ...(body === undefined ? {} : {body:JSON.stringify(body)}),
+         });
+         let data;

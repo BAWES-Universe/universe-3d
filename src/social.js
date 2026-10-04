@@ -1,3 +1,5 @@
+import {mountSocialSheet} from './social-sheet-layout.js';
+import {icon} from './universe-icons.js';
 import {roomAllows} from './permissions.js';
 import {createNearbyText, validateNearbyText} from './proximity-text.js';
 import {createNearbyTyping} from './proximity-typing.js';
@@ -26,6 +28,7 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 function button(label, fn, attrs = {}) { return el('button', { type: 'button', class: 'button social-btn', ...attrs, onclick: fn }, label); }
+function glyph(name) { const node = el('span', {class:'social-glyph', 'aria-hidden':'true'}); node.innerHTML = icon(name); return node; }
 function messageError(error) { return error?.message || 'Something went wrong. Please try again.'; }
 function makeAvatar(user, large=false,portrait=null){
  const node=el('span',{class:`social-avatar${large?' social-avatar-large':''}`,'aria-hidden':'true'}),initials=el('span',{class:'social-avatar-initials',text:(user?.name||'U').slice(0,2)});node.append(initials);
@@ -152,7 +155,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     root.hidden = true;
     root.dispatchEvent(new CustomEvent('social-close', { bubbles: true }));
   }, { class: 'button social-btn social-btn-quiet social-close', 'aria-label': 'Close social panel', title: 'Close panel (Escape)' });
-  const header = el('header', { class: 'social-header' }, el('div', { class: 'social-grow' }, el('div', { class: 'social-eyebrow', text: 'Your Universe' }), title, subtitle), close);
+  const resizeHandle = el('div', {class:'social-sheet-handle', role:'separator', tabindex:'0', 'aria-orientation':'horizontal', 'aria-label':'Resize conversation', title:'Drag to resize. Use Up or Down when focused.'}, glyph('Move'));
+  const header = el('header', { class: 'social-header' }, resizeHandle, el('div', { class: 'social-grow' }, title, subtitle), close);
+  close.replaceChildren(glyph('Close'));
+  const sheet = mountSocialSheet(root, resizeHandle);
   const tabBar = el('nav', { class: 'social-tabs', role: 'tablist', 'aria-label': 'Social panel' });
   const panel = el('section', { class: 'social-panel', role: 'tabpanel', id: 'universe-social-panel' });
   for (const tab of TABS) {
@@ -172,7 +178,9 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     event.stopPropagation();
     if (event.key === 'Escape' && event.type === 'keydown') {
       event.preventDefault();
+      if (sheet.cancel()) return;
       if (pendingConfirm) dismissConfirm();
+      else if (closeDisclosure()) { /* Keep the conversation open. */ }
       else if (edit) cancelEdit();
       else if (createMode) { createMode = ''; resetView(); }
       else close.click();
@@ -180,7 +188,15 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   };
   root.addEventListener('keydown', stopGameKeys);
   root.addEventListener('keyup', stopGameKeys);
+  const stopPointer = event => event.stopPropagation();
+  const pointerEvents = ['pointerdown','pointermove','pointerup','pointercancel','click','dblclick','contextmenu','wheel','touchstart','touchmove','touchend'];
+  for (const type of pointerEvents) root.addEventListener(type, stopPointer, {passive:true});
   root.replaceChildren(header, tabBar, panel);
+  function closeDisclosure() {
+    const open = root.querySelector('details[open]');
+    if (!open) return false;
+    open.open = false; open.querySelector('summary')?.focus({preventScroll:true}); return true;
+  }
   // An added attribute also stops typing if the panel was covered and restored
   // before this observer runs. Restoring never restarts activity from the draft.
   const visibilityObserver = new MutationObserver(records => { if (!isPanelReadable() || records.some(record => record.oldValue === null)) typing.stop(); });
@@ -190,8 +206,8 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
 
   function syncHeader() {
     const peerName = selectedPeer?.name || 'Direct message';
-    title.textContent = { chat: chatMode === 'nearby' ? 'Nearby text' : chatMode === 'inbox' ? 'Direct messages' : chatMode === 'dm' ? peerName : 'Room chat', people: 'People', explore: 'Find your space', settings: 'Make it yours' }[activeTab];
-    subtitle.textContent = { chat: chatMode === 'nearby' ? 'Only your current conversation bubble' : chatMode === 'inbox' ? 'Your conversations, all in one place' : chatMode === 'dm' ? 'A conversation between the two of you' : room().name || 'Choose a room to join the conversation', people: `${(currentState().people || []).length} in ${room().name || 'this room'}`, explore: 'Small worlds. Room for everyone.', settings: 'Your name, Woka and availability' }[activeTab];
+    title.textContent = { chat: chatMode === 'nearby' ? 'Nearby text' : chatMode === 'inbox' ? 'Direct messages' : chatMode === 'dm' ? peerName : room().name || 'Room chat', people: 'People', explore: 'Find your space', settings: 'Make it yours' }[activeTab];
+    subtitle.textContent = { chat: chatMode === 'nearby' ? 'Live only · clears on reload' : chatMode === 'inbox' ? 'Saved on this server' : chatMode === 'dm' ? 'Direct · saved on this server' : 'Room · saved on this server', people: `${(currentState().people || []).length} in ${room().name || 'this room'}`, explore: 'Small worlds. Room for everyone.', settings: 'Your name, Woka and availability' }[activeTab];
     for (const [tab, node] of tabs) {
       node.setAttribute('aria-selected', String(tab === activeTab));
       node.tabIndex = tab === activeTab ? 0 : -1;
@@ -203,6 +219,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }
     root.dataset.tab = activeTab;
     root.dataset.chatMode = chatMode;
+    subtitle.title = subtitle.textContent;
     panel.setAttribute('aria-labelledby', `social-tab-${activeTab}`);
   }
   function setTab(tab) {
@@ -244,7 +261,9 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     const viewKey = `${activeTab}:${activeTab === 'chat' ? chatMode === 'inbox' ? 'inbox' : channelKey() : activeTab === 'explore' ? createMode : id}`;
     if (mountedKey !== viewKey) {
       typing.stop();
+      sheet.cancel();
       dismissConfirm();
+      const restoreFocus = root.contains(document.activeElement);
       mountedKey = viewKey;
       root.scrollTop = 0;
       panel.replaceChildren(); timeline = composer = sendButton = editLabel = peopleList = explorerList = profileForm = profileAvatar = noticeNode = nearbyElements = null;
@@ -253,6 +272,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       else if (activeTab === 'people') buildPeople();
       else if (activeTab === 'explore') buildExplorer();
       else buildSettings();
+      if (restoreFocus) tabs.get(activeTab)?.focus({preventScroll:true});
     } else if (activeTab === 'chat' && chatMode !== 'inbox') renderTimeline();
     else if (activeTab === 'people') renderPeople();
     else if (activeTab === 'explore' && !createMode) renderWorlds();
@@ -319,28 +339,31 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (chatMode === 'nearby') { buildNearby(); return; }
     if (chatMode === 'inbox') { buildInbox(); return; }
     const key = channelKey();
-    const roomName = chatMode === 'dm' ? selectedPeer.name : room().name || 'Room';
-    const toolbar = el('div', { class: 'social-toolbar' }, el('div', { class: 'social-channel', text: roomName }));
-    if (chatMode === 'dm') toolbar.append(button('← Room', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small social-btn-quiet' }));
-    toolbar.append(button('Direct', () => { chatMode = 'inbox'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open direct messages' }));
-    appendNearbyMode(toolbar);
+    const toolbar = buildChannelToolbar();
     timeline = el('div', { class: 'social-timeline social-scroll', role: 'log', 'aria-label': chatMode === 'dm' ? `Messages with ${selectedPeer.name}` : 'Room messages', 'aria-live': 'polite', 'aria-relevant': 'additions text', tabindex: '0' });
     noticeNode = el('div');
     editLabel = el('div');
-    composer = el('textarea', { class: 'input social-input', rows: '2', maxlength: '2000', placeholder: chatMode === 'dm' ? `Message ${selectedPeer.name}…` : 'Say something nice…', 'aria-label': chatMode === 'dm' ? `Message ${selectedPeer.name}` : 'Message the room' });
+    composer = el('textarea', { class: 'input social-input', rows: '1', dir:'auto', maxlength: '2000', placeholder: chatMode === 'dm' ? `Message ${selectedPeer.name}…` : 'Say something nice…', 'aria-label': chatMode === 'dm' ? `Message ${selectedPeer.name}` : 'Message the room' });
     composer.value = edit?.key === key ? edit.text : readDraft(key);
     composer.addEventListener('input', () => {
       if (edit?.key === key) edit.text = composer.value; else saveDraft(key, composer.value);
       syncComposer();
     });
+    let composing = false;
+    composer.addEventListener('compositionstart', () => { composing = true; });
+    composer.addEventListener('compositionend', () => { composing = false; });
     composer.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMessage(); }
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !composing && event.keyCode !== 229) { event.preventDefault(); sendMessage(); }
     });
     sendButton = button('Send ↗', sendMessage, { class: 'button social-btn social-btn-primary', 'aria-label': 'Send message' });
     const form = el('form', { class: 'social-composer', onsubmit: (event) => { event.preventDefault(); sendMessage(); } }, noticeNode, editLabel, composer,
       el('div', { class: 'social-composer-actions' }, el('span', { class: 'social-composer-hint', text: 'Enter to send · Shift + Enter for a new line\nMessages are saved on this server' }), sendButton));
     panel.append(toolbar, timeline, form);
-    if (chatMode === 'room') panel.append(buildEmotes());
+    if (chatMode === 'room') {
+      const emotes = el('details', {class:'social-emotes-disclosure'}, el('summary', {'aria-label':'Avatar emotes', title:'Avatar emotes'}, glyph('Emoji')), buildEmotes());
+      // Notices stay above the control row, including during edits and retries.
+      form.insertBefore(emotes, composer);
+    }
     syncComposer(); renderTimeline(); loadMessages(key);
   }
   function syncComposer() {
@@ -349,10 +372,17 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     const key = channelKey();
     const sending = busy.has(`send:${key}`);
     sendButton.disabled = !composer.value.trim() || sending || key === 'room:';
-    sendButton.textContent = sending ? 'Sending…' : edit?.key === key ? 'Save edit' : 'Send ↗';
+    sendButton.replaceChildren(glyph(sending ? 'Pause' : edit?.key === key ? 'Check' : 'Send'));
+    sendButton.title = sending ? 'Sending…' : edit?.key === key ? 'Save edit' : 'Send message';
     sendButton.setAttribute('aria-label', edit?.key === key ? 'Save edited message' : 'Send message');
     editLabel.replaceChildren();
     if (edit?.key === key) editLabel.append(el('div', { class: 'social-edit-label' }, 'Editing your message', button('Cancel', cancelEdit, { class: 'button social-btn social-btn-small social-btn-quiet' })));
+    sizeComposer();
+  }
+  function sizeComposer() {
+    if (!composer) return;
+    composer.style.height = '0px';
+    composer.style.height = `${Math.min(96,Math.max(48,composer.scrollHeight + 2))}px`;
   }
   async function sendMessage() {
     if (chatMode === 'nearby') { await nearby.send(); return; }
@@ -384,7 +414,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   function beginEdit(message) {
     if (message.userId !== user().id) return;
     edit = { key: channelKey(), id: message.id, text: message.text || '' };
-    composer.value = edit.text; syncComposer(); focusEnd(composer);
+    closeDisclosure(); composer.value = edit.text; syncComposer(); focusEnd(composer);
   }
   function cancelEdit() {
     edit = null;
@@ -405,8 +435,25 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (bucket.loading && !bucket.loaded) nodes.push(el('div', { class: 'social-empty', role: 'status' }, el('span', { class: 'social-loading', 'aria-hidden': 'true' }), 'Loading the conversation…'));
     if (bucket.error) nodes.push(el('div', {}, notice(bucket.error, true), button('Try again', () => loadMessages(key, true), { class: 'button social-btn social-btn-small' })));
     if (!bucket.loading && !bucket.error && !bucket.messages.length) nodes.push(empty(chatMode === 'dm' ? 'The start of a good conversation. Send a hello.' : 'A little hello goes a long way. Be the first to say something.'));
-    for (const message of bucket.messages) nodes.push(renderMessage(message, key));
-    timeline.replaceChildren(...nodes);
+    const existing = new Map([...timeline.querySelectorAll('[data-message-id]')].map(row => [row.dataset.messageId,row]));
+    for (const message of bucket.messages) {
+      const signature = JSON.stringify([message,user().id,room().role,room().capabilities]);
+      const old = existing.get(message.id);
+      const row = old?.dataset.signature === signature ? old : renderMessage(message,key);
+      row.dataset.signature = signature; nodes.push(row);
+    }
+    const focused = document.activeElement;
+    const focusedRow = focused?.closest('[data-message-id]');
+    const focusedLabel = focused?.getAttribute('aria-label');
+    const openId = timeline.querySelector('details[open]')?.closest('[data-message-id]')?.dataset.messageId;
+    for (const node of [...timeline.children]) if (!nodes.includes(node)) node.remove();
+    nodes.forEach((node,index) => { if (timeline.children[index] !== node) timeline.insertBefore(node,timeline.children[index] || null); });
+    if (openId) timeline.querySelector(`[data-message-id="${CSS.escape(openId)}"] details`)?.setAttribute('open','');
+    if (focusedRow && !focused.isConnected && isPanelReadable()) {
+      const row = timeline.querySelector(`[data-message-id="${CSS.escape(focusedRow.dataset.messageId)}"]`);
+      const target = (focusedLabel && [...(row?.querySelectorAll('[aria-label]') || [])].find(node => node.getAttribute('aria-label') === focusedLabel)) || row?.querySelector('summary') || timeline;
+      target.focus({preventScroll:true});
+    }
     if (nearBottom) timeline.scrollTop = timeline.scrollHeight; else timeline.scrollTop = oldTop;
   }
   function renderMessage(message, key) {
@@ -414,7 +461,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     const author = message.author || { name: message.name || 'Explorer', woka: 0 };
     const body = el('div', { class: 'social-message-body' },
       el('div', { class: 'social-message-meta' }, el('span', { class: 'social-message-author', text: own ? `${author.name || 'You'} · you` : author.name || 'Explorer' }), el('time', { class: 'social-message-time', datetime: message.createdAt, title: new Date(message.createdAt).toLocaleString(), text: `${timeLabel(message.createdAt)}${message.editedAt && !message.deleted ? ' · edited' : ''}` })),
-      el('p', { class: `social-message-text${message.deleted ? ' social-message-deleted' : ''}`, text: message.deleted ? 'Message deleted' : message.text || '' }));
+      el('p', { class: `social-message-text${message.deleted ? ' social-message-deleted' : ''}`, dir:'auto', text: message.deleted ? 'Message deleted' : message.text || '' }));
     if (!message.deleted && key.startsWith('room:')) {
       const actions = el('div', { class: 'social-message-actions' });
       for (const emoji of [...new Set([...REACTIONS, ...Object.keys(message.reactions || {})])]) {
@@ -436,7 +483,12 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
         }, remove), { class: 'button social-btn social-btn-small social-btn-quiet', 'aria-label': own ? 'Delete your message' : `Moderate message by ${author.name || 'Explorer'}` });
         actions.append(remove);
       }
-      body.append(actions);
+      const summary = el('summary', {'aria-label':`Actions for message by ${author.name || 'Explorer'}`, title:'Message actions', text:'···'});
+      const details = el('details', {class:'social-message-options'}, summary, actions);
+      details.addEventListener('toggle', () => { if (details.open) for (const other of root.querySelectorAll('.social-message-options[open]')) if (other !== details) other.open = false; });
+      body.append(details);
+      const counts = Object.entries(message.reactions || {}).filter(([,ids]) => Array.isArray(ids) && ids.length).map(([emoji,ids]) => `${emoji} ${ids.length}`).join('  ');
+      if (counts) body.append(el('span', {class:'social-reaction-counts', text:counts, 'aria-label':`Reactions: ${counts}`}));
     }
     return el('article', { class: `social-message${own ? ' social-message-own' : ''}`, 'data-message-id': message.id }, avatar(author), body);
   }
@@ -456,8 +508,8 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     focusPanel();
   }
   function buildInbox() {
-    const toolbar = el('div', { class: 'social-toolbar' }, button('← Room chat', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small social-btn-quiet' }), button('Find someone', () => setTab('people'), { class: 'button social-btn social-btn-small' }));
-    appendNearbyMode(toolbar);
+    const toolbar = buildChannelToolbar();
+    toolbar.append(button('Find someone', () => setTab('people'), {class:'button social-btn social-btn-small'}));
     panel.append(toolbar);
     const list = el('div', { class: 'social-scroll social-stack' });
     noticeNode = el('div'); list.append(noticeNode); panel.append(list);
@@ -487,6 +539,13 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   function publishNearbyUnread() {
     const count = nearby.snapshot().unread;
     if (count !== nearbyUnread) { nearbyUnread = count; onNearbyUnread(count); }
+  }
+  function buildChannelToolbar() {
+    const toolbar = el('nav', {class:'social-toolbar', 'aria-label':'Conversations'});
+    for (const [mode,label] of [['room','Room'],['inbox','Direct']]) toolbar.append(button(label, () => {
+      chatMode = mode; if (isPanelReadable() && mode === 'room') unread.delete(channelKey()); resetView();
+    }, {class:'button social-btn social-btn-small', 'aria-label':mode === 'room' ? 'Open room chat' : 'Open direct messages', 'aria-pressed':String(chatMode === mode || mode === 'inbox' && chatMode === 'dm')}));
+    appendNearbyMode(toolbar); return toolbar;
   }
   function appendNearbyMode(toolbar) {
     if (!nearby.snapshot().available) return;
@@ -521,23 +580,21 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   }
   function sendNearby(retry = false) { typing.stop(); return nearby.send(retry); }
   function buildNearby() {
-    const toolbar = el('div', { class: 'social-toolbar social-nearby-toolbar' },
-      button('Room', () => { chatMode = 'room'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open room chat' }),
-      button('Direct', () => { chatMode = 'inbox'; resetView(); }, { class: 'button social-btn social-btn-small', 'aria-label': 'Open direct messages' }));
-    appendNearbyMode(toolbar);
+    const toolbar = buildChannelToolbar();
     const status = el('p', { class: 'social-nearby-status', role: 'status', 'aria-live': 'polite' });
     const recipients = el('p', { class: 'social-nearby-recipients' });
     const stays = el('select', { class: 'input social-input', 'aria-label': 'Nearby stays' });
     stays.addEventListener('change', () => nearby.select(stays.value));
     const live = button('Open current nearby stay', () => nearby.select(nearby.snapshot().activeId), { class: 'button social-btn social-btn-small' });
-    const summary = el('div', { class: 'social-nearby-summary' }, status, recipients, stays, live,
+    const details = el('details', {class:'social-nearby-details'}, el('summary', {'aria-label':'Nearby conversation details'}, status), recipients, stays,
       el('details', { class: 'social-nearby-about' }, el('summary', { text: 'Live only · No missed-message replay' }), el('p', { text: 'The server relays readable plain text to this bubble. Up to 200 received or acknowledged messages and drafts stay in this tab; reload or account change clears them. Leaving keeps received stays read-only. Other signed-in sessions of your account may receive a labeled copy. Room chat and Direct keep their separate saved history.' })));
+    const summary = el('div', {class:'social-nearby-summary'}, details, live);
     timeline = el('div', { class: 'social-timeline social-scroll', role: 'log', 'aria-label': 'Nearby messages', 'aria-live': 'polite', 'aria-relevant': 'additions', tabindex: '0' });
     const error = el('div', { class: 'social-nearby-error', role: 'alert' });
     const retry = button('Retry same message', () => sendNearby(true), { class: 'button social-btn social-btn-small', 'aria-label': 'Retry nearby message' });
     const refresh = button('Refresh Nearby', () => nearby.refresh(), { class: 'button social-btn social-btn-small' });
     const controls = el('div', { class: 'social-nearby-recovery' }, retry, refresh);
-    composer = el('textarea', { class: 'input social-input', rows: '2', placeholder: 'Say hello to people in this bubble…', 'aria-label': 'Message nearby people', 'aria-describedby': 'nearby-composer-hint' });
+    composer = el('textarea', { class: 'input social-input', rows: '1', dir:'auto', placeholder: 'Say hello to people in this bubble…', 'aria-label': 'Message nearby people', 'aria-describedby': 'nearby-composer-hint' });
     let composing = false;
     const nearbyComposer = composer;
     const typingActivity = event => { if (event.isTrusted && composer === nearbyComposer && nearbyComposer.isConnected) typing.activity({hasText: nearbyComposer.value.length > 0, composing}); };
@@ -597,7 +654,9 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     nodes.refresh.hidden = !c?.connectionEpoch || !(state.refreshError || stay?.error || c?.reason === 'authority-unavailable');
     nodes.controls.hidden = nodes.retry.hidden && nodes.refresh.hidden;
     sendButton.disabled = !isLive || ended || !state.ready || !c?.canSend || state.navigating || state.connection !== 'connected' || !!stay?.operation || !stay?.draft.trim() || !!validation;
-    sendButton.textContent = stay?.operation?.status === 'sending' ? 'Sending…' : 'Send ↗';
+    sendButton.replaceChildren(glyph(stay?.operation?.status === 'sending' ? 'Pause' : 'Send'));
+    sendButton.title = stay?.operation?.status === 'sending' ? 'Sending…' : 'Send nearby message';
+    sizeComposer();
     renderNearbyTyping();
   }
 
@@ -861,6 +920,8 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }
   }
   function destroy() {
+    sheet.destroy();
+    for (const type of pointerEvents) root.removeEventListener(type, stopPointer);
     typing.destroy(); destroyed = true; nearby.destroy(); dismissConfirm();
     visibilityObserver.disconnect(); document.removeEventListener('visibilitychange', visibilityChanged);
     root.removeEventListener('keydown', stopGameKeys); root.removeEventListener('keyup', stopGameKeys);

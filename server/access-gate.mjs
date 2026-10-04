@@ -4,9 +4,9 @@ function denied(code, message, status = 403) {
   const error = new Error(message); error.status = status; error.code = code; throw error;
 }
 
-/** Offline provisioning is the only public-preview admission path. */
+/** Offline owner bootstrap remains mandatory; link admission is a separate capability. */
 export function createAccessGate({ store, config }) {
-  const disabled = config.registrationMode === 'disabled' || config.mode === 'public';
+  const disabled = config.registrationMode !== 'local-open' || config.mode === 'public';
   return Object.freeze({
     assertReady() {
       if (config.mode !== 'public') return;
