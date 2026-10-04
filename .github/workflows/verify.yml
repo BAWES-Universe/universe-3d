@@ -1,16 +1,33 @@
 name: Verify standalone game
 on:
   push:
+    branches-ignore: [release/mvp-open-signup]
   pull_request:
+  workflow_call:
+    outputs:
+      tree:
+        description: Git tree verified for the exact triggering SHA
+        value: ${{ jobs.verify.outputs.tree }}
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      tree: ${{ steps.source.outputs.tree }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: source
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           cache: npm
@@ -29,14 +46,17 @@ jobs:
       matrix:
         group: [core, authoring, sharedareas, images, imageversions, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay, arrivals, signup, imagesizing, imageprotocol, placescreation, compactconversations, editorpolish, worldpolish, shellpolish, friendjourney]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         if: matrix.group == 'imageprotocol'
         with:
           ref: bc715ff6ccc0c3d2537e4c003cb4a7bb82745a34
           path: .ci-legacy
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           cache: npm

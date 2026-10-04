@@ -11,6 +11,7 @@
 !scripts/
 !scripts/build.mjs
 !scripts/operator-account.mjs
+!scripts/promote-owner.mjs
 !scripts/healthcheck.mjs
 # Runtime state, secrets, dependencies, tests, evidence and old checkpoints are
 # excluded by the allowlist above. Defensive exclusions also cover nested data.
