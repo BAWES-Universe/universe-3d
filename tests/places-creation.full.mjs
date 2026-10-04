@@ -13,12 +13,24 @@ const out='evidence/places-creation';await mkdir(out,{recursive:true});
 const temp=await mkdtemp(join(tmpdir(),'places-creation-'));
 const app=createGameServer({database:join(temp,'test.sqlite'),dist:new URL('../dist',import.meta.url).pathname,seeds:seedWorlds});
 const {port}=await app.listen(0),base=`http://127.0.0.1:${port}`,browser=await launch();
-const results=[],errors=[];let alice,bob,touch;
+const results=[],errors=[];let alice,bob,touch,releaseInitialCatalog;
 const check=async(name,fn)=>{const detail=await fn();results.push({name,status:'passed',...detail});console.log('PASS',name)};
 const call=async(ctx,path,method='GET',data)=>{const r=await ctx.request.fetch(base+path,{method,data});const body=await r.json();assert(r.ok(),JSON.stringify({path,status:r.status(),body}));return body;};
 const own=async(ctx,id)=>(await call(ctx,'/api/universes')).universes.filter(u=>u.ownerId===id);
 const focusInside=async(page)=>assert(await page.evaluate(()=>{const n=document.activeElement;return document.querySelector('#places').contains(n)&&n.getClientRects().length>0;}),'focus must remain in visible Places');
-async function tabTo(page,matcher){for(let i=0;i<100;i++){const label=await page.evaluate(()=>document.activeElement.getAttribute('aria-label')||document.activeElement.textContent);if(matcher.test(label))return;await page.keyboard.press('Tab');}throw Error('Tab target missing '+matcher);}
+async function tabTo(page,matcher){
+ let tabs=0;
+ try{
+  // Opening Places exposes its Close control before the asynchronous directory.
+  // Establish that the intended row exists before testing bounded native traversal.
+  await page.getByRole('button',{name:matcher}).first().waitFor({state:'visible'});
+  for(;tabs<100;tabs++){const label=await page.evaluate(()=>document.activeElement.getAttribute('aria-label')||document.activeElement.textContent);if(matcher.test(label))return;await page.keyboard.press('Tab');}
+  throw Error('Tab target missing '+matcher);
+ }catch(error){
+  const snapshot=await page.evaluate(()=>({activeLabel:document.activeElement.getAttribute('aria-label')||document.activeElement.textContent,activeTag:document.activeElement.tagName,focusInsidePlaces:document.querySelector('#places').contains(document.activeElement),visibleTreeLabels:[...document.querySelectorAll('.places-tree-item')].filter(n=>n.getClientRects().length).map(n=>n.getAttribute('aria-label')),loadingText:[...document.querySelectorAll('#places .places-status,#places .places-empty')].map(n=>n.textContent).filter(Boolean)}));
+  throw new Error(`${error.message}\nPlaces traversal ${JSON.stringify({matcher:String(matcher),tabs,...snapshot})}`,{cause:error});
+ }
+}
 async function open(page){if(await page.locator('#places').isHidden())await page.locator('#dock-explore').click();await page.getByRole('button',{name:'Close places',exact:true}).waitFor();}
 async function guide(page){await open(page);if(!await page.getByRole('button',{name:'Make a place',exact:true}).isVisible())await page.getByRole('button',{name:'← All places',exact:true}).click();await page.getByRole('button',{name:'Make a place',exact:true}).click();}
 async function ready(page){await page.waitForFunction(()=>window.__universe?.getState().ready);}
@@ -38,7 +50,31 @@ try{
  alice=await browser.newContext({viewport:{width:1280,height:850}});bob=await browser.newContext({viewport:{width:1280,height:850}});
  const aid=(await call(alice,'/api/session','POST',{name:'Creation Alice'})).user.id,bid=(await call(bob,'/api/session','POST',{name:'Creation Bob'})).user.id;
  await call(alice,'/api/account','POST',{username:'creation_alice',password:'synthetic-password-only'});await call(bob,'/api/account','POST',{username:'creation_bob',password:'synthetic-password-only'});
- const page=await alice.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/?room=commons');await ready(page);
+ const fixtureTimeout=15000,page=await alice.newPage();page.setDefaultTimeout(fixtureTimeout);page.on('pageerror',e=>errors.push(e.message));
+ const initialCatalogGate=new Promise(resolve=>{releaseInitialCatalog=resolve;});
+ let catalogHeld,catalogFailed;const initialCatalogHeld=new Promise((resolve,reject)=>{catalogHeld=resolve;catalogFailed=reject;});initialCatalogHeld.catch(()=>{});
+ const holdInitialCatalog=async route=>{try{const response=await route.fetch();catalogHeld(response);await initialCatalogGate;await route.fulfill({response});}catch(error){catalogFailed(error);await route.abort().catch(()=>{});}};
+ const waitForInitialCatalog=async()=>{let timer;try{return await Promise.race([initialCatalogHeld,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Initial Places catalog response did not arrive within '+fixtureTimeout+'ms')),fixtureTimeout);})]);}finally{clearTimeout(timer);}};
+ await page.route('**/api/universes?*',holdInitialCatalog);
+ await page.goto(base+'/?room=commons');await ready(page);
+ await check('native hierarchy traversal waits for a held real catalog response without spending its Tab budget',async()=>{
+  await open(page);const response=await waitForInitialCatalog();assert.equal(response.status(),200);assert((await response.json()).universes.length>0);
+  assert.equal(await page.getByRole('button',{name:/^View universe /}).count(),0);await focusInside(page);
+  // Observe native keys only; do not focus or activate a control from diagnostics.
+  await page.evaluate(()=>{window.__placesReadinessKeys=[];window.__placesReadinessKeyListener=event=>{if(['Tab','Enter'].includes(event.key))window.__placesReadinessKeys.push({key:event.key,trusted:event.isTrusted});};document.addEventListener('keydown',window.__placesReadinessKeyListener,true);});
+  const seeking=tabTo(page,/^View universe /);seeking.catch(()=>{});
+  await page.screenshot({path:out+'/catalog-loading.png'});
+  assert.deepEqual(await page.evaluate(()=>window.__placesReadinessKeys),[]);
+  assert.equal(await page.getByRole('button',{name:/^View universe /}).count(),0);await focusInside(page);
+  releaseInitialCatalog();await seeking;
+  assert.match(await page.evaluate(()=>document.activeElement.getAttribute('aria-label')),/^View universe /);
+  await page.keyboard.press('Enter');await focusInside(page);assert.equal(await page.evaluate(()=>document.activeElement.className),'places-detail-title');
+  const keys=await page.evaluate(()=>{document.removeEventListener('keydown',window.__placesReadinessKeyListener,true);const keys=window.__placesReadinessKeys;delete window.__placesReadinessKeys;delete window.__placesReadinessKeyListener;return keys;});
+  assert(keys.some(event=>event.key==='Tab')&&keys.some(event=>event.key==='Enter'));assert(keys.every(event=>event.trusted));
+  await page.screenshot({path:out+'/catalog-ready.png'});await page.keyboard.press('Escape');assert(await page.locator('#places').isHidden());assert.equal(await page.evaluate(()=>document.activeElement.id),'dock-explore');
+  await page.unroute('**/api/universes?*',holdInitialCatalog);
+  return {nativeKeys:keys.length};
+ });
  await check('native Tab/Enter selects every hierarchy level; Escape restores opener and no movement leaks',async()=>{
   for(const kind of ['universe','world','room']){
    await open(page);await tabTo(page,new RegExp('^View '+kind+' '));await page.keyboard.press('Enter');await focusInside(page);
@@ -124,4 +160,4 @@ try{
  });
  assert.deepEqual(errors,[]);
 } catch(error){console.error(error);results.push({status:'failed',error:error.stack});process.exitCode=1;for(const c of [alice,bob,touch])for(const p of c?.pages()||[])await p.screenshot({path:out+'/failure-'+(c===alice?'alice':c===bob?'bob':'touch')+'.png',timeout:5000}).catch(()=>{});}
-finally{await writeFile(out+'/full-results.json',JSON.stringify({results,errors,environment:'Native Chromium input, SwiftShader software rendering, touch emulation. No physical-device claim.'},null,2));await alice?.close();await bob?.close();await touch?.close();await browser.close();await app.close();await rm(temp,{recursive:true,force:true});}
+finally{releaseInitialCatalog?.();await writeFile(out+'/full-results.json',JSON.stringify({results,errors,environment:'Native Chromium input, SwiftShader software rendering, touch emulation. No physical-device claim.'},null,2));await alice?.close();await bob?.close();await touch?.close();await browser.close();await app.close();await rm(temp,{recursive:true,force:true});}

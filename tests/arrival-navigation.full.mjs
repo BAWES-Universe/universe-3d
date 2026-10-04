@@ -8,8 +8,9 @@ import {launch} from '../scripts/browser.mjs';
 const start=(key,x,extra={})=>({id:key,name:key==='cafe'?'Café welcome':'Stage doors',x,z:0,width:1.6,depth:1.6,action:'welcome',start:{key,isDefault:key==='cafe'},...extra});
 const scene=id=>({version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:8},areas:[start('cafe',-6,id==='a'?{action:'teleport',target:'b',entry:'cafe'}:{}),start('stage',6)],objects:[{id:'door',type:'board',name:'Travel board',x:-6,z:-1.8,rotation:0,actions:[{id:'cross',type:'teleport',name:id==='a'?'Travel to Garden':'Travel to Café',target:id==='a'?'b':'a',entry:'cafe'},{id:'same',type:'teleport',name:'Travel to stage',target:id,entry:'stage'}]}]});
 const app=createGameServer({database:':memory:',seeds:[{id:'world',name:'Arrival world',rooms:[{id:'a',name:'Café room',scene:scene('a')},{id:'b',name:'Garden room',scene:scene('b')}]}],dist:new URL('../dist',import.meta.url).pathname,questsEnabled:false});
-const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1365,height:960},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[],joins=[],presence=[],movement=[],retirement=[];
-page.setDefaultTimeout(60000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',error=>errors.push(error.message));
+const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1365,height:960},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[],joins=[],presence=[],movement=[],retirement=[],heldJoins=[];
+const operationTimeout=60000;
+page.setDefaultTimeout(operationTimeout);page.setDefaultNavigationTimeout(operationTimeout);page.on('pageerror',error=>errors.push(error.message));
 page.on('request',request=>{if(request.url().endsWith('/api/presence'))presence.push(request.postDataJSON());});
 page.on('response',async res=>{if(/\/api\/rooms\/[^/]+\/join$/.test(new URL(res.url()).pathname)){const body=await res.json().catch(()=>null);joins.push({url:res.url(),request:res.request().postDataJSON(),status:res.status(),body});}});
 const read=()=>page.evaluate(()=>window.__universe.getState());
@@ -17,6 +18,34 @@ const ready=id=>page.waitForFunction(id=>window.__universe?.getState().ready&&wi
 const check=name=>{checks.push({name,status:'passed'});console.log('PASS',name);};
 const quick=async label=>{await page.keyboard.press('Control+k');const input=page.getByRole('combobox',{name:'Search actions, people and places'});await input.fill(label);await input.press('Enter');};
 const travel=async name=>{await page.locator('#interact').click();await page.locator('#dialog-actions').getByRole('button',{name,exact:true}).click();};
+const holdNativeJoin=async(sourceRoomId,roomId,name)=>{
+ const pattern='**/api/rooms/'+roomId+'/join',started=performance.now(),trace={sourceRoomId,roomId,phase:'waiting-for-source-navigation'};heldJoins.push(trace);
+ const response=Promise.withResolvers(),deadline=Promise.withResolvers();let timer;
+ const failure=(code,message,cause)=>Object.assign(new Error(message,{cause}),{code});
+ const hold=async route=>{
+  trace.phase='fetching-server-response';trace.requestMs=performance.now()-started;
+  try{
+   trace.request=route.request().postDataJSON();
+   const upstream=await route.fetch({timeout:operationTimeout});
+   trace.responseMs=performance.now()-started;trace.status=upstream.status();trace.phase='holding-server-response';
+   assert.equal(upstream.status(),200,'Native '+roomId+' join must reach an accepted actual server response');
+   response.resolve({route,upstream,unroute:()=>context.unroute(pattern,hold)});
+  }catch(error){trace.phase='server-response-failed';trace.error=error.message;response.reject(failure('HELD_JOIN_FETCH_FAILED','Actual '+roomId+' join response failed: '+error.message,error));}
+ };
+ const activate=async()=>{
+  // Room commit sets ready before navigation settles. The existing inert flag
+  // fences presence/action activation until the controls response is accepted.
+  await page.waitForFunction(id=>{const s=window.__universe.getState();return s.ready&&s.room?.id===id&&!document.querySelector('#editor').inert;},sourceRoomId);
+  trace.sourceSettledMs=performance.now()-started;trace.phase='waiting-for-native-request';await travel(name);
+ };
+ await context.route(pattern,hold);
+ // Readiness belongs to the actual upstream response, not the pointer click or
+ // a short poll of a variable. Use the same bounded deadline as other UI work.
+ timer=setTimeout(()=>deadline.reject(failure(trace.phase==='waiting-for-source-navigation'?'HELD_JOIN_SOURCE_TIMEOUT':trace.requestMs===undefined?'HELD_JOIN_REQUEST_TIMEOUT':'HELD_JOIN_RESPONSE_TIMEOUT','Native '+roomId+' join timed out '+trace.phase)),operationTimeout);
+ try{const [held]=await Promise.race([Promise.all([response.promise,activate()]),deadline.promise]);return held;}
+ catch(error){await context.unroute(pattern,hold);throw error;}
+ finally{clearTimeout(timer);}
+};
 try{
  const created=await context.request.post(base+'/api/session',{data:{name:'Arrival traveler'}});assert.equal(created.status(),201);
  await page.goto(base+'/?room=a&entry=cafe&irrelevant=local');await ready('a');await page.waitForFunction(()=>!!window.__universe.getState().admissionId);await page.waitForTimeout(300);
@@ -60,10 +89,9 @@ try{
  const [deniedAgain]=await Promise.all([page.waitForResponse(response=>new URL(response.url()).pathname==='/api/rooms/b/join'&&response.status()===403&&response.request().postDataJSON()?.sourceAction?.entityType==='area'),leaveAndReturn()]);
  assert.equal((await deniedAgain.json()).message,denialMessage(2));await page.waitForFunction(message=>document.querySelector('#toast').textContent.includes(message),denialMessage(2));await page.waitForTimeout(450);assert.equal(deniedJoins,2);await page.waitForTimeout(300);assert.equal(deniedJoins,2);check('Failed automatic doorway attempts once per physical entry and stays suppressed after denial');
  await context.unroute('**/api/rooms/b/join',denial);
- let held=null;const hold=async route=>{const upstream=await route.fetch();held={route,upstream};};
- await context.route('**/api/rooms/b/join',hold);await travel('Travel to Garden');for(let i=0;!held&&i<100;i++)await page.waitForTimeout(20);assert(held,'Native travel reached held server response');
+ const heldScene=await holdNativeJoin('a','b','Travel to Garden');
  const beforeRoom=(await (await context.request.get(base+'/api/rooms/b')).json()).room,nextScene=structuredClone(beforeRoom.scene);nextScene.areas[1].name='Newest stage sign';const saved=await context.request.put(base+'/api/rooms/b/scene',{data:{revision:beforeRoom.revision,scene:nextScene}});assert.equal(saved.status(),200);const changed=await saved.json();await page.waitForTimeout(100);assert.equal((await read()).room.id,'a');
- await held.route.fulfill({response:held.upstream});await ready('b');state=await read();assert.equal(state.room.revision,changed.room.revision);assert.equal(state.scene.areas[1].name,'Newest stage sign');await context.unroute('**/api/rooms/b/join',hold);check('Real target scene SSE received before held join response wins before destination render');
+ await heldScene.route.fulfill({response:heldScene.upstream});await ready('b');state=await read();assert.equal(state.room.revision,changed.room.revision);assert.equal(state.scene.areas[1].name,'Newest stage sign');await heldScene.unroute();check('Real target scene SSE received before held join response wins before destination render');
  await page.screenshot({path:'evidence/arrival-navigation-destination.png'});
  // Observe rendered frames and heading changes without changing application
  // state, so a transient target display or post-retirement regrant also fails.
@@ -75,8 +103,8 @@ try{
   return {stop(){sample();cancelAnimationFrame(frame);observer.disconnect();return samples;}};
  });
  const joinsBeforeRevocation=joins.length;
- held=null;await context.route('**/api/rooms/a/join',hold);await travel('Travel to Café');for(let i=0;!held&&i<100;i++)await page.waitForTimeout(20);assert(held);
- const archived=await context.request.delete(base+'/api/rooms/a');assert.equal(archived.status(),200);await page.waitForTimeout(100);await held.route.fulfill({response:held.upstream});
+ const heldRevocation=await holdNativeJoin('b','a','Travel to Café');
+ const archived=await context.request.delete(base+'/api/rooms/a');assert.equal(archived.status(),200);await page.waitForTimeout(100);await heldRevocation.route.fulfill({response:heldRevocation.upstream});
  // Unconfirmed authority is only an intermediate state. Wait for the empty
  // server session to retire the room completely and navigation to settle.
  await page.waitForFunction(()=>{const s=window.__universe.getState();return !s.ready&&s.room===null&&s.destination===null&&s.admissionId===null&&s.admissionEpoch===null&&s.admissionRevision===null&&!document.querySelector('#editor').inert;});
@@ -93,7 +121,7 @@ try{
  const retiredAt=retirement.findIndex(sample=>sample.roomId===null);assert(retiredAt>=0,'Complete room retirement was observed');
  assert(retirement.slice(retiredAt).every(sample=>sample.roomId===null&&!sample.ready&&sample.admissionId===null&&sample.admissionEpoch===null&&sample.admissionRevision===null),'Retired source authority is never restored');
  assert.equal(joins.length,joinsBeforeRevocation+1,'Recovery never silently rejoins either room');
- assert.equal((await (await context.request.get(base+'/api/session')).json()).currentRoomId,null);await context.unroute('**/api/rooms/a/join',hold);
+ assert.equal((await (await context.request.get(base+'/api/session')).json()).currentRoomId,null);await heldRevocation.unroute();
  check('Real target access revocation during held join never displays target or restores retired source authority');
  assert.deepEqual(errors,[]);
-}catch(error){console.error(error);checks.push({name:'failure',status:'failed',error:error.stack});await mkdir('evidence',{recursive:true});await page.screenshot({path:'evidence/arrival-navigation-failure.png'}).catch(()=>{});process.exitCode=1;}finally{await mkdir('evidence',{recursive:true});await writeFile('evidence/arrival-navigation-full.json',JSON.stringify({checks,errors,joins,movement,retirement,limits:['Local real server and browser only; no remote services, devices, deployment or production configuration']},null,2));await context.close();await browser.close();await app.close();}
+}catch(error){console.error(error);checks.push({name:'failure',status:'failed',code:error.code,error:error.stack});await mkdir('evidence',{recursive:true});await page.screenshot({path:'evidence/arrival-navigation-failure.png'}).catch(()=>{});process.exitCode=1;}finally{await mkdir('evidence',{recursive:true});await writeFile('evidence/arrival-navigation-full.json',JSON.stringify({checks,errors,joins,movement,retirement,heldJoins,limits:['Local real server and browser only; no remote services, devices, deployment or production configuration']},null,2));await context.close();await browser.close();await app.close();}
