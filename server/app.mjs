@@ -30,7 +30,10 @@ import {createRoomImageAssets} from './image-asset-context.mjs';
 import {validateImageSceneDelta} from './image-scene-authority.mjs';
 import {createSceneOperationService} from './scene-operations.mjs';
 import {sceneOperationGeometryConflicts} from './scene-operation-geometry.mjs';
-import {createSiteAdmission} from './site-admission.mjs';
+import {createSiteAdmission,readSiteAdmissionBody} from './site-admission.mjs';
+import {createOpenSignup,assertOpenAccountSchema} from './open-signup.mjs';
+import {normalizeEmail} from './account-identity.mjs';
+import {createSetupMode} from './setup-mode.mjs';
 import {readSiteAdmissionConfig,validateSiteAdmissionConfig} from './site-admission-config.mjs';
 
 const passwordHash = promisify(scrypt);
@@ -47,12 +50,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
   siteAdmissionConfig=validateSiteAdmissionConfig(siteAdmissionConfig);
-  if(siteAdmissionConfig.enabled!==(runtimeConfig.registrationMode==='invite-only'))throw new Error('Site admission configuration must match the explicit invite-only registration mode');
+  if(siteAdmissionConfig.enabled!==(runtimeConfig.registrationMode==='invite-only')||(siteAdmissionConfig.registrationMode==='open')!==(runtimeConfig.registrationMode==='open'))throw new Error('Site admission configuration must match the explicit registration mode');
   if(proximityMembershipConfig!==undefined)proximityMembershipConfig=validateProximityMembershipConfig(proximityMembershipConfig);
   if(proximityTextConfig!==undefined)proximityTextConfig=validateProximityTextConfig(proximityTextConfig,proximityMembershipConfig);
-  const store = new Store(database, seeds, clock, {claimUnownedOnCreate:runtimeConfig.mode==='local'});
+  const store = new Store(database, seeds, clock, {claimUnownedOnCreate:runtimeConfig.mode==='local'&&runtimeConfig.registrationMode==='local-open'});
   const accessGate=createAccessGate({store,config:runtimeConfig});
-  try{accessGate.assertReady();}catch(error){store.close();throw error;}
+  let setup;
+  try{if(runtimeConfig.registrationMode==='open')assertOpenAccountSchema(store);setup=createSetupMode({store,config:runtimeConfig,accessGate});}catch(error){store.close();throw error;}
   const requestSecurity=createRequestSecurity(runtimeConfig,{listeningPort:()=>server.address()?.port});
   const serveStatic=createStaticAssets({dist});
   const connections = new Map(),responseRequests=new WeakMap(),streamCapabilities=new WeakMap(),streamScopes=new WeakMap();
@@ -73,7 +77,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   }
   function send(res, status, data, headers = {}) {
     if (res.destroyed || res.writableEnded) return;
-    if(status<400&&responseRequests.has(res))imageProtocol?.assertRequest(responseRequests.get(res));
+    if(!setup.active&&status<400&&responseRequests.has(res))imageProtocol?.assertRequest(responseRequests.get(res));
     res.writeHead(status, { 'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers }); res.end(JSON.stringify(data));
   }
   function rawSse(res,event,data){if(!res.destroyed&&!res.writableEnded)res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);}
@@ -128,7 +132,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     res.setHeader('Set-Cookie',cookie(token,req)); return { token_hash: tokenHash,user_id:userId,current_room_id:null };
   }
   function session(req, required = true) {
-    imageProtocol?.assertRequest(req);
+    if(!setup.active)imageProtocol?.assertRequest(req);
     const token = String(req.headers.cookie || '').split(';').map(p => p.trim()).find(p => p.startsWith(`${COOKIE}=`))?.slice(COOKIE.length+1);
     const row = token && /^[A-Za-z0-9_-]{43}$/.test(token) ? store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',digest(token),now()) : null;
     if (!row && required) v.fail(401,'AUTH_REQUIRED',runtimeConfig.mode==='public'?'Sign in with an operator-provisioned account first':'Create a guest profile or sign in first');
@@ -259,17 +263,21 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   }
   const sceneOperations=createSceneOperationService({store,session,arrivals,images,body,send,commitScene,afterCommit:afterSceneCommit});
   const siteAdmission=createSiteAdmission({store,config:siteAdmissionConfig,now,session,send});
+  const openSignup=createOpenSignup({store,config:siteAdmissionConfig,setup,session,send,limitSignup:siteAdmission.limitSignup});
   const server=http.createServer(async(req,res) => {
     responseRequests.set(res,req);
     res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
     try {
       const url=new URL(req.url,'http://127.0.0.1'); const path=url.pathname; const method=req.method;
       originCheck(req);
+      setup.assertRequest(req,path,url);
       if (!path.startsWith('/api/')) return await serveStatic(req,res,path);
-      imageProtocol.assertRequest(req);
+      if(!setup.active)imageProtocol.assertRequest(req);
       if(path==='/api/client-protocol'&&method==='GET')return send(res,200,imageProtocol.status());
       if(path==='/api/health'&&method==='GET') return send(res,200,{ok:true,persistence:'sqlite',identity:'httpOnly-session',scope:runtimeConfig.mode==='public'?'standalone-private-preview':'standalone-local'});
-      if(path==='/api/access'&&method==='GET')return send(res,200,{...accessGate.publicPolicy(),inviteRegistration:siteAdmissionConfig.enabled,siteAdmission:siteAdmission.publicPolicy(session(req,false))});
+      if(path==='/api/access'&&method==='GET')return send(res,200,{...accessGate.publicPolicy(),openSignup:runtimeConfig.registrationMode==='open',openRegistration:runtimeConfig.registrationMode==='open',setupOnly:setup.active,inviteRegistration:siteAdmissionConfig.enabled,siteAdmission:siteAdmission.publicPolicy(session(req,false))});
+      if(await openSignup.handle({req,res,path,method,url}))return;
+      if(path==='/api/setup/me'&&method==='GET'){if(runtimeConfig.registrationMode!=='open')v.fail(404,'NOT_FOUND','API endpoint not found');const me=session(req);return send(res,200,{accountId:me.user_id,user:store.user(me.user_id),setupOnly:setup.active});}
       if(await siteAdmission.handle({req,res,path,method,url}))return;
       if(path==='/api/session'&&method==='POST') {
         limit(`guest:${req.socket.remoteAddress}`,60);
@@ -281,13 +289,17 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       }
       if(path==='/api/login'&&method==='POST') {
         limit(`login:${req.socket.remoteAddress}`,12);
-        const b=await body(req); const username=v.text(b.username,'username',32).toLowerCase();
+        const b=await readSiteAdmissionBody(req);
+        const supplied=b.email??b.username;
+        const emailLogin=runtimeConfig.registrationMode==='open'&&(b.email!==undefined||(typeof supplied==='string'&&supplied.includes('@')));
+        const identifier=emailLogin?normalizeEmail(supplied):v.text(supplied,'username',32).toLowerCase();
         const password=v.text(b.password,'password',256);
-        const account=store.get('SELECT * FROM accounts WHERE username=?',username);
+        const account=store.get(emailLogin?'SELECT * FROM accounts WHERE email=?':'SELECT * FROM accounts WHERE username=?',identifier);
         const result=await passwordHash(password,account?.salt || '00000000000000000000000000000000',64);
-        if(!account || !timingSafeEqual(Buffer.from(account.password_hash,'hex'),result)) v.fail(401,'INVALID_CREDENTIALS','Incorrect username or password');
+        if(!account || !timingSafeEqual(Buffer.from(account.password_hash,'hex'),result)) v.fail(401,'INVALID_CREDENTIALS','Incorrect sign-in details');
         const old=session(req,false); if(old){leave(old.token_hash,old.user_id);store.run('DELETE FROM sessions WHERE token_hash=?',old.token_hash);}
-        return send(res,200,sessionState(createSession(account.user_id,req,res)));
+        const signedIn=createSession(account.user_id,req,res);
+        return send(res,200,setup.active?{user:store.user(account.user_id),accountId:account.user_id,setupOnly:true}:{...sessionState(signedIn),accountId:account.user_id,setupOnly:false});
       }
       const s=session(req); const userId=s.user_id;
       if(path==='/api/events'&&method==='GET'&&imageProtocol.isRequired()&&!imageProtocol.accepts(req))return retireIncompatibleStream(res,{token:s.token_hash,roomId:s.current_room_id});
@@ -459,5 +471,5 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     store.run('DELETE FROM sessions WHERE expires_at<?',now());
   },15000);heartbeat.unref();
   server.requestTimeout=15000;server.headersTimeout=10000;
-  return {server,store,presence,setImagePhysicalSizeEnabledForTest:value=>imageProtocol.setEnabledForTest(value),listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();proximityControls?.close();proximityText?.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
+  return {server,store,presence,setImagePhysicalSizeEnabledForTest:value=>imageProtocol.setEnabledForTest(value),listen(port=runtimeConfig.port){setup.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();proximityControls?.close();proximityText?.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
 }

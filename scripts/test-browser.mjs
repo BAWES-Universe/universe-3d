@@ -8,7 +8,7 @@ const groups={
  editorpolish:['editor-polish-feedback.browser.mjs','editor-polish-experience.full.mjs'],
  worldpolish:['world-presentation-occlusion.mjs'],
  shellpolish:['external-shell-journeys.mjs','external-shell-menu-input.mjs','polish-integration-side-content.mjs','polish-integration-friends.mjs'],
- signup:['site-admission-ui.browser.mjs'],
+ signup:['site-admission-ui.browser.mjs','open-signup-ui.browser.mjs'],
  imageprotocol:['image-client-protocol.full.mjs'],
  imagesizing:['image-physical-size.browser.mjs','image-physical-size-renderer.browser.mjs','image-physical-size.full.mjs'],
  imageversions:['image-library-setup.browser.mjs','image-setup-version.full.mjs'],

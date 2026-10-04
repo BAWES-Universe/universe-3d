@@ -37,7 +37,7 @@ function accountInput(input) {
   const woka = v.integer(input.woka ?? 0, 'woka', 0, 31);
   return { tokenHash: digest(token), operationHash: digest(operation), name: name.trim(), username, password, woka: JSON.stringify(woka) };
 }
-async function readBody(req) {
+export async function readSiteAdmissionBody(req) {
   if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) v.fail(415, 'JSON_REQUIRED', 'Use Content-Type: application/json');
   if (req.headers['content-length'] !== undefined && (!/^\d+$/.test(req.headers['content-length']) || Number(req.headers['content-length']) > MAX_BODY_BYTES)) v.fail(413, 'TOO_LARGE', 'Request is too large');
   const encoded = await new Promise((resolve, reject) => {
@@ -247,7 +247,7 @@ export function createSiteAdmission({ store, config = {}, now = Date.now, sessio
         return true;
       }
       if (method !== 'POST') v.fail(405, 'METHOD_NOT_ALLOWED', 'Use the documented site invite method');
-      const body = await readBody(req);
+      const body = await readSiteAdmissionBody(req);
       if (revoke) {
         only(body, ['clientOperationId']);
         if (body.clientOperationId !== undefined) secret(body.clientOperationId, 'client operation ID');
@@ -289,7 +289,7 @@ export function createSiteAdmission({ store, config = {}, now = Date.now, sessio
     const checking = path.endsWith('/check');
     limit(req, checking ? 'check' : 'redeem', checking ? config.checkPerMinute : config.redeemPerMinute);
     const previous = session(req, false);
-    const body = await readBody(req);
+    const body = await readSiteAdmissionBody(req);
     assertSessionFence(req, previous);
     if (checking) {
       only(body, ['token']);
@@ -302,5 +302,5 @@ export function createSiteAdmission({ store, config = {}, now = Date.now, sessio
     send(res, result.duplicate ? 200 : 201, result);
     return true;
   }
-  return Object.freeze({ handle, publicPolicy, isSiteOwner });
+  return Object.freeze({ handle, publicPolicy, isSiteOwner, limitSignup: req => limit(req, 'open-signup', config.redeemPerMinute) });
 }

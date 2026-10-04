@@ -1,5 +1,6 @@
 const DEFAULTS = Object.freeze({
   enabled: false,
+  registrationMode: 'disabled',
   inviteTtlMs: 24 * 60 * 60 * 1000,
   maxActiveInvites: 25,
   maxAccounts: 50,
@@ -30,7 +31,10 @@ const fail = message => { throw new Error(`Invalid Universe site admission confi
 export function validateSiteAdmissionConfig(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('expected an object');
   if (Object.keys(input).some(key => !Object.hasOwn(DEFAULTS, key))) fail('unknown setting');
-  const result = { ...DEFAULTS, ...input };
+  const registrationMode = input.registrationMode ?? (input.enabled ? 'invite-only' : 'disabled');
+  if (!['disabled', 'local-open', 'invite-only', 'open'].includes(registrationMode)) fail('registrationMode is not recognized');
+  const result = { ...DEFAULTS, ...(registrationMode === 'open' ? { maxAccounts: 10000 } : {}), ...input, registrationMode, enabled: input.enabled ?? registrationMode === 'invite-only' };
+  if (result.enabled !== (registrationMode === 'invite-only')) fail('enabled must match invite-only registrationMode');
   if (typeof result.enabled !== 'boolean') fail('enabled must be a boolean');
   for (const [key, [min, max]] of Object.entries(LIMITS)) {
     if (!Number.isSafeInteger(result[key]) || result[key] < min || result[key] > max) fail(`${key} must be an integer from ${min} to ${max}`);
@@ -41,8 +45,9 @@ export function validateSiteAdmissionConfig(input = {}) {
 /** Only process entry points should call this with process.env. Factories use {}. */
 export function readSiteAdmissionConfig(env = process.env) {
   const config = {};
-  if (env.UNIVERSE_REGISTRATION_MODE !== undefined && !['disabled', 'local-open', 'invite-only'].includes(env.UNIVERSE_REGISTRATION_MODE)) fail('UNIVERSE_REGISTRATION_MODE is not recognized');
-  config.enabled = env.UNIVERSE_REGISTRATION_MODE === 'invite-only';
+  if (env.UNIVERSE_REGISTRATION_MODE !== undefined && !['disabled', 'local-open', 'invite-only', 'open'].includes(env.UNIVERSE_REGISTRATION_MODE)) fail('UNIVERSE_REGISTRATION_MODE is not recognized');
+  config.registrationMode = env.UNIVERSE_REGISTRATION_MODE ?? 'disabled';
+  config.enabled = config.registrationMode === 'invite-only';
   if (env.UNIVERSE_SITE_ADMISSION_ENABLED !== undefined) fail('use UNIVERSE_REGISTRATION_MODE=invite-only to enable signup');
   for (const [key, variable] of Object.entries(ENV)) {
     if (env[variable] === undefined) continue;

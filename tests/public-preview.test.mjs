@@ -67,7 +67,7 @@ test('real HTTP private preview enforces origin, admission, Secure cookies and r
   const app = createGameServer({ database, seeds: seedWorlds, runtimeConfig }); t.after(() => app.close());
   const { port } = await app.listen(0);
   let result = await call(port, '/api/access');
-  assert.deepEqual(result.data, { mode: 'public', guestCreation: false, registration: false, login: true, provisioning: 'operator', inviteRegistration:false, siteAdmission:{enabled:false,canManage:false,inviteTtlMs:86400000,maxActiveInvites:25,maxAccounts:50} });
+  assert.deepEqual(result.data, { mode: 'public', guestCreation: false, registration: false, login: true, provisioning: 'operator', openSignup:false, openRegistration:false, setupOnly:false, inviteRegistration:false, siteAdmission:{enabled:false,canManage:false,inviteTtlMs:86400000,maxActiveInvites:25,maxAccounts:50} });
   result = await call(port, '/api/health'); assert.equal(result.status, 200); assert.equal(result.data.scope, 'standalone-private-preview');
   result = await call(port, '/api/session'); assert.equal(result.status, 401);
   result = await call(port, '/api/session', change({ name: 'Internet claimant' })); assert.equal(result.status, 403); assert.equal(result.data.code, 'GUEST_CREATION_DISABLED');

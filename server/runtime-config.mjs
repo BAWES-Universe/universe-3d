@@ -66,13 +66,17 @@ export function readRuntimeConfig(env = process.env, { root = process.cwd() } = 
   if (isPublic && (tlsMode !== 'external' || cookieSecure !== 'always')) fail('public mode requires explicit UNIVERSE_TLS_MODE=external and UNIVERSE_COOKIE_SECURE=always');
   if (tlsMode === 'external' && cookieSecure !== 'always') fail('external TLS requires Secure cookies unconditionally');
   const registrationMode = env.UNIVERSE_REGISTRATION_MODE ?? (isPublic ? 'disabled' : 'local-open');
-  if (!['local-open', 'disabled', 'invite-only'].includes(registrationMode) || (isPublic && registrationMode === 'local-open')) fail('registration must be disabled or invite-only publicly; local-open is local-only');
+  if (!['local-open', 'disabled', 'invite-only', 'open'].includes(registrationMode) || (isPublic && registrationMode === 'local-open')) fail('registration must be disabled, invite-only or open publicly; local-open is local-only');
+  const setupFlag = env.UNIVERSE_SETUP_ONLY ?? '0';
+  if (!['0', '1'].includes(setupFlag)) fail('UNIVERSE_SETUP_ONLY must be 0 or 1');
+  const setupOnly = setupFlag === '1';
+  if (setupOnly && registrationMode !== 'open') fail('UNIVERSE_SETUP_ONLY=1 requires UNIVERSE_REGISTRATION_MODE=open');
   const database = env.UNIVERSE_DB ?? resolve(root, 'data/universe.sqlite');
   if (isPublic && (env.UNIVERSE_DB === undefined || !isAbsolute(database) || database === ':memory:')) fail('public mode requires an explicit absolute UNIVERSE_DB path on dedicated persistent storage');
   const imagePhysicalSizeFlag=env.UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED??'0';
   if(!['0','1'].includes(imagePhysicalSizeFlag))fail('UNIVERSE_IMAGE_PHYSICAL_SIZE_ENABLED must be 0 or 1');
   const imagePhysicalSizeEnabled=imagePhysicalSizeFlag==='1';
-  return Object.freeze({ mode, host, port, database, allowedHosts, allowedOrigins, tlsMode, cookieSecure, registrationMode, imagePhysicalSizeEnabled });
+  return Object.freeze({ mode, host, port, database, allowedHosts, allowedOrigins, tlsMode, cookieSecure, registrationMode, setupOnly, imagePhysicalSizeEnabled });
 }
 
 function reject(code, message) {
@@ -92,8 +96,9 @@ export function createRequestSecurity(config, { listeningPort = () => config.por
       // An invitation is commonly opened from another origin. This sole safe
       // navigation serves a non-consuming document; APIs, frames, resources,
       // query-bearing URLs and all mutations keep the existing rejection.
-      const invitationNavigation = config.registrationMode === 'invite-only' &&
-        req.method === 'GET' && req.url === '/join.html' &&
+      const invitationNavigation = ((config.registrationMode === 'invite-only' && req.url === '/join.html') ||
+        (config.registrationMode === 'open' && req.url === '/signup.html')) &&
+        req.method === 'GET' &&
         req.headers['sec-fetch-mode'] === 'navigate' &&
         req.headers['sec-fetch-dest'] === 'document' &&
         req.headers['sec-fetch-user'] === '?1';

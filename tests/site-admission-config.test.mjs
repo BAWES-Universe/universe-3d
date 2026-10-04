@@ -12,7 +12,8 @@ test('site admission is disabled by default and enabled only by explicit invite-
   assert.equal(Object.isFrozen(defaults), true);
   for (const mode of ['disabled', 'local-open']) assert.equal(readSiteAdmissionConfig({ UNIVERSE_REGISTRATION_MODE: mode }).enabled, false);
   assert.equal(readSiteAdmissionConfig({ UNIVERSE_REGISTRATION_MODE: 'invite-only' }).enabled, true);
-  assert.throws(() => readSiteAdmissionConfig({ UNIVERSE_REGISTRATION_MODE: 'open' }));
+  const open = readSiteAdmissionConfig({ UNIVERSE_REGISTRATION_MODE: 'open' });
+  assert.equal(open.registrationMode, 'open'); assert.equal(open.enabled, false); assert.equal(open.maxAccounts, 10000);
   assert.throws(() => readSiteAdmissionConfig({ UNIVERSE_SITE_ADMISSION_ENABLED: 'true' }));
 });
 

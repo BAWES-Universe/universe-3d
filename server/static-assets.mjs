@@ -93,7 +93,7 @@ export function createStaticAssets({dist}){
       res.writeHead(412,{'Cache-Control':'no-store','Content-Length':'0'});res.end();return;
     }
     const immutable=asset?.immutable===true&&/^chunks\/[^/]+-[A-Z0-9]{8}\.(?:js|css)$/.test(name);
-    const admissionDocument=name==='join.html';
+    const admissionDocument=name==='join.html'||name==='signup.html';
     res.setHeader('Cache-Control',admissionDocument?'no-store':immutable?'public, max-age=31536000, immutable':'no-cache');
     res.setHeader('ETag',etag);
     res.setHeader('Accept-Ranges','none');
