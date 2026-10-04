@@ -43,6 +43,7 @@ export function initializeImageAssetSchema(db) {
     CREATE TABLE IF NOT EXISTS room_image_asset_operations (
       room_id TEXT NOT NULL, user_id TEXT NOT NULL, operation_id TEXT NOT NULL,
       request_digest TEXT NOT NULL CHECK(length(request_digest)=64),
+      operation_kind TEXT NOT NULL DEFAULT 'upload' CHECK(operation_kind IN ('upload','setup-version')),
       asset_id TEXT NOT NULL, version_id TEXT NOT NULL,
       PRIMARY KEY(room_id,user_id,operation_id),
       FOREIGN KEY(room_id,asset_id,version_id)
@@ -62,6 +63,10 @@ export function initializeImageAssetSchema(db) {
       BEFORE INSERT ON room_image_asset_versions
       WHEN NEW.sequence != COALESCE((SELECT MAX(sequence)+1 FROM room_image_asset_versions WHERE room_id=NEW.room_id AND asset_id=NEW.asset_id),1)
       BEGIN SELECT RAISE(ABORT,'Image version sequence must be consecutive'); END;
+    CREATE TRIGGER IF NOT EXISTS image_version_sequence_safe
+      BEFORE INSERT ON room_image_asset_versions
+      WHEN NEW.sequence > 9007199254740991
+      BEGIN SELECT RAISE(ABORT,'Image version sequence must be a safe integer'); END;
     CREATE TRIGGER IF NOT EXISTS image_floating_immutable
       BEFORE INSERT ON room_image_asset_versions
       WHEN EXISTS(SELECT 1 FROM room_image_asset_versions WHERE room_id=NEW.room_id AND asset_id=NEW.asset_id AND json_extract(version_json,'$.floating') IS NOT json_extract(NEW.version_json,'$.floating'))
@@ -75,6 +80,8 @@ export function initializeImageAssetSchema(db) {
     const columns = new Set(db.prepare('PRAGMA table_info(room_image_assets)').all().map(column => column.name));
     if (!columns.has('metadata_json')) db.exec('ALTER TABLE room_image_assets ADD COLUMN metadata_json TEXT CHECK(metadata_json IS NULL OR json_valid(metadata_json))');
     if (!columns.has('archived_at')) db.exec('ALTER TABLE room_image_assets ADD COLUMN archived_at TEXT');
+    const operationColumns = new Set(db.prepare('PRAGMA table_info(room_image_asset_operations)').all().map(column => column.name));
+    if (!operationColumns.has('operation_kind')) db.exec("ALTER TABLE room_image_asset_operations ADD COLUMN operation_kind TEXT NOT NULL DEFAULT 'upload' CHECK(operation_kind IN ('upload','setup-version'))");
     db.exec(nested ? 'RELEASE image_asset_schema_migration' : 'COMMIT');
   } catch (error) {
     db.exec(nested ? 'ROLLBACK TO image_asset_schema_migration; RELEASE image_asset_schema_migration' : 'ROLLBACK');
@@ -129,8 +136,20 @@ export function createImageAssetRepository(db) {
       return row ? Buffer.from(row.bytes) : null;
     },
     getOperation(roomId, userId, operationId) {
-      const row = db.prepare('SELECT request_digest,asset_id,version_id FROM room_image_asset_operations WHERE room_id=? AND user_id=? AND operation_id=?').get(roomId, userId, operationId);
-      return row ? { digest: row.request_digest, assetId: row.asset_id, versionId: row.version_id } : null;
+      const row = db.prepare('SELECT request_digest,operation_kind,asset_id,version_id FROM room_image_asset_operations WHERE room_id=? AND user_id=? AND operation_id=?').get(roomId, userId, operationId);
+      return row ? { digest: row.request_digest, kind: row.operation_kind, assetId: row.asset_id, versionId: row.version_id } : null;
+    },
+    versionStats(roomId, assetId) {
+      const row = db.prepare('SELECT count(*) AS count,coalesce(max(sequence),0) AS sequence FROM room_image_asset_versions WHERE room_id=? AND asset_id=?').get(roomId, assetId);
+      return { count: row.count, sequence: row.sequence };
+    },
+    insertVersion({ entry, bytes, userId, operationId, digest, expectedRevision, expectedVersionId }) {
+      if (!db.isTransaction) throw new Error('Asset version insertion requires a transaction');
+      const { definition, version } = entry;
+      const changed = db.prepare('UPDATE room_image_assets SET current_version_id=?,revision=revision+1 WHERE room_id=? AND asset_id=? AND revision=? AND current_version_id=? AND archived_at IS NULL AND deleted_at IS NULL').run(version.versionId, definition.roomId, definition.assetId, expectedRevision, expectedVersionId);
+      if (changed.changes !== 1) throw new Error('Image version compare-and-swap failed');
+      db.prepare('INSERT INTO room_image_asset_versions(room_id,asset_id,version_id,sequence,version_json,sha256,byte_length,bytes) VALUES(?,?,?,?,?,?,?,?)').run(definition.roomId, definition.assetId, version.versionId, version.sequence, JSON.stringify(version), version.sha256, version.byteLength, bytes);
+      db.prepare("INSERT INTO room_image_asset_operations(room_id,user_id,operation_id,request_digest,operation_kind,asset_id,version_id) VALUES(?,?,?,?,'setup-version',?,?)").run(definition.roomId, userId, operationId, digest, definition.assetId, version.versionId);
     },
     usage(roomId) {
       return { definitions: db.prepare('SELECT count(*) AS count FROM room_image_assets WHERE room_id=?').get(roomId).count,

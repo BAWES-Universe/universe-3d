@@ -2,6 +2,10 @@
 
 This scoped increment adds mutable library names, descriptions and tags plus reversible archive/restore. The source editor explicitly supports name/tag editing ([pinned source EDIT-08 documentation](https://github.com/BAWES-Universe/workadventure-universe/blob/bae18306bdfa63e58cd4124b1a3b5b290b61c286/docs/map-building/inline-editor/entity-editor/index.md)). Description and reversible archive are this standalone implementation's bounded policy. This does not claim full EDIT-08, depth/version editing or source destructive-removal parity.
 
+The later [setup-version increment](IMAGE-SETUP-VERSIONS.md) adds immutable
+depth/collision versions through a separate action. The metadata/archive
+behavior documented below still preserves all existing version bodies.
+
 ## User workflow
 
 Build → Custom images offers Edit, Archive and an editor-only Library status filter. Edit changes name, description and tags; every search token matches these mutable fields. Tags retain the existing trimmed, case-insensitive deduplication and bounds. Existing placed names and immutable version fields do not change. A new placement starts with the current library name.

@@ -1,5 +1,5 @@
 // Accessible image-library boundary C. See ui/README.md for the frozen injection and async contract.
-import { IMAGE_ASSET_LIMITS, validateResolvedImageAsset } from "./image-asset-schema.js";
+import { IMAGE_ASSET_LIMITS, validateAssetReference, validateResolvedImageAsset } from "./image-asset-schema.js";
 function createImageLibraryClient({ transport }) {
   for (const method of ["list", "create", "readImage", "reconcileCreate"]) {
     if (typeof transport?.[method] !== "function") throw new TypeError(`transport.${method} is required`);
@@ -8,6 +8,13 @@ function createImageLibraryClient({ transport }) {
     const result = validateResolvedImageAsset(value);
     if (result.definition.roomId !== roomId || (status ? result.status !== status : !["active", "archived"].includes(result.status))) throw new Error("Image is unavailable in this room");
     return result;
+  };
+  const versionReceipt = (value, args) => {
+    if (value?.status !== 'committed') throw new Error('Version save status is still unknown');
+    const current = entry(value.entry, args.roomId, null);
+    const published = validateAssetReference({assetId: value.published?.assetId, versionId: value.published?.versionId});
+    if (current.definition.assetId !== args.assetId || published.assetId !== args.assetId || !Number.isSafeInteger(value.published.sequence) || value.published.sequence < 2 || value.published.sequence > current.version.sequence || value.published.sequence === current.version.sequence && published.versionId !== current.version.versionId) throw new Error('Invalid version save receipt');
+    return {status: 'committed', entry: current, published: {...published, sequence: value.published.sequence}};
   };
   return Object.freeze({
     async list(args) {
@@ -21,6 +28,15 @@ function createImageLibraryClient({ transport }) {
     },
     async create(args) {
       return entry(await transport.create(args), args.roomId, null);
+    },
+    async createVersion(args) {
+      if (typeof transport.createVersion !== 'function') throw new Error('Image setup editing is unavailable');
+      return versionReceipt(await transport.createVersion(args), args);
+    },
+    async reconcileVersion(args) {
+      if (typeof transport.reconcileVersion !== 'function') throw new Error('Image setup editing is unavailable');
+      const result = await transport.reconcileVersion(args);
+      return result?.status === 'not-found' ? {status: 'not-found'} : versionReceipt(result, args);
     },
     async reconcileCreate(args) {
       const result = await transport.reconcileCreate(args);

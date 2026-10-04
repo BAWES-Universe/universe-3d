@@ -15,6 +15,13 @@ Shared integrated model for the EDIT-06 slice and supporting EDIT-03/07. It is c
 
 The server attaches an explicit `status:'active'|'archived'|'deleted'` to that result to form the resolved envelope. It must retrieve this envelope through authorized room+asset+version lookup. It must not deserialize an envelope supplied in scene JSON as trusted authority. The immutable definition record itself has no mutable current-version pointer or tombstone state.
 
+`normalizeImageAssetSetup(raw,sourceVersion)` strictly accepts required
+`depthPreset`, `depthPivot` and `collisionGrid`. It inherits validated dimensions,
+media, name/tags and immutable floating mode from the source version, and returns
+only normalized representation/depth/collision fields. It neither copies bytes
+nor advances storage. The setup-version service performs those authorized,
+transactional operations; see [IMAGE-SETUP-VERSIONS.md](IMAGE-SETUP-VERSIONS.md).
+
 Library entries have `{schemaVersion:1,status,revision,metadata:{name,description,tags},definition,version}` where `version` is the current version. A scene resolver returns the same shape with the **pinned** version, which can be older than the current one. Entry state and current-version pointer belong to storage, not identity.
 
 ## References, instances and search
@@ -39,6 +46,6 @@ No cell follows alpha. No authorization follows a pick. No collider-free or dele
 
 ## Source and tests
 
-Primary mapping: EDIT-06 image setup/discovery, EDIT-03 32px binary grids, EDIT-07 depth. Room scoping, native planes, 32px/m and conservative full edit footprints are explicit migration/security choices. Mutable library name/description/tag editing and reversible archive/restore now cover a bounded EDIT-08 slice; see `IMAGE-ASSET-LIFECYCLE.md`. Depth/version editing, destructive deletion, collection import (EDIT-09) and terrain (EDIT-10) remain separate gaps.
+Primary mapping: EDIT-06 image setup/discovery, EDIT-03 32px binary grids, EDIT-07 depth. Room scoping, native planes, 32px/m and conservative full edit footprints are explicit migration/security choices. Mutable library name/description/tag editing and reversible archive/restore cover a bounded EDIT-08 slice; see `IMAGE-ASSET-LIFECYCLE.md`. Immutable setup-version editing adds partial EDIT-07/08 coverage while preserving existing pins. Automatic propagation, byte replacement, destructive deletion and collection import (EDIT-09) remain separate gaps; native terrain authoring has its own bounded contract.
 
 Run `node --test tests/image-asset-schema.test.mjs tests/image-asset-geometry.test.mjs tests/image-library.test.mjs` for the pure contract; `npm run test:browser:images` exercises the integrated UI. See `CUSTOM-IMAGES.md` for all limits and the verification boundary.

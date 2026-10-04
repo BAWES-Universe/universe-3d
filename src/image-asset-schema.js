@@ -104,6 +104,16 @@ export function normalizeImageAssetDraft(raw, decodedImageInfo) {
   return freezeImageRecord({name, tags: tags(raw.tags), representation, depthPreset, depthPivot, floating, collisionGrid, widthPixels, heightPixels, byteLength, mediaType: 'image/png'});
 }
 
+/** Setup-only changes inherit validated image dimensions and definition floating mode. */
+export function normalizeImageAssetSetup(raw, sourceVersion) {
+  const fields = ['depthPreset', 'depthPivot', 'collisionGrid'];
+  keys(raw, fields, 'setup'); required(raw, fields, 'setup');
+  record(sourceVersion, 'sourceVersion');
+  const normalized = normalizeImageAssetDraft({name: sourceVersion.name, tags: sourceVersion.tags, floating: sourceVersion.floating, ...raw},
+    {width: sourceVersion.widthPixels, height: sourceVersion.heightPixels, byteLength: sourceVersion.byteLength, mediaType: sourceVersion.mediaType});
+  return freezeImageRecord({representation: normalized.representation, depthPreset: normalized.depthPreset, depthPivot: normalized.depthPivot, collisionGrid: normalized.collisionGrid});
+}
+
 export function validateAssetReference(raw) {
   keys(raw, ['assetId', 'versionId'], 'assetRef');
   return freezeImageRecord({assetId: id(raw.assetId, 'assetRef.assetId'), versionId: id(raw.versionId, 'assetRef.versionId')});

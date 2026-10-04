@@ -2,6 +2,7 @@
 import { IMAGE_ASSET_LIMITS, normalizeImageAssetDraft, validateResolvedImageAsset, normalizeImageLibraryMetadata, imageLibraryMetadata } from "./image-asset-schema.js";
 import { searchImageLibrary } from "./image-library.js";
 import { decodeLocalPng } from "./image-library-client.js";
+import { mountImageSetup } from "./image-library-setup.js";
 let sequence = 0;
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
@@ -172,7 +173,11 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   const latest = button("Load latest details", null); latest.hidden = true;
   const managementActions = el("div", "uil-actions"), cancelManagement = button("Cancel details", null), commitManagement = button("Save details", null, "uil-primary"); commitManagement.type = "submit";
   managementActions.append(cancelManagement, commitManagement); management.append(managementTitle, managementNote, managementFields, managementError, latest, managementActions);
-  root.replaceChildren(header, permission, status, libraryView, form, management);
+  const setupForm = el('form');
+  const setupEditor = mountImageSetup({root: setupForm, getContext: () => context(getContext), service,
+    onBack: ({refresh: shouldRefresh = true} = {}) => { libraryView.hidden = false; if (open) { search.focus(); if (shouldRefresh) refresh(); } },
+    onStatus: announce, onCommitted: entry => { libraryStatus.value = entry.status; }});
+  root.replaceChildren(header, permission, status, libraryView, form, management, setupForm);
   function hideManagement({focus = true} = {}) {
     editing = null; management.hidden = true; managementBusy = false; managementConflict = false;
     libraryView.hidden = false; managementError.hidden = true; latest.hidden = true;
@@ -492,21 +497,23 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       figure.append(img, caption);
       const text = el("div", "uil-card-copy");
       const metadata = imageLibraryMetadata(entry);
-      text.append(el("strong", null, metadata.name), el("span", "uil-note", metadata.description), el("span", "uil-note", metadata.tags.join(", ") || "No tags"), el("span", "uil-note", entry.version.representation === "floor" ? "Floor decal" : "Upright panel"));
-      const use = button(`Place ${metadata.name}`, "Plus");
+      text.append(el("strong", null, metadata.name), el("span", "uil-note", metadata.description), el("span", "uil-note", metadata.tags.join(", ") || "No tags"), el("span", "uil-note", entry.version.representation === "floor" ? "Floor decal" : "Upright panel"), el('span', 'uil-note', `Version ${entry.version.sequence} · library revision ${entry.revision || 1}`));
+      const use = button(`Place ${metadata.name} · version ${entry.version.sequence}`, "Plus");
       use.setAttribute("aria-label", `Place ${metadata.name} (${entry.definition.assetId})`);
       use.onclick = () => {
         if (!sync() || !isCurrent(scope, "canRead") || entry.status !== "active" || !ctx.capabilities.canPlace || !entries.some((item) => item.definition.assetId === entry.definition.assetId && item.version.versionId === entry.version.versionId)) return;
         onChoose({ assetId: entry.definition.assetId, versionId: entry.version.versionId });
-        announce(`Selected ${metadata.name} for placement. Click in the world to place it.`);
+        announce(`Selected ${metadata.name}, version ${entry.version.sequence}, for placement. Click in the world to place it.`);
       };
       li.append(figure, text);
       if (entry.status === "active") li.append(use);
       if (ctx.capabilities.canManage) {
         const edit = button(`Edit ${metadata.name}`, null); edit.dataset.management = "true"; edit.onclick = () => showManagement(entry);
+        const setup = button(`Edit setup for ${metadata.name}`, null); setup.dataset.management = 'true';
+        setup.onclick = () => { if (sync() && ctx.capabilities.canManage && setupEditor.show(entry)) { libraryView.hidden = true; form.hidden = true; management.hidden = true; } };
         const change = button(`${entry.status === "active" ? "Archive" : "Restore"} ${metadata.name}`, null); change.dataset.management = "true";
         change.onclick = () => entry.status === "active" ? showManagement(entry, "archive") : mutateAsset(entry, {status: "active"}, "restore");
-        li.append(edit, change);
+        li.append(edit, setup, change);
       }
       cards.append(li);
       thumbnail(entry, img, caption, listEpoch);
@@ -533,6 +540,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       if (!isCurrent(captured, "canRead") || token !== listEpoch) return;
       if (!Array.isArray(result?.entries)) throw new Error("Invalid library response");
       entries = result.entries.map(item => validEntry(item, libraryStatus.value === "archived"));
+      setupEditor.observe(entries);
       listReady = true;
       renderCards();
     } catch (error) {
@@ -668,9 +676,11 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     cards.replaceChildren();
     ctx = next;
     scope = scopeOf(ctx);
+    setupEditor.attachRoom();
     pending = pendingByOwner.get(ownerOf(ctx)) || null;
     search.value = "";
     hideDraft();
+    if (setupEditor.isVisible()) libraryView.hidden = true;
     gate();
     announce(pending ? "An earlier upload in this room needs a status check." : "");
     if (open) {
@@ -683,6 +693,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     if (scopeOf(fresh) !== scope) switchContext(fresh);
     else {
       ctx = fresh;
+      setupEditor.attachRoom();
       gate();
       if (!ctx.capabilities.canRead) {
         releaseThumbs();
@@ -701,13 +712,16 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
       root.hidden = false;
       sync();
       refresh();
-      if (editing) managementTitle.focus();
+      setupEditor.resume();
+      if (setupEditor.isVisible()) libraryView.hidden = true;
+      else if (editing) managementTitle.focus();
       else if (draftVisible) formTitle.focus();
       else search.focus();
       if (pending && ctx.capabilities.canManage) reconcile();
     } else {
       open = false;
       root.hidden = true;
+      setupEditor.pause();
       releaseThumbs();
       if (returnFocus?.isConnected) returnFocus.focus();
     }
@@ -771,7 +785,8 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
     if (e.key === "Escape") {
       e.preventDefault();
       if (managementBusy) return;
-      if (editing) hideManagement();
+      if (setupEditor.isVisible()) { setupEditor.hide(); libraryView.hidden = false; search.focus(); }
+      else if (editing) hideManagement();
       else if (draftVisible) cancelDraft();
       else setOpen(false);
     }
@@ -782,6 +797,7 @@ function mountImageLibrary({ root, getContext, service, decodePreview = decodeLo
   function dispose() {
     if (disposed) return;
     disposed = true;
+    setupEditor.dispose();
     managementEpoch++; managementController?.abort();
     root.removeEventListener("compositionstart", onCompositionStart);
     root.removeEventListener("compositionend", onCompositionEnd);

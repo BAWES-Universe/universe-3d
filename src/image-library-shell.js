@@ -23,6 +23,8 @@ export function createImageAssetTransport({request=globalThis.fetch?.bind(global
    return fetchAsset(base(roomId),{signal,body:{draft,pngBase64:btoa(binary),mediaType,operationId}});
   },
   reconcileCreate:({roomId,operationId,signal})=>fetchAsset(base(roomId)+'/operations/'+encodeURIComponent(operationId),{signal}),
+  createVersion:({roomId,assetId,expectedRevision,expectedVersionId,setup,operationId,signal})=>fetchAsset(base(roomId)+'/'+encodeURIComponent(assetId)+'/versions',{signal,body:{operationId,expectedRevision,expectedVersionId,setup}}),
+  reconcileVersion:({roomId,assetId,operationId,signal})=>fetchAsset(base(roomId)+'/'+encodeURIComponent(assetId)+'/versions/operations/'+encodeURIComponent(operationId),{signal}),
   readImage:({roomId,assetId,versionId,signal})=>fetchAsset(base(roomId)+'/'+encodeURIComponent(assetId)+'/versions/'+encodeURIComponent(versionId)+'/image',{signal,image:true})
  });
 }
@@ -30,25 +32,35 @@ export function createImageAssetTransport({request=globalThis.fetch?.bind(global
 export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onChoose,onOpenChange=()=>{},onDefinitions=()=>{},onAuthorityLost=()=>{},icon,transport=createImageAssetTransport(),mountPanel=mountImageLibrary}){
  let roomEpoch=0,authorityEpoch=0,suspended=true,disposed=false,lastContext='',reportedOpen=false,renderer=null;
  let owner=null;
+ let projectionScope='',currentEntries=new Map();
  const client=createImageLibraryClient({transport});
  const context=()=>{const state=getState(),canRead=!!(state.user?.id&&state.room?.id&&state.ready&&!suspended&&state.room.capabilities?.canRead!==false);return{accountId:state.user?.id||null,roomId:state.room?.id||null,roomEpoch,capabilities:{canRead,canPlace:canRead&&!!getRenderer()&&canBuildInRoom(state.room),canManage:canRead&&roomAllows(state.room,'canEditScene')}};};
  const stamp=()=>JSON.stringify([context().accountId,context().roomId,roomEpoch,authorityEpoch]);
  const authorityStamp=()=>{const ctx=context();return JSON.stringify([ctx.accountId,ctx.roomId,ctx.capabilities]);};
  const ownerStamp=()=>JSON.stringify([getState().user?.id||null,getState().room?.id||null]);
  function bindCurrent(){const state=getState();if(!state.room?.id||!state.scene)return;bindImageDefinitions(state.scene,state.room.imageDefinitions||{},state.room.id);}
- function cache(entries,scope,roomId){
-  if(disposed||scope!==stamp()||!context().capabilities.canRead||roomId!==getState().room?.id)return;
+ function projectRevisions(definitions){
+  const newest=new Map();
+  for(const entry of Object.values(definitions)){const known=newest.get(entry.definition.assetId);if(!known||(entry.revision??1)>=(known.revision??1))newest.set(entry.definition.assetId,entry);}
+  return Object.fromEntries(Object.entries(definitions).map(([key,entry])=>{const latest=newest.get(entry.definition.assetId);return[key,(latest.revision??1)>(entry.revision??1)?validateResolvedImageAsset({...entry,status:latest.status,...(latest.metadata?{metadata:latest.metadata}:{}),...(latest.revision?{revision:latest.revision}:{})}):entry];}));
+ }
+ function cache(entries,scope,roomId,{authoritative=true}={}){
+  if(disposed||scope!==stamp()||!context().capabilities.canRead||roomId!==getState().room?.id)return entries;
+  if(projectionScope!==scope){projectionScope=scope;currentEntries=new Map();}
   const state=getState(),definitions={...(state.room.imageDefinitions||{})};
-  for(const entry of entries){
-   for(const [key,known]of Object.entries(definitions))if(known.definition.assetId===entry.definition.assetId&&((entry.revision??1)>=(known.revision??1)))definitions[key]=validateResolvedImageAsset({...known,status:entry.status,...(entry.metadata?{metadata:entry.metadata}:{}),...(entry.revision?{revision:entry.revision}:{})});
+  const current=entries.map(entry=>{
+   if(authoritative){const known=currentEntries.get(entry.definition.assetId);if(!known||(entry.revision??1)>(known.revision??1)||(entry.revision??1)===(known.revision??1)&&entry.version.sequence>=known.version.sequence)currentEntries.set(entry.definition.assetId,entry);else entry=known;}
    const key=imageReferenceKey({assetId:entry.definition.assetId,versionId:entry.version.versionId});
    if(!definitions[key]||(entry.revision??1)>=(definitions[key].revision??1))definitions[key]=entry;
-  }
+   return entry;
+  });
+  const projected=projectRevisions(definitions);
   // Binding validates every envelope and room before mutating the shared map.
-  bindImageDefinitions(state.scene,definitions,roomId);state.room.imageDefinitions=definitions;onDefinitions();
+  bindImageDefinitions(state.scene,projected,roomId);state.room.imageDefinitions=projected;onDefinitions();
+  return current.map(entry=>projected[imageReferenceKey({assetId:entry.definition.assetId,versionId:entry.version.versionId})]);
  }
- async function invoke(method,args){const scope=stamp();try{const result=await client[method](args);const entries=method==='list'?result.entries:['create','update'].includes(method)?[result]:method==='reconcileCreate'&&result.status==='committed'?[result.entry]:[];if(entries.length)cache(entries,scope,args.roomId);return result;}catch(error){if(scope===stamp()&&(error.status===401||method==='list'&&error.status===404)){suspend();onAuthorityLost(error);}throw error;}}
- const service=Object.freeze(Object.fromEntries(['list','create','update','reconcileCreate','readImage'].map(method=>[method,args=>invoke(method,args)])));
+ async function invoke(method,args){const scope=stamp();try{const result=await client[method](args);const entries=method==='list'?result.entries:['create','update'].includes(method)?[result]:['reconcileCreate','createVersion','reconcileVersion'].includes(method)&&result.status==='committed'?[result.entry]:[];const cached=entries.length?cache(entries,scope,args.roomId,{authoritative:!['create','reconcileCreate'].includes(method)}):entries;if(method==='list')return{...result,entries:cached.filter(entry=>entry.status===(args.status||'active'))};if(['create','update'].includes(method))return cached[0];if(result?.status==='committed'&&cached.length)return{...result,entry:cached[0]};return result;}catch(error){if(scope===stamp()&&(error.status===401||method==='list'&&error.status===404)){suspend();onAuthorityLost(error);}throw error;}}
+ const service=Object.freeze(Object.fromEntries(['list','create','update','reconcileCreate','createVersion','reconcileVersion','readImage'].map(method=>[method,args=>invoke(method,args)])));
  const panel=mountPanel({root,getContext:context,service,icon,onChoose:ref=>{if(!context().capabilities.canPlace)return;if(onChoose(ref)!==false)setOpen(false,{focusWorld:true});}});
  function reportOpen(){const next=!root.hidden;if(reportedOpen===next)return;reportedOpen=next;onOpenChange(next);}
  const visibility=new MutationObserver(reportOpen);visibility.observe(root,{attributes:true,attributeFilter:['hidden']});
@@ -76,7 +88,7 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
   if(!room?.id||!room.scene)return room;
   const state=getState(),same=preserve&&owner===ownerStamp()&&state.room?.id===room.id;
   const retained=same?mergeImageDefinitions(state.room.imageDefinitions,imageDefinitions(state.scene)):{};
-  const definitions=mergeImageDefinitions(retained,room.imageDefinitions);
+  const definitions=projectRevisions(mergeImageDefinitions(retained,room.imageDefinitions));
   bindImageDefinitions(room.scene,definitions,room.id);room.imageDefinitions=definitions;
   return room;
  }
@@ -87,7 +99,7 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
  function refresh(event){if(!context().capabilities.canRead)return;
   if(event?.assetId&&['active','archived'].includes(event.status)){
    const entries=Object.values(getState().room.imageDefinitions||{}).filter(entry=>entry.definition.assetId===event.assetId).map(entry=>validateResolvedImageAsset({...entry,status:event.status,metadata:event.metadata||entry.metadata,revision:event.revision||entry.revision}));
-   if(entries.length)cache(entries,stamp(),context().roomId);
+   if(entries.length)cache(entries,stamp(),context().roomId,{authoritative:false});
   }
   if(isOpen())return panel.refresh();return service.list({roomId:context().roomId,query:''}).catch(()=>{});}
  function dispose(){disposed=true;visibility.disconnect();renderer?.setImageStateListener?.(null);panel.dispose();statusRoot?.replaceChildren();}

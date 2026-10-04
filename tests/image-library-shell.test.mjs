@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createImageAssetTransport,mountImageLibraryShell} from '../src/image-library-shell.js';
 import {normalizeImageAssetDraft} from '../src/image-asset-schema.js';
 import {imageDefinitions} from '../src/image-asset-context.js';
+import {createImageLibraryClient} from '../src/image-library-client.js';
 import {clone} from '../src/worlds.js';
 const date='2026-10-02T00:00:00.000Z';
 function entry(roomId='room_a',assetId='asset_a'){
@@ -104,4 +105,66 @@ test('uncertain upload receipt remains reconcilable if another editor archived i
  assert.equal((await f.service.create({roomId:'room_a'})).status,'archived');
  const receipt=await f.service.reconcileCreate({roomId:'room_a'});assert.equal(receipt.status,'committed');assert.equal(receipt.entry.status,'archived');
  assert.equal(imageDefinitions(f.state.scene)['asset_a:version_a'].status,'archived');f.shell.dispose();
+});
+
+const versionEntry=(sequence,revision=sequence,status='active')=>{const value=entry();return{...value,status,revision,metadata:{name:'Current name',description:'Current details',tags:['current']},version:{...value.version,versionId:`version_${sequence}`,sequence}};};
+const versionReceipt=(current,published=current)=>({status:'committed',entry:current,published:{assetId:published.definition.assetId,versionId:published.version.versionId,sequence:published.version.sequence}});
+
+test('setup transport carries only exact CAS, setup and operation identity',async()=>{
+ const calls=[],transport=createImageAssetTransport({request:async(url,options)=>{calls.push({url,options});return{ok:true,json:async()=>({})};}});
+ const signal=new AbortController().signal,setup={depthPreset:'floor',depthPivot:.5,collisionGrid:null};
+ await transport.createVersion({roomId:'room_a',assetId:'asset_a',expectedRevision:7,expectedVersionId:'version_3',setup,operationId:'op_setup',signal});
+ await transport.reconcileVersion({roomId:'room_a',assetId:'asset_a',operationId:'op_setup',signal});
+ assert.equal(calls[0].url,'/api/rooms/room_a/assets/asset_a/versions');assert.equal(calls[0].options.method,'POST');
+ assert.deepEqual(JSON.parse(calls[0].options.body),{operationId:'op_setup',expectedRevision:7,expectedVersionId:'version_3',setup});
+ assert.equal(calls[1].url,'/api/rooms/room_a/assets/asset_a/versions/operations/op_setup');assert.equal(calls[1].options.method,'GET');
+ for(const call of calls){assert.equal(call.options.signal,signal);assert.equal(call.options.credentials,'same-origin');assert.equal(call.options.cache,'no-store');}
+});
+
+test('version receipts validate current and published identities without resolving receipt as current',async()=>{
+ let result=versionReceipt(versionEntry(3),versionEntry(2));
+ const client=createImageLibraryClient({transport:{list:async()=>({entries:[]}),create:async()=>entry(),readImage:async()=>new Blob(['png'],{type:'image/png'}),reconcileCreate:async()=>({status:'not-found'}),createVersion:async()=>result,reconcileVersion:async()=>result}});
+ const args={roomId:'room_a',assetId:'asset_a'};
+ assert.equal((await client.createVersion(args)).entry.version.versionId,'version_3');assert.equal((await client.reconcileVersion(args)).published.versionId,'version_2');
+ result={...result,published:{...result.published,assetId:'other'}};await assert.rejects(client.createVersion(args),/receipt/);
+ result=versionReceipt(versionEntry(2),versionEntry(3));await assert.rejects(client.createVersion(args),/receipt/);
+ result={status:'committed',entry:entry('other'),published:{assetId:'asset_a',versionId:'version_2',sequence:2}};await assert.rejects(client.reconcileVersion(args),/unavailable/);
+ result={status:'not-found'};assert.deepEqual(await client.reconcileVersion(args),result);
+});
+
+test('late version receipts and list responses cannot regress the displayed current version',async()=>{
+ const current=versionEntry(4,8),earlier=versionEntry(3,7),published=versionEntry(2,2);
+ const f=fixture({list:async()=>({entries:[current]}),createVersion:async()=>versionReceipt(earlier,published),reconcileVersion:async()=>versionReceipt(earlier,published)});
+ await f.service.list({roomId:'room_a'});
+ const receipt=await f.service.reconcileVersion({roomId:'room_a',assetId:'asset_a',operationId:'old'});
+ assert.equal(receipt.entry.version.versionId,'version_4');assert.equal(receipt.published.versionId,'version_2');
+ assert.equal(f.state.room.imageDefinitions['asset_a:version_4'].version.versionId,'version_4');assert.equal(f.state.scene.objects.length,0);f.shell.dispose();
+});
+
+test('newly encountered old version gets the asset archive watermark in cache and incoming rooms',async()=>{
+ const old=versionEntry(1,2),archived=versionEntry(2,9,'archived');
+ const f=fixture({list:async({status='active'})=>({entries:status==='archived'?[archived]:[old]})});
+ await f.service.list({roomId:'room_a',status:'archived'});
+ const result=await f.service.list({roomId:'room_a'});assert.deepEqual(result.entries,[]);
+ // Use an unseen third pin in a delayed room projection; immutable setup must survive.
+ const unseen={...versionEntry(3,3),version:{...versionEntry(3,3).version,depthPreset:'floor',representation:'floor',depthPivot:.5}};
+ const incoming={id:'room_a',scene:scene(),imageDefinitions:{'asset_a:version_3':unseen}};f.shell.prepareRoom(incoming);
+ const projected=incoming.imageDefinitions['asset_a:version_3'];assert.equal(projected.status,'archived');assert.equal(projected.revision,9);assert.deepEqual(projected.version,unseen.version);assert.equal(projected.metadata.description,'Current details');
+ f.shell.receiveRoom(incoming);assert.equal(imageDefinitions(f.state.scene)['asset_a:version_3'].status,'archived');f.shell.dispose();
+});
+
+test('version save completing after an account or admission epoch change cannot fill the private cache',async()=>{
+ let release;const f=fixture({createVersion:()=>new Promise(resolve=>release=resolve)});
+ const pending=f.service.createVersion({roomId:'room_a',assetId:'asset_a'});f.shell.suspend();f.state.user={id:'bob'};f.state.room={...f.state.room,imageDefinitions:{}};f.shell.acceptRoom();
+ release(versionReceipt(versionEntry(2)));await pending;assert.deepEqual(f.state.room.imageDefinitions,{});f.shell.dispose();
+});
+
+test('legacy upload receipts with a newer lifecycle revision never replace known current version authority',async()=>{
+ const current=versionEntry(3,3),original=versionEntry(1,4),earlier=versionEntry(2,2);
+ const f=fixture({list:async()=>({entries:[current]}),create:async()=>original,reconcileCreate:async()=>({status:'committed',entry:original}),reconcileVersion:async()=>versionReceipt(earlier)});
+ await f.service.list({roomId:'room_a'});
+ assert.equal((await f.service.create({roomId:'room_a'})).version.versionId,'version_1');
+ assert.equal((await f.service.reconcileCreate({roomId:'room_a'})).entry.version.versionId,'version_1');
+ const recovered=await f.service.reconcileVersion({roomId:'room_a',assetId:'asset_a'});assert.equal(recovered.entry.version.versionId,'version_3');assert.equal(recovered.entry.revision,4);
+ assert.equal(f.state.room.imageDefinitions['asset_a:version_1'].version.versionId,'version_1');assert.equal(f.state.room.imageDefinitions['asset_a:version_3'].version.versionId,'version_3');f.shell.dispose();
 });

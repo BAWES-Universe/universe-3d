@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { normalizeImageAssetDraft, normalizeImageLibraryMetadata, validateResolvedImageAsset, validateAssetReference, validateImageInstance } from '../src/image-asset-schema.js';
+import { normalizeImageAssetDraft, normalizeImageAssetSetup, normalizeImageLibraryMetadata, validateResolvedImageAsset, validateAssetReference, validateImageInstance } from '../src/image-asset-schema.js';
 import { searchImageLibrary } from '../src/image-library.js';
 
-export const IMAGE_ASSET_LIMITS = Object.freeze({ maxBytes: 5 * 1024 * 1024, maxRoomBytes: 50 * 1024 * 1024, maxRoomDefinitions: 100, maxSceneObjects: 2000 });
+export const IMAGE_ASSET_LIMITS = Object.freeze({ maxBytes: 5 * 1024 * 1024, maxRoomBytes: 50 * 1024 * 1024, maxRoomDefinitions: 100, maxVersionsPerAsset: 100, maxSceneObjects: 2000 });
 export const IMAGE_RESPONSE_HEADERS = Object.freeze({
   'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff',
   'Cache-Control': 'private, no-store', 'Cross-Origin-Resource-Policy': 'same-origin',
@@ -41,6 +41,15 @@ function lifecycleChange(raw) {
   if (metadata) return Object.freeze({ expectedRevision: raw.expectedRevision, metadata: normalizeImageLibraryMetadata(raw.metadata) });
   if (!['active', 'archived'].includes(raw.status)) fail(400, 'IMAGE_STATUS', 'Image status must be active or archived');
   return Object.freeze({ expectedRevision: raw.expectedRevision, status: raw.status });
+}
+function versionChange(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || ![Object.prototype, null].includes(Object.getPrototypeOf(raw))) fail(400, 'IMAGE_BODY', 'Image setup change must be a plain record');
+  if (Object.keys(raw).some(key => !['operationId', 'expectedRevision', 'expectedVersionId', 'setup'].includes(key))) fail(400, 'IMAGE_BODY', 'Unsupported image setup change field');
+  if (!Number.isSafeInteger(raw.expectedRevision) || raw.expectedRevision < 1) fail(400, 'IMAGE_REVISION', 'Expected image revision must be a positive safe integer');
+  const operationId = identifier(raw.operationId, 'operation'), expectedVersionId = identifier(raw.expectedVersionId, 'source version');
+  const setupText = canonical(raw.setup);
+  if (Buffer.byteLength(setupText) > IMAGE_UPDATE_JSON_LIMIT) fail(400, 'IMAGE_DRAFT', 'Image setup is too large');
+  return Object.freeze({ operationId, expectedRevision: raw.expectedRevision, expectedVersionId, setup: JSON.parse(setupText) });
 }
 export const imageReferenceKey = reference => `${reference.assetId}:${reference.versionId}`;
 
@@ -95,8 +104,14 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
   function replay(context, operationId, digest) {
     const previous = repo.getOperation(context.roomId, context.userId, operationId);
     if (!previous) return null;
-    if (previous.digest !== digest) fail(409, 'IMAGE_OPERATION_CONFLICT', 'This upload operation was already used for different content');
+    if (previous.kind !== 'upload' || previous.digest !== digest) fail(409, 'IMAGE_OPERATION_CONFLICT', 'This upload operation was already used for different content');
     return findAvailable(context.roomId, previous, true);
+  }
+  function versionReceipt(context, previous) {
+    const committed = findAvailable(context.roomId, previous, true);
+    const entry = frozenEntry(repo.getCurrent(context.roomId, previous.assetId));
+    return Object.freeze({ status: 'committed', entry,
+      published: Object.freeze({ assetId: previous.assetId, versionId: previous.versionId, sequence: committed.version.sequence }) });
   }
   const service = {
     // Transport uses this before awaiting a body. Returned stamp is server-only.
@@ -112,10 +127,64 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
     reconcileCreate(args) {
       const context = identity(args); authority(context); identifier(args.operationId, 'operation');
       const previous = repo.getOperation(context.roomId, context.userId, args.operationId);
-      if (!previous) return Object.freeze({ status: 'not-found' });
+      if (!previous || previous.kind !== 'upload') return Object.freeze({ status: 'not-found' });
       const entry = findAvailable(context.roomId, previous, true);
       authorizeArchivedRead(context, entry);
       return Object.freeze({ status: 'committed', entry });
+    },
+    reconcileVersion(args) {
+      const context = identity(args); authority(context, true);
+      const assetId = identifier(args.assetId, 'asset'), operationId = identifier(args.operationId, 'operation');
+      return sync(commitTransaction(() => {
+        authority(context, true);
+        const previous = repo.getOperation(context.roomId, context.userId, operationId);
+        if (!previous || previous.kind !== 'setup-version' || previous.assetId !== assetId) return Object.freeze({ status: 'not-found' });
+        return versionReceipt(context, previous);
+      }), 'transaction');
+    },
+    async createVersion(args) {
+      const context = identity(args), stamp = authority(context, true, args.expectedSessionStamp);
+      const assetId = identifier(args.assetId, 'asset'), change = versionChange(args.change);
+      const digest = createHash('sha256').update(canonical({ action: 'setup-version', assetId, ...change })).digest('hex');
+      if (repo.inTransaction) throw new Error('Image versions cannot commit inside an unrelated open transaction');
+      let didCreate = false;
+      const result = sync(commitTransaction(() => {
+        if (!repo.inTransaction) throw new Error('Image commits require the repository transaction connection');
+        authority(context, true, stamp);
+        const previous = repo.getOperation(context.roomId, context.userId, change.operationId);
+        if (previous) {
+          if (previous.kind !== 'setup-version' || previous.assetId !== assetId || previous.digest !== digest) fail(409, 'IMAGE_OPERATION_CONFLICT', 'This operation was already used for different content');
+          return versionReceipt(context, previous);
+        }
+        const stored = repo.getCurrent(context.roomId, assetId);
+        if (!stored || !['active', 'archived'].includes(stored.status)) fail(404, 'IMAGE_NOT_FOUND', 'The image reference is unavailable in this room');
+        if (stored.status === 'archived') fail(409, 'IMAGE_ARCHIVED', 'Restore this archived image before editing its setup');
+        const before = frozenEntry(stored);
+        if (before.revision !== change.expectedRevision) fail(409, 'IMAGE_REVISION_CONFLICT', 'The image changed. Review its latest details before trying again.');
+        if (before.version.versionId !== change.expectedVersionId) fail(409, 'IMAGE_VERSION_CONFLICT', 'The source version changed. Review its latest setup before trying again.');
+        if (before.revision >= Number.MAX_SAFE_INTEGER) fail(409, 'IMAGE_REVISION_LIMIT', 'The image revision limit has been reached');
+        const setup = normalizeImageAssetSetup(change.setup, before.version);
+        const existingSetup = Object.fromEntries(Object.keys(setup).map(key => [key, before.version[key]]));
+        if (canonical(setup) === canonical(existingSetup)) fail(400, 'IMAGE_SETUP_UNCHANGED', 'Change the depth or collision setup before saving a new version');
+        // Bound metadata/receipt rows even for tiny PNGs. Retained history is
+        // never reclaimed by archiving and every version stores a full BLOB.
+        const stats = repo.versionStats(context.roomId, assetId), usage = repo.usage(context.roomId);
+        if (!Number.isSafeInteger(stats.sequence) || stats.sequence >= cap.maxVersionsPerAsset || stats.count >= cap.maxVersionsPerAsset) fail(409, 'IMAGE_VERSION_LIMIT', 'The image version limit has been reached');
+        if (usage.bytes + before.version.byteLength > cap.maxRoomBytes) fail(409, 'IMAGE_ROOM_QUOTA', 'Room image storage quota has been reached');
+        const bytes = repo.getBytes(context.roomId, assetId, change.expectedVersionId);
+        if (!bytes || bytes.length !== before.version.byteLength || createHash('sha256').update(bytes).digest('hex') !== before.version.sha256) throw new Error('Stored image bytes are unavailable or inconsistent');
+        const entry = frozenEntry({ ...before, revision: before.revision + 1,
+          version: { ...before.version, ...setup, versionId: newId(), sequence: stats.sequence + 1, createdAt: new Date(now()).toISOString(), createdBy: context.userId } });
+        repo.insertVersion({ entry, bytes, userId: context.userId, ...change, digest });
+        didCreate = true;
+        return Object.freeze({ status: 'committed', entry, published: Object.freeze({ assetId, versionId: entry.version.versionId, sequence: entry.version.sequence }) });
+      }), 'transaction');
+      if (didCreate) {
+        const event = Object.freeze({ type: 'imageAsset.versionCreated', roomId: context.roomId, assetId,
+          versionId: result.published.versionId, revision: result.entry.revision, status: result.entry.status });
+        try { await afterCommit(event); } catch { /* durable receipts recover lost responses */ }
+      }
+      return result;
     },
     async create(args) {
       const context = identity(args);
@@ -240,7 +309,7 @@ export function createImageAssetService({ repo, authorizeRead, authorizeManage, 
 
 export const IMAGE_UPLOAD_JSON_LIMIT = 7 * 1024 * 1024;
 export const IMAGE_UPDATE_JSON_LIMIT = 32 * 1024;
-function readImageJson(req, { limit = IMAGE_UPLOAD_JSON_LIMIT, upload = true } = {}) {
+function readImageJson(req, { limit = IMAGE_UPLOAD_JSON_LIMIT, upload = true, setupVersion = false } = {}) {
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type'] ?? '')) fail(415, 'IMAGE_BODY_TYPE', 'Use application/json for image uploads');
   if (req.headers['content-encoding'] && req.headers['content-encoding'] !== 'identity') fail(415, 'IMAGE_BODY_ENCODING', 'Compressed upload bodies are unsupported');
   const declared = req.headers['content-length'];
@@ -261,6 +330,7 @@ function readImageJson(req, { limit = IMAGE_UPLOAD_JSON_LIMIT, upload = true } =
       try {
         const text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, size));
         const body = JSON.parse(text);
+        if (setupVersion) { resolve(versionChange(body)); chunks = []; return; }
         if (!upload) { resolve(lifecycleChange(body)); chunks = []; return; }
         if (!body || Array.isArray(body) || typeof body !== 'object' || Object.keys(body).some(key => !['draft', 'pngBase64', 'mediaType', 'operationId'].includes(key))) fail(400, 'IMAGE_BODY', 'Invalid image upload fields');
         if (typeof body.pngBase64 !== 'string' || body.pngBase64.length > 4 * Math.ceil(IMAGE_ASSET_LIMITS.maxBytes / 3) || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.pngBase64)) fail(400, 'IMAGE_BASE64', 'Expected canonical base64 PNG bytes');
@@ -289,12 +359,20 @@ export function createImageAssetHttpHandler({ service, getIdentity }) {
   return async function handleImageAssets(req, res) {
     const url = new URL(req.url, 'http://image-assets.invalid');
     const match = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]{1,128})\/assets(?:\/(?:operations\/([A-Za-z0-9_-]{1,128})|([A-Za-z0-9_-]{1,128})(?:\/versions\/([A-Za-z0-9_-]{1,128})\/image)?))?$/);
-    if (!match) return false;
-    const [, roomId, operationId, assetId, versionId] = match;
+    const versionMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]{1,128})\/assets\/([A-Za-z0-9_-]{1,128})\/versions(?:\/operations\/([A-Za-z0-9_-]{1,128}))?$/);
+    if (!match && !versionMatch) return false;
+    const [, roomId, operationId, assetId, versionId] = match ?? [null, versionMatch[1], null, versionMatch[2], null];
     try {
       const authenticated = sync(getIdentity(req), 'getIdentity');
       const context = { userId: authenticated?.userId, sessionIdentity: authenticated?.sessionIdentity, roomId };
-      if (!assetId && !operationId && req.method === 'GET') json(res, 200, service.list({ ...context, query: url.searchParams.get('query') ?? '', status: url.searchParams.get('status') ?? 'active' }));
+      if (versionMatch) {
+        if (versionMatch[3] && req.method === 'GET') json(res, 200, service.reconcileVersion({ ...context, assetId, operationId: versionMatch[3] }));
+        else if (!versionMatch[3] && req.method === 'POST') {
+          const expectedSessionStamp = service.checkAccess(context, { manage: true });
+          const change = await readImageJson(req, { limit: IMAGE_UPDATE_JSON_LIMIT, setupVersion: true });
+          json(res, 201, await service.createVersion({ ...context, assetId, change, expectedSessionStamp }));
+        } else json(res, 405, { error: { code: 'IMAGE_METHOD', message: 'Image asset method is unsupported' } });
+      } else if (!assetId && !operationId && req.method === 'GET') json(res, 200, service.list({ ...context, query: url.searchParams.get('query') ?? '', status: url.searchParams.get('status') ?? 'active' }));
       else if (operationId && req.method === 'GET') json(res, 200, service.reconcileCreate({ ...context, operationId }));
       else if (!assetId && !operationId && req.method === 'POST') {
         const expectedSessionStamp = service.checkAccess(context, { manage: true });
