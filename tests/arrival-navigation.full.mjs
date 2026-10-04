@@ -8,18 +8,44 @@ import {launch} from '../scripts/browser.mjs';
 const start=(key,x,extra={})=>({id:key,name:key==='cafe'?'Café welcome':'Stage doors',x,z:0,width:1.6,depth:1.6,action:'welcome',start:{key,isDefault:key==='cafe'},...extra});
 const scene=id=>({version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:8},areas:[start('cafe',-6,id==='a'?{action:'teleport',target:'b',entry:'cafe'}:{}),start('stage',6)],objects:[{id:'door',type:'board',name:'Travel board',x:-6,z:-1.8,rotation:0,actions:[{id:'cross',type:'teleport',name:id==='a'?'Travel to Garden':'Travel to Café',target:id==='a'?'b':'a',entry:'cafe'},{id:'same',type:'teleport',name:'Travel to stage',target:id,entry:'stage'}]}]});
 const app=createGameServer({database:':memory:',seeds:[{id:'world',name:'Arrival world',rooms:[{id:'a',name:'Café room',scene:scene('a')},{id:'b',name:'Garden room',scene:scene('b')}]}],dist:new URL('../dist',import.meta.url).pathname,questsEnabled:false});
-const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1365,height:960},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[],joins=[],presence=[],movement=[],retirement=[],heldJoins=[];
+const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1365,height:960},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[],joins=[],presence=[],movement=[],retirement=[],heldJoins=[],navigationSignals=[];
 const operationTimeout=60000;
 page.setDefaultTimeout(operationTimeout);page.setDefaultNavigationTimeout(operationTimeout);page.on('pageerror',error=>errors.push(error.message));
 page.on('request',request=>{if(request.url().endsWith('/api/presence'))presence.push(request.postDataJSON());});
 page.on('response',async res=>{if(/\/api\/rooms\/[^/]+\/join$/.test(new URL(res.url()).pathname)){const body=await res.json().catch(()=>null);joins.push({url:res.url(),request:res.request().postDataJSON(),status:res.status(),body});}});
+// Bounded synthetic-fixture diagnostics. Never log URLs, headers, cookies,
+// credentials, complete response bodies, or unrelated network activity.
+const signal=(request,event,extra={})=>{
+ const path=new URL(request.url()).pathname;if(!/^\/api\/(?:presence|proximity-controls|rooms\/[ab]\/(?:actions\/resolve|join))$/.test(path))return;
+ let body;try{body=request.postDataJSON();}catch{}
+ navigationSignals.push({at:performance.now(),path,event,...(body?{roomId:body.roomId,entityType:body.entityType,entityId:body.entityId,actionId:body.actionId,revision:body.revision,sourceAction:body.sourceAction,x:body.x,z:body.z}:{}),...extra});
+ const presenceSignal=path==='/api/presence',limit=presenceSignal?6:32;
+ while(navigationSignals.filter(entry=>(entry.path==='/api/presence')===presenceSignal).length>limit)navigationSignals.splice(navigationSignals.findIndex(entry=>(entry.path==='/api/presence')===presenceSignal),1);
+};
+page.on('request',request=>signal(request,'request'));
+page.on('requestfailed',request=>signal(request,'failed',{error:request.failure()?.errorText?.slice(0,160)}));
+page.on('response',async response=>{
+ const request=response.request(),path=new URL(request.url()).pathname;if(!/^\/api\/(?:presence|proximity-controls|rooms\/[ab]\/(?:actions\/resolve|join))$/.test(path))return;
+ const body=!response.ok()||path.endsWith('/actions/resolve')?await response.json().catch(()=>null):null;signal(request,'response',{status:response.status(),responseRevision:body?.revision,code:typeof body?.error==='string'?body.error:body?.error?.code,message:body?.message?.slice(0,160)});
+});
 const read=()=>page.evaluate(()=>window.__universe.getState());
+const nativeState=()=>page.evaluate(()=>{
+ const s=window.__universe.getState(),get=id=>document.getElementById(id),short=value=>String(value??'').slice(0,160),active=document.activeElement,door=s.scene?.objects.find(object=>object.id==='door');
+ return {roomId:s.room?.id,revision:s.room?.revision,destination:s.destination,ready:s.ready,online:s.online,hasAdmission:!!s.admissionId,position:s.position,speed:window.__universe.getMotion().speed,doorDistance:door?Math.hypot(door.x-s.position.x,door.z-s.position.z):null,editorInert:get('editor').inert,historySurface:history.state?.surface??null,visibility:document.visibilityState,hasFocus:document.hasFocus(),activeElement:{tag:active?.tagName,id:active?.id},dialog:{hidden:get('dialog').hidden,owner:get('dialog').dataset.actionOwner,title:short(get('dialog-title').textContent),actions:[...get('dialog-actions').querySelectorAll('button')].slice(0,4).map(button=>({text:short(button.textContent),disabled:button.disabled}))},interaction:{hidden:get('interaction').hidden,disabled:get('interact').disabled,label:short(get('interaction-label').textContent)},toast:{hidden:get('toast').hidden,text:short(get('toast').textContent)},foreground:['image-library','places','command-palette','welcome'].filter(id=>get(id)&&!get(id).hidden)};
+});
+const boundedObservation=async observation=>{let timer;try{return await Promise.race([observation.catch(error=>({diagnosticError:error.message.slice(0,160)})),new Promise(resolve=>{timer=setTimeout(()=>resolve({diagnosticError:'Browser observation deadline exceeded'}),2000);})]);}finally{clearTimeout(timer);}};
 const ready=id=>page.waitForFunction(id=>window.__universe?.getState().ready&&window.__universe.getState().room?.id===id,id);
 const check=name=>{checks.push({name,status:'passed'});console.log('PASS',name);};
 const quick=async label=>{await page.keyboard.press('Control+k');const input=page.getByRole('combobox',{name:'Search actions, people and places'});await input.fill(label);await input.press('Enter');};
-const travel=async name=>{await page.locator('#interact').click();await page.locator('#dialog-actions').getByRole('button',{name,exact:true}).click();};
+const travel=async(name,observe=async()=>{})=>{await observe('before-interact');await page.locator('#interact').click();await observe('menu-open');await page.locator('#dialog-actions').getByRole('button',{name,exact:true}).click();await observe('action-clicked');};
 const holdNativeJoin=async(sourceRoomId,roomId,name)=>{
- const pattern='**/api/rooms/'+roomId+'/join',started=performance.now(),trace={sourceRoomId,roomId,phase:'waiting-for-source-navigation'};heldJoins.push(trace);
+ const pattern='**/api/rooms/'+roomId+'/join',started=performance.now(),trace={sourceRoomId,roomId,name,phase:'waiting-for-source-navigation',snapshots:[]};heldJoins.push(trace);
+ const observe=async phase=>trace.snapshots.push({phase,elapsedMs:performance.now()-started,state:await nativeState()});
+ const watch=await page.evaluateHandle(()=>{
+  const samples=[],started=performance.now(),toast=document.querySelector('#toast'),editor=document.querySelector('#editor'),dialog=document.querySelector('#dialog');
+  const sample=()=>{const s=window.__universe.getState();samples.push({elapsedMs:performance.now()-started,roomId:s.room?.id,revision:s.room?.revision,ready:s.ready,editorInert:editor.inert,dialogHidden:dialog.hidden,toastHidden:toast.hidden,toast:toast.textContent.slice(0,160)});if(samples.length>16)samples.shift();};
+  const observer=new MutationObserver(sample);for(const target of [toast,editor,dialog])observer.observe(target,{attributes:true,attributeFilter:['hidden','inert'],childList:true,characterData:true,subtree:true});sample();return {read:()=>samples,stop(){observer.disconnect();return samples;}};
+ });
  const response=Promise.withResolvers(),deadline=Promise.withResolvers();let timer;
  const failure=(code,message,cause)=>Object.assign(new Error(message,{cause}),{code});
  const hold=async route=>{
@@ -36,15 +62,19 @@ const holdNativeJoin=async(sourceRoomId,roomId,name)=>{
   // Room commit sets ready before navigation settles. The existing inert flag
   // fences presence/action activation until the controls response is accepted.
   await page.waitForFunction(id=>{const s=window.__universe.getState();return s.ready&&s.room?.id===id&&!document.querySelector('#editor').inert;},sourceRoomId);
-  trace.sourceSettledMs=performance.now()-started;trace.phase='waiting-for-native-request';await travel(name);
+  trace.sourceSettledMs=performance.now()-started;trace.phase='waiting-for-native-request';await travel(name,observe);
  };
  await context.route(pattern,hold);
  // Readiness belongs to the actual upstream response, not the pointer click or
  // a short poll of a variable. Use the same bounded deadline as other UI work.
  timer=setTimeout(()=>deadline.reject(failure(trace.phase==='waiting-for-source-navigation'?'HELD_JOIN_SOURCE_TIMEOUT':trace.requestMs===undefined?'HELD_JOIN_REQUEST_TIMEOUT':'HELD_JOIN_RESPONSE_TIMEOUT','Native '+roomId+' join timed out '+trace.phase)),operationTimeout);
  try{const [held]=await Promise.race([Promise.all([response.promise,activate()]),deadline.promise]);return held;}
- catch(error){await context.unroute(pattern,hold);throw error;}
- finally{clearTimeout(timer);}
+ catch(error){
+  const snapshot=await boundedObservation(Promise.all([nativeState(),watch.evaluate(watch=>watch.read())]).then(([state,timeline])=>({state,timeline})));
+  console.error('ARRIVAL_HOLD_DIAGNOSTIC',JSON.stringify({code:error.code,trace,state:snapshot,recentSignals:navigationSignals,movement}));
+  await context.unroute(pattern,hold);throw error;
+ }
+ finally{clearTimeout(timer);trace.timeline=await boundedObservation(watch.evaluate(watch=>watch.stop()));void watch.dispose().catch(()=>{});}
 };
 try{
  const created=await context.request.post(base+'/api/session',{data:{name:'Arrival traveler'}});assert.equal(created.status(),201);
@@ -124,4 +154,4 @@ try{
  assert.equal((await (await context.request.get(base+'/api/session')).json()).currentRoomId,null);await heldRevocation.unroute();
  check('Real target access revocation during held join never displays target or restores retired source authority');
  assert.deepEqual(errors,[]);
-}catch(error){console.error(error);checks.push({name:'failure',status:'failed',code:error.code,error:error.stack});await mkdir('evidence',{recursive:true});await page.screenshot({path:'evidence/arrival-navigation-failure.png'}).catch(()=>{});process.exitCode=1;}finally{await mkdir('evidence',{recursive:true});await writeFile('evidence/arrival-navigation-full.json',JSON.stringify({checks,errors,joins,movement,retirement,heldJoins,limits:['Local real server and browser only; no remote services, devices, deployment or production configuration']},null,2));await context.close();await browser.close();await app.close();}
+}catch(error){console.error(error);checks.push({name:'failure',status:'failed',code:error.code,error:error.stack});await mkdir('evidence',{recursive:true});await page.screenshot({path:'evidence/arrival-navigation-failure.png'}).catch(()=>{});process.exitCode=1;}finally{await mkdir('evidence',{recursive:true});await writeFile('evidence/arrival-navigation-full.json',JSON.stringify({checks,errors,joins,movement,retirement,heldJoins,navigationSignals,limits:['Local real server and browser only; no remote services, devices, deployment or production configuration']},null,2));await context.close();await browser.close();await app.close();}

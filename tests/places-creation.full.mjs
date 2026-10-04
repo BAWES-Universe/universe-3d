@@ -28,7 +28,7 @@ console.log('Recording tools:',ffmpegVersion.stdout.split('\n')[0],';',ffprobeVe
 const temp=await mkdtemp(join(tmpdir(),'places-creation-'));
 const app=createGameServer({database:join(temp,'test.sqlite'),dist:new URL('../dist',import.meta.url).pathname,seeds:seedWorlds});
 const {port}=await app.listen(0),base=`http://127.0.0.1:${port}`,browser=await launch();
-const results=[],errors=[];let alice,bob,touch,releaseInitialCatalog;
+const results=[],errors=[],navigations=[];let alice,bob,touch,releaseInitialCatalog,releaseInviteLogo;
 const check=async(name,fn)=>{const detail=await fn();results.push({name,status:'passed',...detail});console.log('PASS',name)};
 const call=async(ctx,path,method='GET',data)=>{const r=await ctx.request.fetch(base+path,{method,data});const body=await r.json();assert(r.ok(),JSON.stringify({path,status:r.status(),body}));return body;};
 const own=async(ctx,id)=>(await call(ctx,'/api/universes')).universes.filter(u=>u.ownerId===id);
@@ -48,7 +48,27 @@ async function tabTo(page,matcher){
 }
 async function open(page){if(await page.locator('#places').isHidden())await page.locator('#dock-explore').click();await page.getByRole('button',{name:'Close places',exact:true}).waitFor();}
 async function guide(page){await open(page);if(!await page.getByRole('button',{name:'Make a place',exact:true}).isVisible())await page.getByRole('button',{name:'← All places',exact:true}).click();await page.getByRole('button',{name:'Make a place',exact:true}).click();}
-async function ready(page){await page.waitForFunction(()=>window.__universe?.getState().ready);}
+async function ready(page){await page.waitForFunction(()=>{const game=window.__universe,state=game?.getState();return state?.ready&&state.online&&state.admissionId&&game.getStats()?.presentation?.drawnFrames>0;});}
+async function bounded(promise,timeout,message){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(message)),timeout);})]);}finally{clearTimeout(timer);}}
+async function navigationState(page){try{return await bounded(page.evaluate(()=>({url:location.href,readyState:document.readyState,hidden:document.hidden,focused:document.hasFocus(),ready:window.__universe?.getState().ready,online:window.__universe?.getState().online,admissionId:window.__universe?.getState().admissionId,roomId:window.__universe?.getState().room?.id,userId:window.__universe?.getState().user?.id,engine:window.__universe?.getStats()?.engine,drawnFrames:window.__universe?.getStats()?.presentation?.drawnFrames,loadEventEnd:performance.getEntriesByType('navigation')[0]?.loadEventEnd})),3000,'Navigation diagnostic snapshot unavailable within 3000ms');}catch(error){return {diagnosticError:error.message};}}
+async function navigateGame(page,label,{reload=false}={}){
+ const started=Date.now(),pending=new Map(),entry={label,events:[],failedRequests:[],pageErrors:[],consoleErrors:[]};navigations.push(entry);
+ const requested=request=>pending.set(request,{url:request.url(),type:request.resourceType(),method:request.method()}),finished=request=>pending.delete(request),failed=request=>{entry.failedRequests.push({...pending.get(request),error:request.failure()});pending.delete(request);};
+ const dom=()=>entry.events.push({event:'domcontentloaded',ms:Date.now()-started}),loaded=()=>entry.events.push({event:'load',ms:Date.now()-started}),pageError=error=>entry.pageErrors.push(error.message),consoleMessage=message=>{if(message.type()==='error')entry.consoleErrors.push(message.text());};
+ page.on('request',requested);page.on('requestfinished',finished);page.on('requestfailed',failed);page.on('domcontentloaded',dom);page.on('load',loaded);page.on('pageerror',pageError);page.on('console',consoleMessage);
+ let failure;
+ try{
+  // Decorative resources can keep load pending after this real game is usable.
+  const response=await (reload?page.reload({waitUntil:'domcontentloaded'}):page.goto(base+'/?room=commons',{waitUntil:'domcontentloaded'}));
+  assert(response?.ok(),'Game document did not return a successful HTTP response.');await ready(page);entry.events.push({event:'game-ready',ms:Date.now()-started});
+ }catch(error){failure=error;entry.error=error.message;}
+ finally{
+  entry.state=await navigationState(page);entry.pendingRequests=[...pending.values()];entry.durationMs=Date.now()-started;
+  page.off('request',requested);page.off('requestfinished',finished);page.off('requestfailed',failed);page.off('domcontentloaded',dom);page.off('load',loaded);page.off('pageerror',pageError);page.off('console',consoleMessage);
+  await writeFile(out+'/navigation-results.json',JSON.stringify({navigations},null,2));
+ }
+ if(failure)throw new Error(`${failure.message}\nGame navigation ${JSON.stringify(entry)}`,{cause:failure});
+}
 async function position(page){return page.evaluate(()=>__universe.getState().position);}
 async function record(page){
  const cdp=await page.context().newCDPSession(page),frames=[];
@@ -78,7 +98,7 @@ try{
  const holdInitialCatalog=async route=>{try{const response=await route.fetch();catalogHeld(response);await initialCatalogGate;await route.fulfill({response});}catch(error){catalogFailed(error);await route.abort().catch(()=>{});}};
  const waitForInitialCatalog=async()=>{let timer;try{return await Promise.race([initialCatalogHeld,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Initial Places catalog response did not arrive within '+fixtureTimeout+'ms')),fixtureTimeout);})]);}finally{clearTimeout(timer);}};
  await page.route('**/api/universes?*',holdInitialCatalog);
- await page.goto(base+'/?room=commons');await ready(page);
+ await navigateGame(page,'creator entry');
  await check('native hierarchy traversal waits for a held real catalog response without spending its Tab budget',async()=>{
   await open(page);const response=await waitForInitialCatalog();assert.equal(response.status(),200);assert((await response.json()).universes.length>0);
   assert.equal(await page.getByRole('button',{name:/^View universe /}).count(),0);await focusInside(page);
@@ -116,7 +136,7 @@ try{
   await page.getByRole('button',{name:'Create & enter',exact:true}).click();await page.getByRole('button',{name:'Retry creation',exact:true}).waitFor();assert(lost);await focusInside(page);
   let u=await own(alice,aid);assert.equal(u.length,1);assert.equal(u[0].worlds.length,1);assert.equal(u[0].worlds[0].rooms.length,0);
   await page.screenshot({path:out+'/partial-progress.png'});
-  await page.reload();await ready(page);await guide(page);assert(await page.getByLabel('Place name',{exact:true}).isDisabled());await page.getByRole('button',{name:'Retry creation',exact:true}).click();await page.locator('#places').waitFor({state:'hidden'});
+  await navigateGame(page,'creator receipt reload',{reload:true});await guide(page);assert(await page.getByLabel('Place name',{exact:true}).isDisabled());await page.getByRole('button',{name:'Retry creation',exact:true}).click();await page.locator('#places').waitFor({state:'hidden'});
   u=await own(alice,aid);assert.equal(u.length,1);assert.equal(u[0].worlds.length,1);assert.equal(u[0].worlds[0].rooms.length,1);
   universeId=u[0].id;worldId=u[0].worlds[0].id;roomId=u[0].worlds[0].rooms[0].id;
   for(const p of [u[0],u[0].worlds[0],u[0].worlds[0].rooms[0]]){assert.equal(p.name,'مجلس الأصدقاء 🌿');assert.equal(p.public,false);assert.equal(p.ownerId,aid);assert.match(p.slug,/^[a-z0-9-]+$/);}
@@ -142,11 +162,22 @@ try{
   const buttons=page.getByRole('button',{name:'View world مجلس الأصدقاء 🌿',exact:true});
   if(!(await page.locator('.places-detail').innerText()).includes('Private'))await buttons.nth(1).click();
   await page.getByRole('button',{name:'Members & invitations',exact:true}).click();await page.getByLabel('Local account',{exact:true}).fill('creation_bob');await page.getByRole('button',{name:'Find account',exact:true}).click();await page.getByRole('button',{name:'Select account creation_bob',exact:true}).click();await page.getByLabel('World role',{exact:true}).selectOption('editor');await page.getByRole('button',{name:'Send invitation',exact:true}).click();await page.locator('#places').getByText('Invitation sent to their local account inbox.',{exact:true}).waitFor();await focusInside(page);await page.keyboard.press('Escape');assert(await page.locator('#places').isHidden());
-  const bp=await bob.newPage();bp.on('pageerror',e=>errors.push(e.message));await bp.goto(base+'/?room=commons');await ready(bp);await open(bp);await bp.getByRole('tab',{name:/Invitations/}).click();await bp.getByRole('button',{name:'Refresh inbox',exact:true}).click();await focusInside(bp);await bp.getByRole('button',{name:'Accept invitation',exact:true}).click();await bp.locator('#places').getByText('Invitation accepted. Your membership is ready.',{exact:true}).waitFor();await focusInside(bp);
+  // The sender's native journey is complete; retain its context for later HTTP authority reads.
+  await page.close();
+  const bp=await bob.newPage();bp.on('pageerror',e=>errors.push(e.message));
+  const logoGate=new Promise(resolve=>{releaseInviteLogo=resolve;});let logoHeld,logoFailed;const logoResponse=new Promise((resolve,reject)=>{logoHeld=resolve;logoFailed=reject;});logoResponse.catch(()=>{});
+  const holdLogo=async route=>{try{const response=await route.fetch();logoHeld(response);await logoGate;await route.fulfill({response});}catch(error){logoFailed(error);await route.abort().catch(()=>{});}};
+  await bp.route('**/assets/bawes-universe-logo.png',holdLogo);await navigateGame(bp,'invitee entry with delayed real logo');
+  const logo=await bounded(logoResponse,15000,'Real logo response was not held within 15000ms');assert.equal(logo.status(),200);
+  const beforeLoad=await navigationState(bp);assert.equal(beforeLoad.ready,true);assert.equal(beforeLoad.online,true);assert(beforeLoad.admissionId);assert(beforeLoad.drawnFrames>0);assert.equal(beforeLoad.readyState,'interactive');assert.equal(beforeLoad.loadEventEnd,0);assert.match(beforeLoad.engine,/WebGL/);
+  await open(bp);await bp.getByRole('tab',{name:/Invitations/}).click();await bp.getByRole('button',{name:'Refresh inbox',exact:true}).click();await focusInside(bp);await bp.getByRole('button',{name:'Accept invitation',exact:true}).click();await bp.locator('#places').getByText('Invitation accepted. Your membership is ready.',{exact:true}).waitFor();await focusInside(bp);
+  assert.equal(await bp.evaluate(()=>performance.getEntriesByType('navigation')[0].loadEventEnd),0);await bp.screenshot({path:out+'/invitation-before-load.png'});
+  releaseInviteLogo();await bp.waitForFunction(()=>document.querySelector('.brand-logo')?.naturalWidth>0);await bp.unroute('**/assets/bawes-universe-logo.png',holdLogo);
   await bp.keyboard.press('Escape');assert(await bp.locator('#places').isHidden());const member=(await call(bob,'/api/memberships')).memberships.find(m=>m.worldId===worldId);assert.equal(member.role,'editor');await bp.close();
+  return {beforeLoad,logoStatus:logo.status()};
  });
  await check('second ordinary account creates its own hierarchy at 320px touch; short landscape and Back preserve draft/focus',async()=>{
-  touch=await browser.newContext({viewport:{width:320,height:568},isMobile:true,hasTouch:true,storageState:await bob.storageState()});const p=await touch.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(base+'/?room=commons');await ready(p);
+  touch=await browser.newContext({viewport:{width:320,height:568},isMobile:true,hasTouch:true,storageState:await bob.storageState()});const p=await touch.newPage();p.on('pageerror',e=>errors.push(e.message));await navigateGame(p,'touch creator entry');
   await p.locator('#dock-explore').tap();await p.getByRole('button',{name:'← All places',exact:true}).tap();await p.getByRole('button',{name:'Make a place',exact:true}).tap();await focusInside(p);assert.notEqual(await p.evaluate(()=>document.activeElement.tagName),'INPUT');
   await p.getByLabel('Place name',{exact:true}).tap();await p.keyboard.type('Tokyo Café');const before=await position(p);await p.keyboard.type(' wasd');assert.deepEqual(await position(p),before);
   await p.getByRole('button',{name:'Back to places',exact:true}).tap();await p.getByRole('button',{name:'Make a place',exact:true}).tap();assert.equal(await p.getByLabel('Place name',{exact:true}).inputValue(),'Tokyo Café wasd');
@@ -171,15 +202,15 @@ try{
   let dropped=false;await p.route('**/api/worlds',async route=>{if(route.request().method()==='POST'&&!dropped){dropped=true;const response=await route.fetch();assert.equal(response.status(),201);await route.abort('failed');}else await route.continue();});
   await p.getByRole('button',{name:'Create & enter',exact:true}).tap();await p.getByRole('button',{name:'Retry creation',exact:true}).waitFor();assert(dropped);
   let partial=(await own(bob,bid)).find(u=>u.name==='Tokyo Café wasd');assert.equal(partial.public,true);assert.equal(partial.worlds[0].public,true);assert.equal(partial.worlds[0].rooms.length,0);
-  await p.reload();await ready(p);await guide(p);assert.equal(await p.getByLabel('Privacy',{exact:true}).inputValue(),'public');assert(await p.getByLabel('Privacy',{exact:true}).isDisabled());
+  await navigateGame(p,'touch receipt reload',{reload:true});await guide(p);assert.equal(await p.getByLabel('Privacy',{exact:true}).inputValue(),'public');assert(await p.getByLabel('Privacy',{exact:true}).isDisabled());
   await p.getByRole('button',{name:'Retry creation',exact:true}).tap();await p.locator('#places').waitFor({state:'hidden'});await p.unroute('**/api/worlds');
   const id=await p.evaluate(()=>__universe.getState().room.id),owned=(await own(bob,bid)).filter(u=>u.name==='Tokyo Café wasd');assert.equal(owned.length,1);const u=owned[0];assert.equal(u.worlds.length,1);assert.equal(u.worlds[0].rooms.length,1);assert.equal(u.worlds[0].rooms[0].id,id);
   for(const record of [u,u.worlds[0],u.worlds[0].rooms[0]]){assert.equal(record.public,true);assert.equal(record.ownerId,bid);}
   const visitor=(await call(alice,'/api/rooms/'+id)).room;assert.equal(visitor.role,'guest');assert.equal(visitor.capabilities.canEditScene,false);assert(!(await call(alice,'/api/memberships')).memberships.some(m=>m.worldId===u.worlds[0].id));
   assert.equal((await call(bob,'/api/rooms/'+id)).room.capabilities.canEditScene,true);
-  await p.reload();await ready(p);assert.equal(await p.evaluate(()=>__universe.getState().room.id),id);
+  await navigateGame(p,'touch completed-room reload',{reload:true});assert.equal(await p.evaluate(()=>__universe.getState().room.id),id);
   await guide(p);await p.getByRole('button',{name:'Make another place',exact:true}).tap();await p.getByLabel('Place name',{exact:true}).fill('Back keeps this draft');await p.goBack();await p.locator('#places').waitFor({state:'hidden'});await guide(p);assert.equal(await p.getByLabel('Place name',{exact:true}).inputValue(),'Back keeps this draft');await focusInside(p);await p.keyboard.press('Escape');assert(await p.locator('#places').isHidden());await touch.close();touch=null;
  });
  assert.deepEqual(errors,[]);
 } catch(error){console.error(error);results.push({status:'failed',error:error.stack});process.exitCode=1;for(const c of [alice,bob,touch])for(const p of c?.pages()||[])await p.screenshot({path:out+'/failure-'+(c===alice?'alice':c===bob?'bob':'touch')+'.png',timeout:5000}).catch(()=>{});}
-finally{releaseInitialCatalog?.();await writeFile(out+'/full-results.json',JSON.stringify({results,errors,environment:'Native Chromium input, SwiftShader software rendering, touch emulation. No physical-device claim.'},null,2));await alice?.close();await bob?.close();await touch?.close();await browser.close();await app.close();await rm(temp,{recursive:true,force:true});}
+finally{releaseInitialCatalog?.();releaseInviteLogo?.();await writeFile(out+'/full-results.json',JSON.stringify({results,errors,environment:'Native Chromium input, SwiftShader software rendering, touch emulation. No physical-device claim.'},null,2));await alice?.close();await bob?.close();await touch?.close();await browser.close();await app.close();await rm(temp,{recursive:true,force:true});}
