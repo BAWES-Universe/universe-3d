@@ -27,9 +27,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [core, authoring, sharedareas, images, imageversions, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay, arrivals]
+        group: [core, authoring, sharedareas, images, imageversions, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay, arrivals, signup, imagesizing, imageprotocol, placescreation, compactconversations, editorpolish, worldpolish, shellpolish, friendjourney]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        if: matrix.group == 'imageprotocol'
+        with:
+          ref: bc715ff6ccc0c3d2537e4c003cb4a7bb82745a34
+          path: .ci-legacy
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -37,3 +43,5 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/test-browser.mjs ${{ matrix.group }}
+        env:
+          UNIVERSE_LEGACY_SOURCE: ${{ github.workspace }}/.ci-legacy

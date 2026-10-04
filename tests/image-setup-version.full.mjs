@@ -1,3 +1,4 @@
+import {clientProtocolHeaders} from '../src/client-protocol.js';
 /** Actual-game image setup acceptance. Run serially under the shared GPU flock.
  * All claimed UI flows use native mouse/keyboard/file chooser/CDP touch input.
  * evaluate() only reads state, projections, DOM and rendered-frame diagnostics.
@@ -18,7 +19,7 @@ const out=process.env.UNIVERSE_IMAGE_SETUP_EVIDENCE||'evidence/image-setup-versi
 const dist=process.env.UNIVERSE_IMAGE_SETUP_DIST||new URL('../dist',import.meta.url).pathname;
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 await mkdir(out,{recursive:true});
-const app=createGameServer({seeds:structuredClone(seedWorlds),dist}),address=await app.listen(0),base=`http://127.0.0.1:${address.port}`;
+const app=createGameServer({seeds:structuredClone(seedWorlds),dist,imagePhysicalSizeEnabled:true}),address=await app.listen(0),base=`http://127.0.0.1:${address.port}`;
 const browser=await launch();
 let context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),roomId,assetId,ownerCookie='',cdp;
 const checks=[],errors=[],mutations=[],events=[],fixtures=[];
@@ -29,6 +30,7 @@ const results={startedAt:new Date().toISOString(),sourceCommit:execFileSync('git
  'SQLite and pure geometry checks are model evidence; separate screenshot pixels, native picking and keyboard walking establish actual renderer/input behavior',
  'Headless Chromium SwiftShader and emulated 320px touch are not physical-device performance evidence'
 ]};
+const fixtureRequest=(method,url,options={})=>page.request[method](url,{...options,headers:clientProtocolHeaders(options.headers)});
 const state=()=>page.evaluate(()=>window.__universe.getState());
 const editor=()=>page.evaluate(()=>window.__universe.getEditor());
 const root=()=>page.locator('#image-library');
@@ -40,7 +42,7 @@ const persist=()=>writeFile(out+'/results.json',JSON.stringify(results,null,2));
 const report=async(name,details={})=>{checks.push({name,status:'passed',...details});console.log('PASS',name);await persist();};
 const near=(actual,expected,tolerance=.08)=>assert(Math.abs(actual-expected)<tolerance,`${actual} should be within ${tolerance} of ${expected}`);
 async function owner(path,method='GET',body){
- const response=await fetch(base+path,{method,headers:{Cookie:ownerCookie,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ const response=await fetch(base+path,{method,headers:clientProtocolHeaders({Cookie:ownerCookie,...(body?{'Content-Type':'application/json'}:{})}),...(body?{body:JSON.stringify(body)}:{})});
  if(response.headers.get('set-cookie'))ownerCookie=response.headers.get('set-cookie').split(';')[0];
  const result=await response.json();fixtures.push({path,method,status:response.status});
  assert(response.ok,JSON.stringify({path,status:response.status,result}));return result;
@@ -59,9 +61,9 @@ async function openLibrary(){if(!await root().isVisible()){await build();await p
 async function libraryReady(){await page.waitForFunction(()=>document.querySelector('#image-library .uil-cards')?.getAttribute('aria-busy')!=='true');}
 async function closeLibrary(){await button('Close Custom image library').click();await root().waitFor({state:'hidden'});await frames();}
 async function openSetup(name){await openLibrary();await button('Edit setup for '+name).click();await setup().waitFor({state:'visible'});}
-async function list(status='active'){const response=await page.request.get(base+`/api/rooms/${roomId}/assets?status=${status}`);assert.equal(response.status(),200);return(await response.json()).entries;}
+async function list(status='active'){const response=await fixtureRequest('get',base+`/api/rooms/${roomId}/assets?status=${status}`);assert.equal(response.status(),200);return(await response.json()).entries;}
 async function current(status='active'){const entry=(await list(status)).find(e=>e.definition.assetId===assetId);assert(entry,'fixture asset remains discoverable');return entry;}
-async function room(){const response=await page.request.get(base+`/api/rooms/${roomId}`);assert.equal(response.status(),200);return(await response.json()).room;}
+async function room(){const response=await fixtureRequest('get',base+`/api/rooms/${roomId}`);assert.equal(response.status(),200);return(await response.json()).room;}
 async function choose(name,version){await openLibrary();const place=root().getByRole('button',{name:`Place ${name} (${assetId})`,exact:true});assert.equal(await place.innerText(),`Place ${name} · version ${version}`);await place.click();await root().waitFor({state:'hidden'});await page.waitForFunction(()=>window.__universe.getEditor().tool==='image');}
 async function projected(x,z,y=0){
  await page.waitForFunction(()=>{const f=window.__universe.getCamera().framing;return f.status==='manual'||!f.targetOffset||Math.hypot(f.offset.x-f.targetOffset.x,f.offset.y-f.targetOffset.y)<1;});
@@ -74,7 +76,7 @@ async function place(x,z,expectedRef){const before=(await state()).scene.objects
 async function select(){await page.getByRole('button',{name:'↖ Select',exact:true}).click();}
 async function save(){await page.getByRole('button',{name:'Save room',exact:true}).click();await page.waitForFunction(()=>!window.__universe.getEditor().dirty&&!window.__universe.getEditor().saving);return(await state()).scene;}
 async function untouched(scene,revision){assert.deepEqual((await state()).scene,scene);assert.equal((await room()).revision,revision);assert.equal((await editor()).dirty,false);}
-async function bytesFor(entry,bytes){const response=await page.request.get(base+assetPath()+`/versions/${entry.version.versionId}/image`);assert.equal(response.status(),200);assert.deepEqual(await response.body(),bytes);assert.equal(entry.version.sha256,sha(bytes));}
+async function bytesFor(entry,bytes){const response=await fixtureRequest('get',base+assetPath()+`/versions/${entry.version.versionId}/image`);assert.equal(response.status(),200);assert.deepEqual(await response.body(),bytes);assert.equal(entry.version.sha256,sha(bytes));}
 function rows(){return app.store.all('SELECT version_id,sequence,version_json,sha256,byte_length,bytes FROM room_image_asset_versions WHERE room_id=? AND asset_id=? ORDER BY sequence',roomId,assetId);}
 function snapshotRows(){return rows().map(row=>({...row,bytes:Buffer.from(row.bytes).toString('base64')}));}
 function decodeScreenshot(bytes){
@@ -97,7 +99,8 @@ async function configure(preset,pivotValue,grid){
 async function setupValues(){return{depth:await setup().getByRole('combobox',{name:'Representation and depth',exact:true}).inputValue(),pivot:await setup().getByRole('spinbutton',{name:'Custom ground pivot',exact:true}).inputValue(),grid:await setup().getByRole('group',{name:'Setup collision cells',exact:true}).getByRole('button').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('aria-pressed')))};}
 async function saveVersion(sequence){const count=mutations.length;await button('Save new version',setup()).click();await setup().waitFor({state:'hidden'});await libraryReady();const entry=await current();assert.equal(entry.version.sequence,sequence);assert.equal(mutations.length,count+1);return entry;}
 async function peerVersion(baseEntry,setupValue){return owner(assetPath()+'/versions','POST',{operationId:'peer-'+randomUUID(),expectedRevision:baseEntry.revision,expectedVersionId:baseEntry.version.versionId,setup:setupValue});}
-async function mobileLibrary(){const custom=page.getByRole('button',{name:'Custom images',exact:true});if(!await custom.isVisible())await touch(page.getByRole('button',{name:'More build tools',exact:true}));await touch(custom);}
+// Native touch completion can precede the ResizeObserver move into More.
+async function mobileLibrary(){await page.waitForFunction(()=>!document.querySelector('#editor').hidden&&document.querySelector('#editor').dataset.compact==='true');const custom=page.getByRole('button',{name:'Custom images',exact:true});if(!await custom.isVisible())await touch(page.getByRole('button',{name:'More build tools',exact:true}));await touch(custom);}
 async function touch(locator){await locator.scrollIntoViewIfNeeded();const box=await locator.boundingBox();assert(box&&box.x>=0&&box.x+box.width<=320.5&&box.y>=0&&box.y+box.height<=760.5,`touch target in viewport: ${JSON.stringify(box)}`);const point={x:box.x+box.width/2,y:box.y+box.height/2};assert(await locator.evaluate((node,p)=>node===document.elementFromPoint(p.x,p.y)||node.contains(document.elementFromPoint(p.x,p.y)),point));await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...point,id:1,radiusX:2,radiusY:2,force:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}
 
 try{
@@ -114,9 +117,10 @@ try{
  await openLibrary();const name='Setup pink panel',bytes=makePng({width:128,height:64,pixel:(x,y)=>[245,35,225,x<32&&y>=32?0:255]});
  await button('Add PNG').click();await button('Cancel draft').click();assert.equal(mutations.length,0,'Cancel never uploads');
  await button('Add PNG').click();const chooser=page.waitForEvent('filechooser');await button('Choose PNG').click();await(await chooser).setFiles({name:name+'.png',mimeType:'image/png',buffer:bytes});await root().getByAltText('Local image preview').waitFor();
+ await root().getByRole('spinbutton',{name:'Width (metres)',exact:true}).fill('4');assert.equal(await root().getByRole('spinbutton',{name:'Height (metres)',exact:true}).inputValue(),'2');
  await root().getByRole('textbox',{name:'Name',exact:true}).fill(name);await root().getByRole('combobox',{name:'Representation and depth',exact:true}).selectOption('floor');await root().getByRole('checkbox',{name:'Floating placement',exact:true}).uncheck();await root().getByRole('checkbox',{name:'Paint collision cells',exact:true}).check();for(let col=1;col<=4;col++)await button(`Collision row 1, column ${col}`).click();
  const sceneBefore=(await state()).scene;await button('Upload').click();await root().getByRole('button',{name:/^Place Setup pink panel/}).waitFor();const v1=(await list())[0];assetId=v1.definition.assetId;
- assert.deepEqual((await state()).scene,sceneBefore);assert.equal(v1.version.sequence,1);assert.deepEqual(v1.version.collisionGrid,[[1,1,1,1],[0,0,0,0]]);await bytesFor(v1,bytes);
+ assert.deepEqual((await state()).scene,sceneBefore);assert.equal(v1.version.sequence,1);assert.equal(v1.version.widthMetres,4);assert.equal(v1.version.heightMetres,2);assert.deepEqual(v1.version.collisionGrid,[[1,1,1,1],[0,0,0,0]]);await bytesFor(v1,bytes);
  await choose(name,1);const old=await place(0,0,ref(v1));await select();const pinned=await save(),revision=(await room()).revision,immutableV1=snapshotRows()[0];
  const oldPixels=await pink('01-v1-floor',0,-.5);await clickWorld(0,-.5,.05);assert.equal((await editor()).selected,old.id);await clickWorld(-1.5,.5,.05);assert.equal((await editor()).selected,null,'transparent floor quadrant passes through to ground');
  await report('Native PNG chooser, Cancel, upload, painted floor collision, placement, rendered pixel, alpha picking and Save establish immutable v1',{assetId,versionId:v1.version.versionId,oldPixels});
@@ -149,7 +153,7 @@ try{
  const beforeLost=mutations.length;await button('Save new version',setup()).click();await lostReady;await button('Check version save status',setup()).waitFor();assert.equal(receipt.published.sequence,5);const publishedV5=receipt.entry,submitted=mutations.at(-1);assert.equal(mutations.length,beforeLost+1);assert.equal(await button('Save new version',setup()).isDisabled(),true);const pendingDraft=await setupValues();
  await button('Back to library',setup()).click();await openSetup(name);assert.deepEqual(await setupValues(),pendingDraft);await closeLibrary();await openLibrary();assert.deepEqual(await setupValues(),pendingDraft);assert(await button('Check version save status',setup()).isVisible());
  const v6=(await peerVersion(publishedV5,{depthPreset:'standing',depthPivot:1,collisionGrid:[[0,0,0,1],[0,0,0,0]]})).entry;const sixRows=snapshotRows();await button('Check version save status',setup()).click();await setup().waitFor({state:'hidden'});await libraryReady();assert.match(await root().innerText(),/Saved version 5/);assert.match(await root().innerText(),/library now displays version 6/);assert.match(await root().innerText(),/Version 6 · library revision 6/);assert.equal((await current()).version.versionId,v6.version.versionId);assert.equal(mutations.length,beforeLost+1);assert.deepEqual(snapshotRows(),sixRows);await untouched(paired,pairedRevision);
- const reconciled=await page.request.get(base+assetPath()+'/versions/operations/'+submitted.body.operationId);assert.equal(reconciled.status(),200);const reconciledBody=await reconciled.json();assert.deepEqual(reconciledBody.published,receipt.published);assert.equal(reconciledBody.entry.version.versionId,v6.version.versionId);assert.equal(events.filter(event=>event.versionId===publishedV5.version.versionId).length,1,'lost response publishes exactly one version event');for(const row of rows())assert.deepEqual(Buffer.from(row.bytes),bytes);
+ const reconciled=await fixtureRequest('get',base+assetPath()+'/versions/operations/'+submitted.body.operationId);assert.equal(reconciled.status(),200);const reconciledBody=await reconciled.json();assert.deepEqual(reconciledBody.published,receipt.published);assert.equal(reconciledBody.entry.version.versionId,v6.version.versionId);assert.equal(events.filter(event=>event.versionId===publishedV5.version.versionId).length,1,'lost response publishes exactly one version event');for(const row of rows())assert.deepEqual(Buffer.from(row.bytes),bytes);
  await page.screenshot({path:out+'/07-reconciled-v5-current-v6.png'});await report('Lost successful v5 response survives Back/Close/reopen; reconciliation names published v5 while displaying newer peer v6, with no duplicate request/version/bytes/event or auto-placement',{published:receipt.published,current:ref(v6),versions:rows().length});
 
  await openSetup(name);await configure('custom',.4,[[0,1,0,0],[1,0,0,0]]);const roleDraft=await setupValues(),beforeRole=snapshotRows(),roleMutations=mutations.length;

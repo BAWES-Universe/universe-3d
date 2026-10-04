@@ -1,0 +1,36 @@
+name: Preview selection
+on:
+  pull_request_target:
+    types: [labeled, unlabeled, synchronize, closed, reopened]
+permissions: {}
+concurrency:
+  group: universe-3d-preview-selection
+  cancel-in-progress: false
+jobs:
+  select:
+    # This trusted default-branch job never checks out or executes PR content.
+    if: >-
+      vars.UNIVERSE_PREVIEW_ENABLED == 'OWNER_APPROVED' &&
+      github.ref == 'refs/heads/main' &&
+      github.workflow_sha == vars.UNIVERSE_PREVIEW_TRUSTED_REVISION &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      actions: write
+    env:
+      UNIVERSE_PREVIEW_TRUSTED_REVISION: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ vars.UNIVERSE_PREVIEW_TRUSTED_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: node deploy/preview/cli.mjs request
+        env:
+          GH_TOKEN: ${{ github.token }}

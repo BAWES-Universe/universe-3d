@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Join Universe · BAWES</title>
+  <script src="/site-admission.js"></script>
+  <link rel="stylesheet" href="/universe-tokens.css">
+  <link rel="stylesheet" href="/site-admission.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to your invitation</a>
+  <div class="admission-shell">
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Universe home"><img src="/assets/bawes-universe-logo.png" alt="BAWES Universe" width="184" height="92"></a>
+      <span class="header-note">A little closer, even from here.</span>
+    </header>
+    <main id="content" class="admission-layout" tabindex="-1">
+      <section class="welcome-story" aria-labelledby="story-title">
+        <p class="eyebrow">MAKE ROOM FOR POSSIBILITY</p>
+        <h1 id="story-title">Good things <br>start with <br><span>a hello.</span></h1>
+        <p class="story-intro">A place to meet, make things, and spend a little time together. There’s room for you here.</p>
+        <div class="universe-scene" aria-hidden="true">
+          <div class="orbit orbit-outer"></div><div class="orbit orbit-inner"></div>
+          <div class="scene-star star-one">+</div><div class="scene-star star-two">+</div>
+          <div class="scene-planet"><img src="/assets/icons/Planet.svg" alt=""></div>
+          <span class="scene-note note-hello">Oh, hey you.</span>
+          <span class="scene-note note-here"><i></i> BETTER TOGETHER</span>
+          <div class="scene-dot dot-one"></div><div class="scene-dot dot-two"></div>
+        </div>
+        <p class="story-footnote">Your people. Your places. Your Universe.</p>
+      </section>
+      <section class="admission-panel" aria-label="Your Universe account">
+        <div id="loading-view" class="view">
+          <span class="section-icon" aria-hidden="true"><img src="/assets/icons/Orbit.svg" alt=""></span>
+          <p class="eyebrow">ONE MOMENT</p><h2 tabindex="-1">Finding your place</h2><p class="muted" role="status">Checking your invitation and sign-in…</p>
+        </div>
+        <div id="guide-view" class="view" hidden>
+          <span class="section-icon" aria-hidden="true"><img src="/assets/icons/DoorOpen.svg" alt=""></span>
+          <p class="eyebrow">YOU’RE IN THE RIGHT PLACE</p><h2 tabindex="-1">Come on in.</h2>
+          <p id="guide-message" class="muted">New here? Ask the site owner for a personal invite link, then open it to create your account.</p>
+          <p class="scope-note">An account lets you sign in to this site. Private worlds and rooms need their own invitation.</p>
+          <button type="button" class="button primary wide" id="guide-signin">I already have an account <span aria-hidden="true">→</span></button>
+          <button type="button" class="button quiet wide" id="guide-retry" hidden>Try checking again</button>
+        </div>
+        <div id="signup-view" class="view" hidden>
+          <div class="panel-heading"><span class="section-icon" aria-hidden="true"><img src="/assets/icons/Users.svg" alt=""></span><span class="status-pill">You’re invited</span></div>
+          <p class="eyebrow">YOUR FIRST HELLO</p><h2 tabindex="-1">Make yourself at home.</h2>
+          <p class="muted">Create an account for this Universe site.</p>
+          <p id="invite-expiry" class="invite-expiry"></p>
+          <form id="signup-form" autocomplete="off">
+            <label for="signup-name">What should we call you?</label><input id="signup-name" name="name" autocomplete="nickname" maxlength="40" required placeholder="Your name">
+            <label for="signup-username">Username</label><input id="signup-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" pattern="[a-z0-9_]{3,32}" required aria-describedby="username-help" placeholder="your_name"><p id="username-help" class="field-help">3–32 lowercase letters, numbers, or underscores</p>
+            <label for="signup-password">Password</label><div class="password-field"><input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="16" maxlength="256" required aria-describedby="password-help"><button class="password-toggle" type="button" data-password="signup-password" aria-label="Show password" aria-pressed="false">Show</button></div><p id="password-help" class="field-help">16–256 characters. A few memorable words work well. No spaces at the beginning or end.</p>
+            <label for="signup-confirm">Confirm password</label><div class="password-field"><input id="signup-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="16" maxlength="256" required><button class="password-toggle" type="button" data-password="signup-confirm" aria-label="Show confirmation password" aria-pressed="false">Show</button></div>
+            <p id="signup-error" class="form-notice error" role="alert" hidden></p>
+            <button id="signup-submit" class="button primary wide" type="submit">Create my account <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="scope-note">Your account is yours. Private worlds and rooms still need a separate invitation.</p>
+          <button type="button" id="signup-signin" class="button quiet wide">Already have an account? Sign in</button>
+        </div>
+        <div id="signin-view" class="view" hidden>
+          <span class="section-icon" aria-hidden="true"><img src="/assets/icons/DoorOpen.svg" alt=""></span>
+          <p class="eyebrow" id="signin-eyebrow">WELCOME BACK</p><h2 tabindex="-1" id="signin-heading">Your people await.</h2>
+          <p class="muted" id="signin-intro">Sign in with your Universe account.</p>
+          <form id="signin-form">
+            <label for="signin-username">Username</label><input id="signin-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required>
+            <label for="signin-password">Password</label><div class="password-field"><input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="256" required><button class="password-toggle" type="button" data-password="signin-password" aria-label="Show sign-in password" aria-pressed="false">Show</button></div>
+            <p id="signin-error" class="form-notice error" role="alert" hidden></p>
+            <button id="signin-submit" type="submit" class="button primary wide">Sign in <span aria-hidden="true">→</span></button>
+          </form>
+          <button type="button" id="signin-back" class="button quiet wide">Back</button>
+          <p class="scope-note">Keep your username and password somewhere safe. This preview has no password reset.</p>
+        </div>
+        <div id="signedin-view" class="view" hidden>
+          <span class="section-icon" aria-hidden="true"><img src="/assets/icons/Check.svg" alt=""></span>
+          <p class="eyebrow">A FAMILIAR FACE</p><h2 tabindex="-1">You’re signed in.</h2><p id="signedin-name" class="muted"></p>
+          <a class="button primary wide" href="/">Go to Universe <span aria-hidden="true">→</span></a>
+          <p class="scope-note">Your existing account keeps its own access to worlds and rooms.</p>
+          <p id="signedin-invite-note" class="muted" hidden>To use this invitation for a different account, sign out first. Your current account won’t change.</p>
+          <button type="button" id="signedin-signout" class="button quiet wide" hidden>Sign out to use this invitation</button>
+          <button type="button" id="signedin-manage" class="button quiet wide" hidden>Manage site invites</button>
+          <p id="signedin-error" class="form-notice error" role="alert" hidden></p>
+        </div>
+        <div id="owner-view" class="view" hidden>
+          <div class="panel-heading"><span class="section-icon" aria-hidden="true"><img src="/assets/icons/Users.svg" alt=""></span><a class="button quiet" href="/">Go to Universe <span aria-hidden="true">↗</span></a></div>
+          <p class="eyebrow">BRING YOUR PEOPLE</p><h2 tabindex="-1">A hello worth sharing.</h2><p class="muted">Invite a friend to create their own account on this site.</p>
+          <p class="scope-note">Each link is for one new account. It doesn’t grant access to private worlds or rooms.</p>
+          <div class="owner-metrics" aria-label="Site capacity"><span><strong id="active-count">—</strong><span>active invites</span></span><span><strong id="account-count">—</strong><span>site accounts</span></span></div>
+          <p id="owner-limits" class="field-help"></p>
+          <label for="invite-label">Who’s this hello for? (optional)</label><input id="invite-label" maxlength="80" autocomplete="off" placeholder="Sam · project visit" aria-describedby="invite-label-help"><p id="invite-label-help" class="field-help">A private label so you can tell your invites apart</p>
+          <div class="owner-actions"><button id="create-invite" type="button" class="button primary">Create invite link <span aria-hidden="true">+</span></button><button id="refresh-invites" type="button" class="button secondary">Refresh</button></div>
+          <p id="owner-error" class="form-notice error" role="alert" hidden></p><p id="owner-notice" class="form-notice" role="status" hidden></p>
+          <div class="list-heading"><h3>Your invites</h3><span>Only link details are saved here</span></div>
+          <ul id="invite-list" class="invite-list" aria-label="Site invites"></ul><p id="invite-empty" class="empty-note" hidden>No invites yet. Make room for someone.</p><button id="more-invites" type="button" class="button secondary wide" hidden>Load more invites</button>
+        </div>
+        <noscript><h2>Let’s get you in</h2><p>This page needs JavaScript to securely check an invitation and create your account. Turn it on, then reopen your original invitation.</p></noscript>
+      </section>
+    </main>
+    <footer class="site-footer"><span>BAWES UNIVERSE</span><span>Small hellos. More possibility.</span></footer>
+  </div>
+  <dialog id="invite-dialog" aria-labelledby="invite-dialog-heading" aria-describedby="invite-dialog-note">
+    <form method="dialog" class="dialog-close-form"><button type="submit" class="icon-button" aria-label="Close invite link">×</button></form>
+    <span class="section-icon" aria-hidden="true"><img src="/assets/icons/Send.svg" alt=""></span><p class="eyebrow">ONE LINK. ONE FRIEND.</p><h2 id="invite-dialog-heading">Pass on the hello.</h2>
+    <p id="invite-dialog-note" class="muted">This link is shown only once. Copy it before closing. Anyone with the link can use it to create one account.</p>
+    <label for="created-link">Your private invite link</label><textarea id="created-link" rows="3" readonly autocomplete="off" spellcheck="false"></textarea>
+    <p id="created-expiry" class="field-help"></p><p id="copy-status" class="form-notice" role="status" hidden></p>
+    <button type="button" id="copy-invite" class="button primary wide">Copy invite link</button><button type="button" id="close-invite" class="button quiet wide">Close without copying</button>
+  </dialog>
+</body>
+</html>

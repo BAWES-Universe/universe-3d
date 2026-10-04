@@ -1,0 +1,6 @@
+/** Final combined acceptance, serial native browser runs plus compact recording. */
+import{spawn}from'node:child_process';import{mkdir,open,writeFile,readFile}from'node:fs/promises';import{createHash}from'node:crypto';
+const files=['polish-integration-side-content.mjs','editor-polish-feedback.browser.mjs','editor-polish-experience.full.mjs','external-shell-menu-input.mjs','external-shell-journeys.mjs','world-presentation-occlusion.mjs','world-presentation-capture.mjs','polish-integration-friends.mjs','polish-integration-known-findings.mjs','polish-integration-record.mjs'];
+const out='evidence/integration';await mkdir(out,{recursive:true});const results=[],bundleSha256=createHash('sha256').update(await readFile('dist/main.js')).digest('hex');
+for(const file of files){const log=await open(`${out}/${file}.log`,'w'),start=Date.now();const exitCode=await new Promise(resolve=>{const p=spawn(process.execPath,['tests/'+file],{stdio:['ignore',log.fd,log.fd]});p.once('exit',resolve);});await log.close();results.push({file,exitCode,durationMs:Date.now()-start});await writeFile(out+'/additional.json',JSON.stringify({bundleSha256,results},null,2));console.log(file,exitCode);}
+if(results.some(r=>r.exitCode!==0))process.exitCode=1;

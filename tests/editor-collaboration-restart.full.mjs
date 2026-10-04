@@ -25,7 +25,7 @@ async function check(kind){
   const {port}=await app.listen(0);base=`http://127.0.0.1:${port}`;
   owner=await browser.newContext();actor=await browser.newContext({viewport:{width:1440,height:1000}});page=await actor.newPage();page.setDefaultTimeout(60000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>errors.push(e.message));await page.bringToFront();
   await call(owner,'/api/session','POST',{name:'Restart owner'});const {user}=await call(actor,'/api/session','POST',{name:'Restart editor'});await call(owner,'/api/worlds/world/members/'+user.id,'PUT',{role:'editor'});
-  await page.route(base+'/api/events',route=>blockEvents?route.abort('failed'):route.continue());
+  await page.route(/\/api\/events(?:\?.*)?$/,route=>blockEvents?route.abort('failed'):route.continue());
   await page.route(base+'/api/rooms/room/scene/operations',async route=>{
    if(route.request().method()!=='POST')return route.continue();attempts.push(route.request().postDataJSON());
    if(!intercept)return route.continue();intercept=false;

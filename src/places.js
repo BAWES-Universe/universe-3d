@@ -1,3 +1,4 @@
+import { newPlaceDraft, readPlaceDraft, savePlaceDraft, runPlaceCreation } from './place-creation-flow.js';
 /** Local Universe → World → Room management. Server capabilities are authoritative. */
 const enc = encodeURIComponent;
 const TABS = ['explore', 'memberships', 'invitations'];
@@ -40,6 +41,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
   let catalog = [], memberships = [], invitations = [], stars = new Set(), filter = '', showArchived = false, scope = 'all';
   let dialog = null, opener = null, detailMode = '', selectedAccount = null, accountResults = [], accountQuery = '', accountRequest = 0;
   let memberDraft = null, inviteDraft = { role: 'member', tags: '' }, createDraft = null, refreshTimer = null, errorText = '', infoText = '';
+  let guide = null, guideVisible = false, guideBusy = false, guideError = '';
   const drafts = new Map(), creationDrafts = new Map(), busy = new Set(), tabs = new Map();
   const state = () => getState() || {};
   const user = () => state().user || {};
@@ -70,16 +72,54 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
   function checkIdentity() {
     const id = user().id || '';
     if (currentUser === id) return;
-    currentUser = id; request++; drafts.clear(); creationDrafts.clear(); catalog = []; memberships = []; invitations = []; stars.clear(); index.clear(); selected = null; detailMode = ''; createDraft = null; memberDraft = null; selectedAccount = null; accountResults = []; memberCache.clear(); errorText = ''; infoText = ''; dismissConfirm(false);
+    currentUser = id; guide = null; guideVisible = false; guideBusy = false; guideError = ''; request++; drafts.clear(); creationDrafts.clear(); catalog = []; memberships = []; invitations = []; stars.clear(); index.clear(); selected = null; detailMode = ''; createDraft = null; memberDraft = null; selectedAccount = null; accountResults = []; memberCache.clear(); errorText = ''; infoText = ''; dismissConfirm(false);
+  }
+  const visible = node => Boolean(node?.isConnected && !node.disabled && node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden');
+  const focusable = 'button,input,select,textarea,a[href],[tabindex]';
+  function ownsForeground() {
+    if (root.hidden || destroyed) return false;
+    // A visible modal painted above Places owns focus even when its input has
+    // blurred. Use the rendered surface, not the current activeElement, so
+    // refreshes and resize cannot pull focus behind Quick actions or Avatar.
+    for (const modal of document.querySelectorAll('[aria-modal="true"]')) {
+      if (modal === root || root.contains(modal) || modal.contains(root) || !visible(modal)) continue;
+      const box = modal.getBoundingClientRect();
+      const left = Math.max(0, box.left), right = Math.min(innerWidth, box.right);
+      const top = Math.max(0, box.top), bottom = Math.min(innerHeight, box.bottom);
+      if (right <= left || bottom <= top) continue;
+      const painted = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+      if (modal.contains(painted)) return false;
+    }
+    return true;
   }
   function focusSnapshot() {
     const active = document.activeElement;
-    return root.contains(active) && active.dataset.placeField ? { key: active.dataset.placeField, start: active.selectionStart, end: active.selectionEnd } : null;
+    if (!ownsForeground() || !root.contains(active)) return null;
+    return { node: active, key: active.dataset.placeField, id: active.id,
+      label: active.getAttribute('aria-label') || active.textContent, tag: active.tagName,
+      context: active.closest('[data-invitation-id]')?.dataset.invitationId || '',
+      start: active.selectionStart, end: active.selectionEnd };
+  }
+  function focusDetail() {
+    if (!ownsForeground()) return;
+    const heading = detail.querySelector('.places-detail-title');
+    if (heading) heading.tabIndex = -1;
+    const target = dialog ? [...dialog.node.querySelectorAll(focusable)].find(visible) : visible(heading) ? heading : closeButton;
+    (target || closeButton).focus({ preventScroll: true });
   }
   function restoreFocus(snapshot) {
-    if (!snapshot) return;
-    const node = [...root.querySelectorAll('[data-place-field]')].find(n => n.dataset.placeField === snapshot.key);
-    if (node) { node.focus({ preventScroll: true }); if (snapshot.start != null && node.setSelectionRange) try { node.setSelectionRange(snapshot.start, snapshot.end); } catch {} }
+    if (!ownsForeground() || !snapshot) return;
+    const surface = dialog?.node || root;
+    const candidates = [...surface.querySelectorAll(focusable)].filter(visible);
+    const node = visible(snapshot.node) && surface.contains(snapshot.node) ? snapshot.node : candidates.find(n =>
+      snapshot.key ? n.dataset.placeField === snapshot.key : snapshot.id ? n.id === snapshot.id :
+      n.tagName === snapshot.tag && (n.getAttribute('aria-label') || n.textContent) === snapshot.label &&
+      (n.closest('[data-invitation-id]')?.dataset.invitationId || '') === snapshot.context);
+    if (node) {
+      node.focus({ preventScroll: true });
+      if (snapshot.start != null && node.setSelectionRange) try { node.setSelectionRange(snapshot.start, snapshot.end); } catch {}
+    } else if (activeTab === 'explore' || dialog) focusDetail();
+    else tabs.get(activeTab).focus({ preventScroll: true });
   }
   async function refresh({ silent = false } = {}) {
     if (destroyed) return;
@@ -110,7 +150,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
   function dismissConfirm(restore = true) {
     if (!dialog) return;
     const previous = dialog.anchor; dialog.node.remove(); dialog = null;
-    if (restore && previous?.isConnected) previous.focus({ preventScroll: true });
+    if (restore && ownsForeground()) { if (visible(previous)) previous.focus({ preventScroll: true }); else focusDetail(); }
   }
   function confirmAction({ title, text, label, action, anchor, danger = true }) {
     dismissConfirm(false);
@@ -126,8 +166,10 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
   }
   function close() {
     if (destroyed || root.hidden) return;
+    const restore = ownsForeground();
     dismissConfirm(false); root.hidden = true; onOpenChange(false); onClose();
-    if (opener?.isConnected) opener.focus({ preventScroll: true });
+    const returnTo = visible(opener) ? opener : [...document.querySelectorAll('[aria-controls]')].find(n => n.getAttribute('aria-controls') === root.id && visible(n)) || document.getElementById(opener?.id);
+    if (restore && visible(returnTo)) returnTo.focus({ preventScroll: true });
   }
   function open(tab = activeTab) {
     if (destroyed) return;
@@ -141,8 +183,8 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     render(); if (wasClosed) onOpenChange(true); closeButton.focus(); refresh();
   }
   function select(kind, id) {
-    selected = { kind, id }; detailMode = drafts.has(keyOf(kind, id)) ? 'edit' : ''; createDraft = null; memberDraft = null; selectedAccount = null; accountQuery = ''; accountResults = []; errorText = ''; infoText = ''; render();
-    detail.querySelector('.places-back-mobile, .places-detail-title')?.focus({ preventScroll: true });
+    guideVisible = false; selected = { kind, id }; detailMode = drafts.has(keyOf(kind, id)) ? 'edit' : ''; createDraft = null; memberDraft = null; selectedAccount = null; accountQuery = ''; accountResults = []; errorText = ''; infoText = ''; render();
+    focusDetail();
   }
   function setTab(tab) { activeTab = tab; dismissConfirm(); render(); }
   const closeButton = btn('×', close, { class: 'places-btn places-btn-quiet places-close', 'aria-label': 'Close places', title: 'Close places (Escape)' });
@@ -160,25 +202,40 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
   const foot = el('footer', { class: 'places-local-note', text: 'Standalone local community · Invitations go to existing local accounts in this app. No email is sent.' });
   root.classList.add('places-shell'); root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-labelledby', 'places-title'); root.hidden = true; root.replaceChildren(header, tabBar, status, body, foot);
   const stopKeys = event => {
+    if (!ownsForeground()) return;
     event.stopPropagation();
     if (event.type !== 'keydown') return;
-    if (event.key === 'Escape') { event.preventDefault(); if (dialog) dismissConfirm(); else close(); return; }
+    if (event.key === 'Escape') { if (event.isComposing || event.keyCode === 229) return; event.preventDefault(); if (dialog) dismissConfirm(); else close(); return; }
     if (event.key === 'Tab') {
       const surface = dialog?.node || root;
-      const nodes = [...surface.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter(n => n.getClientRects().length);
+      const nodes = [...surface.querySelectorAll('button:not(:disabled):not([tabindex="-1"]),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter(n => n.getClientRects().length);
       if (!nodes.length) return;
       const first = nodes[0], last = nodes.at(-1);
-      if (event.shiftKey && (document.activeElement === first || !surface.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !surface.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      if (event.shiftKey && (document.activeElement === first || !nodes.includes(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !nodes.includes(document.activeElement))) { event.preventDefault(); first.focus(); }
     }
   };
   root.addEventListener('keydown', stopKeys); root.addEventListener('keyup', stopKeys);
+  const recoverKeys = event => {
+    if (!ownsForeground() || root.contains(event.target)) return;
+    stopKeys(event);
+    if (!root.hidden) focusDetail();
+  };
+  document.addEventListener('keydown', recoverKeys, true);
+  document.addEventListener('keyup', recoverKeys, true);
+  const retainFocus = () => {
+    if (ownsForeground() && (!root.contains(document.activeElement) || !visible(document.activeElement))) focusDetail();
+  };
+  const focusObserver = new MutationObserver(retainFocus);
+  focusObserver.observe(root, { childList: true, subtree: true });
+  window.addEventListener('resize', retainFocus);
+
   function render() {
     if (destroyed) return;
     const focus = focusSnapshot();
     const pending = invitations.filter(i => i.status === 'pending').length;
     for (const [tab, node] of tabs) { node.setAttribute('aria-selected', String(tab === activeTab)); node.tabIndex = tab === activeTab ? 0 : -1; if (tab === 'invitations') { node.replaceChildren('Invitations'); if (pending) node.append(el('span', { class: 'places-count', 'aria-label': `${pending} pending`, text: pending })); } }
-    body.setAttribute('aria-labelledby', `places-tab-${activeTab}`); root.dataset.detail = String(Boolean(selected || createDraft)); renderStatus();
+    body.setAttribute('aria-labelledby', `places-tab-${activeTab}`); root.dataset.detail = String(Boolean(selected || createDraft || guideVisible)); renderStatus();
     if (!user().id) { body.replaceChildren(empty('Enter Universe or sign in to your local account to view your places.')); return; }
     if (activeTab === 'explore') { body.replaceChildren(catalogPane, detail); renderCatalog(); renderDetail(); }
     else if (activeTab === 'memberships') renderMemberships();
@@ -190,7 +247,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     const archiveBox = input({ type: 'checkbox', checked: showArchived, onchange: event => { showArchived = event.target.checked; refresh(); } });
     const scopeSelect = el('select', { class: 'places-input', 'aria-label': 'Places view', onchange: event => { scope = event.target.value; renderTree(tree); } }, el('option', { value: 'all', text: 'All visible places' }), el('option', { value: 'owned', text: 'My universes' }), el('option', { value: 'starred', text: 'My starred rooms' })); scopeSelect.value = scope;
     const tree = el('div', { class: 'places-tree' });
-    catalogPane.replaceChildren(el('div', { class: 'places-search' }, search), el('div', { class: 'places-search' }, scopeSelect), actions(btn('+ New universe', () => startCreate('universe'), { class: 'places-btn places-btn-primary' }), btn('Refresh', () => refresh(), { class: 'places-btn places-btn-quiet', 'aria-label': 'Refresh places' })), el('label', { class: 'places-checkbox places-muted' }, archiveBox, 'Show managed archives'), tree);
+    catalogPane.replaceChildren(el('div', { class: 'places-search' }, search), el('div', { class: 'places-search' }, scopeSelect), actions(btn('Make a place', startGuide, { class: 'places-btn places-btn-primary', 'data-place-field': 'make-place' })), actions(btn('+ New universe', () => startCreate('universe'), { class: 'places-btn places-btn-quiet', title: 'Advanced: create only a universe' }), btn('Refresh', () => refresh(), { class: 'places-btn places-btn-quiet', 'aria-label': 'Refresh places' })), el('label', { class: 'places-checkbox places-muted' }, archiveBox, 'Show managed archives'), tree);
     renderTree(tree);
   }
   function renderTree(tree) {
@@ -221,7 +278,13 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     return el('nav', { class: 'places-breadcrumb', 'aria-label': 'Place ancestry' }, item._universe && btn(item._universe.name, () => select('universe', item._universe.id), { class: 'places-btn places-btn-quiet','data-kind':'universe' }), item._world && ['›', btn(item._world.name, () => select('world', item._world.id), { class: 'places-btn places-btn-quiet','data-kind':'world' })], item._universe && '›', kindLabel(item.kind));
   }
   function renderDetail() {
-    detail.replaceChildren(btn('← All places', () => { selected = null; createDraft = null; detailMode = ''; render(); }, { class: 'places-btn places-btn-quiet places-back-mobile' }));
+    const snapshot = focusSnapshot();
+    renderDetailContents();
+    restoreFocus(snapshot);
+  }
+  function renderDetailContents() {
+    detail.replaceChildren(btn('← All places', () => { selected = null; createDraft = null; guideVisible = false; detailMode = ''; render(); catalogPane.querySelector('[data-place-field=\"make-place\"]')?.focus(); }, { class: 'places-btn places-btn-quiet places-back-mobile' }));
+    if (guideVisible) { renderGuide(); return; }
     if (createDraft) { renderMetadataForm(null, createDraft); return; }
     const item = selectedItem();
     if (!item) {
@@ -264,7 +327,76 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     if (!list.length) section.append(empty(`No visible ${plural(childKind)} here yet.`));
     detail.append(section);
   }
+  function startGuide() {
+    guideVisible = true; createDraft = null; detailMode = ''; activeTab = 'explore';
+    if (!guide) {
+      try { guide = readPlaceDraft(sessionStorage, currentUser); guideError = ''; }
+      catch (error) { guideError = error.message; }
+    }
+    render(); focusDetail();
+  }
+  function persistGuide(draft) { savePlaceDraft(sessionStorage, draft); }
+  function renderGuide() {
+    detail.append(el('h3', { class: 'places-detail-title', tabindex: '-1', text: 'Make a place' }));
+    if (!guide) { detail.append(notice(guideError || 'Creation progress is unavailable.', 'error')); return; }
+    const draft = guide, complete = Boolean(draft.steps[2]?.id);
+    detail.append(muted('A new universe, its world and your first room. All yours.'));
+    const form = el('form', { class: 'places-form', 'aria-label': 'Make a place' });
+    const name = input({ value: draft.name, dir: 'auto', required: true, maxlength: 120, autocomplete: 'off', disabled: draft.started || guideBusy, 'data-place-field': 'creation-name' });
+    const privacy = el('select', { class: 'places-input', disabled: draft.started || guideBusy, 'data-place-field': 'creation-privacy' }, el('option', { value: 'private', text: 'Private · only you and authorized members' }), el('option', { value: 'public', text: 'Public · anyone on this server can visit' }));
+    privacy.value = draft.public ? 'public' : 'private';
+    const preview = el('section', { class: 'places-creation-preview', 'aria-label': 'Creation plan' });
+    const updatePreview = () => {
+      const label = draft.name.trim() || 'Your place';
+      preview.replaceChildren(el('h4', { class: 'places-card-title', text: draft.started ? 'Your creation progress' : 'This will create exactly' }), ...['universe', 'world', 'room'].map((kind, i) => {
+        const step = draft.steps[i];
+        return el('div', { class: 'places-creation-step', 'data-kind': kind }, badge(kindLabel(kind)), el('span', { dir: 'auto', text: label }), el('small', { text: step?.id ? 'Created' : draft.started ? 'Not confirmed yet' : 'New' }));
+      }), muted(`All three: ${draft.public ? 'public' : 'private'}. You own the universe and administer its world. Rename each level later in advanced management.`));
+    };
+    const rememberInputs = () => {
+      draft.name = name.value; draft.public = privacy.value === 'public';
+      try { persistGuide(draft); guideError = ''; } catch (error) { guideError = error.message; }
+      updatePreview();
+    };
+    name.addEventListener('input', rememberInputs); privacy.addEventListener('change', rememberInputs); updatePreview();
+    form.append(field('Place name', name, 'Any language. We generate the link slugs.'), field('Privacy', privacy, 'Invitations are separate. Public visitors cannot edit.'), preview,
+      muted('Garden starter · 32 × 26 m, with fixed paths, deck and planting. Add editable objects and areas with Build.'),
+      muted('Keep this tab to resume after an interruption or reload.'));
+    if (draft.started && !complete) form.append(notice('Creation happens in three steps. Confirmed records remain saved if a later step fails. Retry continues this same plan; it will not start another universe.', 'warning'));
+    if (guideError) form.append(notice(guideError, 'error'));
+    const submit = btn(guideBusy ? 'Working…' : complete ? 'Enter your room' : draft.started ? 'Retry creation' : 'Create & enter', null, { type: 'submit', class: 'places-btn places-btn-primary', disabled: guideBusy, 'data-place-field': 'creation-submit' });
+    const creationActions = actions(btn('Back to places', () => { guideVisible = false; selected = null; render(); catalogPane.querySelector('[data-place-field="make-place"]')?.focus(); }, { class: 'places-btn places-btn-quiet' }), submit);
+    creationActions.classList.add('places-creation-actions'); form.append(creationActions);
+    if (complete) form.append(btn('Make another place', () => {
+      if (guideBusy) return;
+      const next = newPlaceDraft(currentUser);
+      try { persistGuide(next); guide = next; guideError = ''; render(); focusDetail(); } catch (error) { guideError = error.message; render(); }
+    }, { disabled: guideBusy, class: 'places-btn places-btn-quiet' }));
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (guideBusy || !form.reportValidity()) return;
+      guideBusy = true; guideError = ''; render();
+      const actor = currentUser;
+      const isCurrent = () => !destroyed && user().id === actor && currentUser === actor && guide === draft;
+      try {
+        const roomId = await runPlaceCreation(draft, { api, persist: persistGuide, isCurrent, onProgress: () => { if (isCurrent()) render(); } });
+        if (!isCurrent()) return;
+        await changed('Your universe, world and room are created.');
+        if (isCurrent() && !root.hidden && guideVisible && activeTab === 'explore') {
+          await onNavigate(roomId);
+          if (isCurrent() && state().room?.id !== roomId) throw new Error('Arrival did not complete.');
+          if (isCurrent() && !root.hidden && guideVisible) { guideVisible = false; selected = { kind: 'room', id: roomId }; close(); }
+        }
+      } catch (error) {
+        if (isCurrent()) guideError = `${error.message || 'The request was interrupted.'} ${draft.steps[2]?.id ? 'Your room is saved. Try entering it again.' : 'Your progress is kept. Retry here to confirm and continue.'}`;
+      } finally {
+        if (isCurrent()) { guideBusy = false; render(); }
+      }
+    };
+    detail.append(form);
+  }
   function startCreate(kind, parent) {
+    guideVisible = false;
     const draftKey = `${kind}:${parent?.id || 'new'}`;
     if (!creationDrafts.has(draftKey)) creationDrafts.set(draftKey, { kind, parent, values: formValues(null), base: formValues(null), operationId: operationId(), draftKey });
     createDraft = creationDrafts.get(draftKey);
@@ -272,7 +404,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
   }
   function renderMetadataForm(item, draft) {
     const kind = item?.kind || draft.kind, creating = !item;
-    if (creating) detail.append(el('p', { class: 'places-eyebrow', text: draft.parent ? `Inside ${draft.parent.name}` : 'Start something new' }), el('h3', { class: 'places-detail-title', text: `New ${kind}` }), muted(kind === 'room' ? 'Creates a new, empty 3D room with durable local storage. Add objects and areas with the room editor.' : `Create a ${kind} owned within your local community.`));
+    if (creating) detail.append(el('p', { class: 'places-eyebrow', text: draft.parent ? `Inside ${draft.parent.name}` : 'Start something new' }), el('h3', { class: 'places-detail-title', text: `New ${kind}` }), muted(kind === 'room' ? 'Creates a garden starter with fixed paths, deck and planting decoration. No authored objects or areas yet; add them with Build.' : `Create a ${kind} owned within your local community.`));
     const form = el('form', { class: 'places-form places-section', 'aria-label': `${creating ? 'Create' : 'Edit'} ${kind}` });
     const values = draft.values;
     const assign = (key, node) => { node.dataset.placeField = `metadata-${key}`; node.addEventListener(key === 'public' ? 'change' : 'input', () => { values[key] = key === 'public' ? node.checked : node.value; }); return node; };
@@ -431,7 +563,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     clearTimeout(refreshTimer); refreshTimer = setTimeout(() => refresh({ silent: true }), 120);
   }
   function destroy() {
-    destroyed = true; request++; clearTimeout(refreshTimer); dismissConfirm(false); root.removeEventListener('keydown', stopKeys); root.removeEventListener('keyup', stopKeys); root.replaceChildren(); drafts.clear(); creationDrafts.clear(); memberCache.clear();
+    destroyed = true; focusObserver.disconnect(); window.removeEventListener('resize', retainFocus); document.removeEventListener('keydown', recoverKeys, true); document.removeEventListener('keyup', recoverKeys, true); request++; clearTimeout(refreshTimer); dismissConfirm(false); root.removeEventListener('keydown', stopKeys); root.removeEventListener('keyup', stopKeys); root.replaceChildren(); drafts.clear(); creationDrafts.clear(); memberCache.clear();
   }
   return { open, close, isOpen: () => !root.hidden, onEvent, refresh, destroy };
 }

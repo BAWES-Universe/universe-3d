@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createNearbyTyping} from '../src/proximity-typing.js';
+import {createClientProtocolGuard,clientEventsUrl,isClientReloadRequired} from '../src/client-protocol.js';
 
 // Exercise the actual shell's EventSource hooks with the real typing controller.
 // Component fixtures deliver hello directly and cannot catch a swallowed fan-out.
@@ -17,6 +18,7 @@ test('shell hello reaches typing after arrival authority handling and reseeds ev
  t.after(()=>typing.destroy());
  class Source{constructor(){this.listeners=new Map();streams.push(this);}addEventListener(type,callback){this.listeners.set(type,callback);}close(){this.closed=true;}emit(type,data){this.listeners.get(type)?.({data:JSON.stringify(data)});}}
  const ctx={state,events:null,navigating:false,pendingNearbyContext:null,pendingGroupContext:null,motion:{},path:[],groupControls:null,followMotion:{clear(){}},setOnline(){},EventSource:Source,social:{resetNearbyConnection:()=>typing.reset()},arrivalNavigation:{reset:()=>++generation,hello(){order.push('arrival');if(refresh)typing.reset();return{kind:refresh?'refresh-required':'ready'};},observe:()=>({buffered:false})},reconcileArrival:()=>{order.push('reconcile');},handleEvent:event=>{if(event.type==='hello'){order.push('hello');typing.seedClock({serverTime:event.data.serverTime,accountId:event.data.user.id});}}};
+ Object.assign(ctx,{clientProtocol:createClientProtocolGuard(),clientEventsUrl,isClientReloadRequired,acceptClientProtocol(){}});
  vm.createContext(ctx);vm.runInContext(source.slice(start,end)+'\nconnectEvents();',ctx);
  const hello=()=>({user:{id:'a'},arrivalEpoch:'process',serverTime:100000+time});
  const incoming=sourceId=>({protocol:'proximity-typing-v1',roomId:'r',bubbleId:'bubble',membershipRevision:1,recipient:{connectionEpoch:nearby.context.connectionEpoch,memberId:'member-a'},sourceId,revision:1,isTyping:true,serverTime:100000+time,expiresAt:112000+time,author:{id:'b',name:'Bee'},fromMemberId:'member-b'});

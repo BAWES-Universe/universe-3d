@@ -141,3 +141,11 @@ test('invalid or deleted source update hides prior bytes and retry cannot resurr
   assert.equal(view.getState().status, 'error'); assert.equal(view.getState().error.code, 'UNAVAILABLE_IMAGE_REFERENCE'); assert.equal(view.node.texture, null); assert.equal(resource.disposed, 1);
   await view.retry(); assert.equal(calls, 1); assert.equal(view.acceptUV({u: .75, v: .25}), false); view.dispose();
 });
+
+
+test('a texture426 reaches the common reload guard without decoding or treating it as a normal retry',async t=>{
+ const original=globalThis.dispatchEvent,seen=[];globalThis.dispatchEvent=event=>{seen.push(event);return true;};t.after(()=>{if(original===undefined)delete globalThis.dispatchEvent;else globalThis.dispatchEvent=original;});
+ const fixture=renderFixture();let decoded=false;
+ const load=createAuthenticatedImageLoader({origin:'https://room.example',fetchImage:async()=>new Response('Reload',{status:426}),decodeTexture:()=>{decoded=true;}});
+ await assert.rejects(load({...fixture,context:renderContext}),error=>error.code==='CLIENT_RELOAD_REQUIRED');assert.equal(decoded,false);assert.equal(seen.length,1);assert.equal(seen[0].type,'universe-client-reload-required');assert.equal(seen[0].detail.code,'CLIENT_RELOAD_REQUIRED');
+});

@@ -5,6 +5,7 @@ import {fail} from './validation.mjs';
 
 const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.ico':'image/x-icon','.woff2':'font/woff2','.glb':'model/gltf-binary','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.mp4':'video/mp4'};
 const CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; media-src 'self' blob: https:; connect-src 'self' ws: wss:; worker-src 'self' blob:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+const ADMISSION_CSP="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const missing=error=>['ENOENT','ENOTDIR','EISDIR'].includes(error.code);
 
@@ -92,11 +93,13 @@ export function createStaticAssets({dist}){
       res.writeHead(412,{'Cache-Control':'no-store','Content-Length':'0'});res.end();return;
     }
     const immutable=asset?.immutable===true&&/^chunks\/[^/]+-[A-Z0-9]{8}\.(?:js|css)$/.test(name);
-    res.setHeader('Cache-Control',immutable?'public, max-age=31536000, immutable':'no-cache');
+    const admissionDocument=name==='join.html';
+    res.setHeader('Cache-Control',admissionDocument?'no-store':immutable?'public, max-age=31536000, immutable':'no-cache');
     res.setHeader('ETag',etag);
     res.setHeader('Accept-Ranges','none');
     res.setHeader('Content-Type',MIME[extname(name)]||'application/octet-stream');
-    res.setHeader('Content-Security-Policy',CSP);
+    res.setHeader('Content-Security-Policy',admissionDocument?ADMISSION_CSP:CSP);
+    if(admissionDocument){res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cross-Origin-Resource-Policy','same-origin');}
     if(selected.encoding!=='identity')res.setHeader('Content-Encoding',selected.encoding);
     // ETags avoid false freshness when mutable files change within one second.
     // We deliberately do not issue Last-Modified or evaluate date validators.

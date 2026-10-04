@@ -51,10 +51,10 @@ try{
  });
  await pass('Disconnected stream disables sends, reconnect preserves received rows but never recovers missed text',async()=>{
   await send(alice,'Before reconnect in this stay');await alice.getByRole('textbox',{name:'Message nearby people',exact:true}).fill('Kept during reconnect');
-  let block=true;const blockEvents=route=>block?route.abort('internetdisconnected'):route.continue();await alice.route('**/api/events',blockEvents);app.server.closeAllConnections();
+  let block=true;const blockEvents=route=>block?route.abort('internetdisconnected'):route.continue();await alice.route(/\/api\/events(?:\?.*)?$/,blockEvents);app.server.closeAllConnections();
   await alice.waitForFunction(()=>__universe.getState().online===false);await alice.waitForFunction(()=>document.querySelector('[aria-label="Send nearby message"]')?.disabled===true);
   await nearby(bob);await enabled(bob);await send(bob,'Only live listeners get this');
-  block=false;await alice.unroute('**/api/events',blockEvents);await alice.waitForFunction(()=>__universe.getState().online===true,null,{timeout:15000});await enabled(alice);
+  block=false;await alice.unroute(/\/api\/events(?:\?.*)?$/,blockEvents);await alice.waitForFunction(()=>__universe.getState().online===true,null,{timeout:15000});await enabled(alice);
   assert.equal(await alice.getByText('Before reconnect in this stay',{exact:true}).count(),1);assert.equal(await alice.getByText('Only live listeners get this',{exact:true}).count(),0);assert.equal(await alice.getByRole('textbox',{name:'Message nearby people',exact:true}).inputValue(),'Kept during reconnect');
   await send(bob,'The next live message arrives');await alice.getByText('The next live message arrives',{exact:true}).waitFor();
  });

@@ -1,0 +1,23 @@
+--- a/src/hud-availability.css
++++ b/src/hud-availability.css
+@@ -139,3 +139,2 @@
+  .shell-more-card h2 { font-size: 16px; }
+- #app #social.social-shell { right: 8px; left: 8px; top: 8px; bottom: 80px; width: auto; max-width: none; z-index: 12; }
+  #app:has(#social:not([hidden])) #view-controls, #app:has(#social:not([hidden])) #quest-open { visibility: hidden; }
+@@ -157,16 +156,3 @@
+     source shell. Keep sending reachable without shrinking any touch target. */
+- #app #social.social-shell { inset: 0; max-height: none; border-radius: 0; }
+  #app:has(#social:not([hidden])) #dock, #app:has(#editor:not([hidden])) #dock { visibility: hidden; }
+- #app #social .social-header { padding: 4px 12px; min-height: 56px; align-items: center; flex-shrink: 0; }
+- #app #social .social-eyebrow, #app #social .social-subtitle { display: none; }
+- /* Nearby already scrolls its outer shell on short screens. Do not trap touch
+-    inside its auto-sized inner panel, especially with enlarged text. */
+- #app #social .social-panel:not([data-chat-mode=nearby]) { overflow: auto; overscroll-behavior: contain; }
+- #app #social .social-toolbar { padding: 4px 12px; }
+- #app #social .social-timeline { min-height: 60px; }
+- #app #social[data-chat-mode=room] .social-composer { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; padding: 8px 12px; }
+- #app #social[data-chat-mode=room] .social-composer textarea { min-height: 48px; height: 48px; margin: 0; }
+- #app #social[data-chat-mode=room] .social-composer-actions { margin: 0; }
+- #app #social[data-chat-mode=room] .social-composer-hint { display: none; }
+- #app #social[data-chat-mode=room] .social-composer .social-notice, #app #social[data-chat-mode=room] .social-edit-label { grid-column: 1 / -1; }
+ }

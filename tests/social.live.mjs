@@ -23,7 +23,7 @@ const scriptStart = fixture.indexOf('<script type="module">');
 const scriptEnd = fixture.indexOf('</script>', scriptStart);
 await writeFile(join(dir, 'fixture.js'), fixture.slice(scriptStart + '<script type="module">'.length, scriptEnd));
 await writeFile(join(dir, 'index.html'), fixture.slice(0, scriptStart) + '<script type="module" src="/fixture.js"></script>' + fixture.slice(scriptEnd + '</script>'.length));
-for (const file of ['social.js', 'social.css', 'permissions.js', 'proximity-text.js', 'proximity-typing.js']) await writeFile(join(dir,file),await readFile(new URL(`../src/${file}`,import.meta.url)));
+for (const file of ['social.js', 'social.css', 'permissions.js', 'proximity-text.js', 'proximity-typing.js', 'social-sheet-layout.js', 'universe-icons.js']) await writeFile(join(dir,file),await readFile(new URL(`../src/${file}`,import.meta.url)));
 try { await cp(new URL('../public/assets',import.meta.url),join(dir,'assets'),{recursive:true}); } catch {}
 const scene={version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:0},objects:[],areas:[]};
 const app=createGameServer({database:':memory:',seeds:[{id:'w1',name:'Test universe',rooms:[{id:'r1',name:'Moon garden',scene},{id:'r2',name:'Quiet room',scene}]}],dist:dir});
@@ -46,10 +46,13 @@ try {
     assert.equal(await bob.evaluate(async()=> (await window.api('/api/rooms/r1/messages')).messages.at(-1).text),'The garden is open');
   });
   await check('live own edit and another user reaction synchronize',async()=>{
+    await alice.locator('.social-message-options summary').click();
     await alice.getByRole('button',{name:'Edit your message'}).click();
     await alice.getByRole('textbox',{name:'Message the room'}).fill('Meet me in the garden');
     await alice.getByRole('button',{name:'Save edited message'}).click();
     await bob.getByText('Meet me in the garden',{exact:true}).waitFor();
+    await bob.locator('.social-message-options summary').click();
+    await alice.locator('.social-message-options summary').click();
     await bob.getByRole('button',{name:'Add ❤️ reaction',exact:true}).click();
     await alice.getByRole('button',{name:'Add ❤️ reaction (1)',exact:true}).waitFor();
   });
@@ -99,7 +102,7 @@ try {
     await alice.evaluate(async id=>window.api('/api/rooms/'+window.state.room.id+'/moderate',{method:'POST',body:{userId:id,action:'mute',minutes:10}}),bobId);
     await bob.evaluate(async id=>{const result=await window.api('/api/rooms/'+id);window.state.room=result.room;window.state.people=result.presence;window.social.setTab('chat');window.social.render()},privateId);
     // Reset the DM view by using the room control if a DM is still selected.
-    const roomBack=bob.getByRole('button',{name:'← Room',exact:true});if(await roomBack.count())await roomBack.click();
+    const roomBack=bob.getByRole('button',{name:'Open room chat',exact:true});if(await roomBack.count())await roomBack.click();
     await bob.getByRole('textbox',{name:'Message the room'}).fill('Muted message draft');
     await bob.getByRole('button',{name:'Send message',exact:true}).click();
     await bob.getByRole('alert').getByText('You are temporarily muted in this room',{exact:true}).waitFor();

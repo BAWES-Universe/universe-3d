@@ -1,3 +1,4 @@
+import {reportClientReloadRequired} from './client-protocol.js';
 import {IMAGE_ASSET_LIMITS, validateResolvedImageAsset} from './image-asset-schema.js';
 
 export class ImageAssetLoadError extends Error {
@@ -66,6 +67,7 @@ export function createAuthenticatedImageLoader({origin = globalThis.location?.or
     const url = validateAuthorizedImageURL(candidate, args);
     const response = await fetchImage(url, {method: 'GET', credentials: 'same-origin', mode: 'same-origin', cache: 'no-store', redirect: 'error', headers: {Accept: 'image/png'}, signal});
     checkAbort(signal);
+    if(response.status===426){const data={code:'CLIENT_RELOAD_REQUIRED',message:'Reload this page to load the current image format. Export unsaved work first.'};reportClientReloadRequired(data);throw new ImageAssetLoadError(data.code,data.message);}
     if (!response.ok) throw new ImageAssetLoadError(response.status === 401 || response.status === 403 ? 'IMAGE_ACCESS_DENIED' : 'IMAGE_HTTP_ERROR', `Image request failed (${response.status})`);
     if (response.redirected || (response.url && response.url !== url)) throw new ImageAssetLoadError('UNSAFE_IMAGE_REDIRECT', 'Image redirects are not accepted');
     if (response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'image/png') throw new ImageAssetLoadError('IMAGE_MEDIA_TYPE', 'Image response must be PNG');

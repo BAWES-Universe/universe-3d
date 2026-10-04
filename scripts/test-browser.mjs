@@ -2,6 +2,15 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ friendjourney:['complete-friend-journey.full.mjs'],
+ placescreation:['places-creation-focus.browser.mjs','places-foreground.full.mjs','places-creation.full.mjs'],
+ compactconversations:['compact-conversations-sheet.browser.mjs','compact-conversations-layout.full.mjs','compact-conversations.full.mjs'],
+ editorpolish:['editor-polish-feedback.browser.mjs','editor-polish-experience.full.mjs'],
+ worldpolish:['world-presentation-occlusion.mjs'],
+ shellpolish:['external-shell-journeys.mjs','external-shell-menu-input.mjs','polish-integration-side-content.mjs','polish-integration-friends.mjs'],
+ signup:['site-admission-ui.browser.mjs'],
+ imageprotocol:['image-client-protocol.full.mjs'],
+ imagesizing:['image-physical-size.browser.mjs','image-physical-size-renderer.browser.mjs','image-physical-size.full.mjs'],
  imageversions:['image-library-setup.browser.mjs','image-setup-version.full.mjs'],
  sharedareas:['editor-area-collaboration.full.mjs'],
  arrivals:['arrival-editor.browser.mjs','arrival-renderer.browser.mjs','arrival-surfaces.browser.mjs','arrival-navigation.full.mjs','arrival-reconnect.full.mjs','reconnect-authority.full.mjs'],
@@ -19,7 +28,7 @@ const groups={
  images:['image-library-shell.browser.mjs','editor-image.browser.mjs','editor-toolbar.browser.mjs','image-library.full.mjs','image-lifecycle.full.mjs','editor-compact.full.mjs'],
  authoring:['editor-save-reconciliation.browser.mjs','editor-save-ack-ordering.browser.mjs','editor-save-receipt.full.mjs','editor-collaboration.browser.mjs','editor-collaboration.full.mjs','editor-collaboration-restart.full.mjs','tranche-smoke.browser.mjs','tranche-actions.browser.mjs','tranche-personal.browser.mjs','tranche-bots.browser.mjs','places.live.mjs']
 };
-const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose core, modules, authoring, sharedareas, images, imageversions, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay or arrivals');
+const group=process.argv[2]||'core';if(!groups[group])throw Error('Choose '+Object.keys(groups).join(', '));
 await mkdir('evidence',{recursive:true});const results=[];
 for(const file of groups[group]){
  console.log('\n=== '+file+' ===');const start=Date.now();

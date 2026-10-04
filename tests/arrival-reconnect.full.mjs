@@ -7,7 +7,7 @@ import {createGameServer} from '../server/app.mjs';
 import {launch} from '../scripts/browser.mjs';
 const scene={version:1,theme:'garden',bounds:{width:24,depth:20},spawn:{x:0,z:5},areas:[],objects:[{id:'form-board',type:'board',name:'Saved board name',x:0,z:3.2,rotation:0,actions:[{id:'form',type:'link',name:'Open retained form',url:'https://arrival-reconnect.invalid/form',mode:'embed',width:30,closable:true}]}]};
 const app=createGameServer({database:':memory:',seeds:[{id:'world',name:'Reconnect world',rooms:[{id:'room',name:'Reconnect room',scene}]}],dist:new URL('../dist',import.meta.url).pathname,questsEnabled:false});
-const streams=new Set();app.server.on('request',(req,res)=>{if(req.url==='/api/events'){streams.add(res);res.once('close',()=>streams.delete(res));}});
+const streams=new Set();app.server.on('request',(req,res)=>{if(new URL(req.url,'http://127.0.0.1').pathname==='/api/events'){streams.add(res);res.once('close',()=>streams.delete(res));}});
 const {port}=await app.listen(0),base='http://127.0.0.1:'+port,browser=await launch(),context=await browser.newContext({viewport:{width:1600,height:1000},reducedMotion:'reduce'}),page=await context.newPage();page.setDefaultTimeout(60000);page.setDefaultNavigationTimeout(60000);
 const checks=[],errors=[],requests=[];let holdResume=false,held=[],frameLoads=0;
 page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/rooms/room/join'))requests.push(request.postDataJSON());});

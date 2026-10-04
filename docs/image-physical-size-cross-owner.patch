@@ -1,0 +1,38 @@
+--- a/src/worlds.js
++++ b/src/worlds.js
+@@ -1,5 +1,5 @@
+ import {SILENT_MEDIA_MESSAGE} from './media-policy-copy.js';
+-import {IMAGE_PIXELS_PER_METRE} from './image-asset-schema.js';
++import {imagePhysicalSize} from './image-asset-schema.js';
+ import {cloneWithImageContext,imageGeometry,resolvedImage} from './image-asset-context.js';
+ import {terrainBlocks} from './terrain.js';
+ // Original standalone room layouts; source-native Woka identity is rendered as legacy sprites.
+@@ -44,7 +44,7 @@
+  ],areas:[area('stage','Assembly stage',0,-7,12,5,'stage',{meetingName:'assembly'}),area('audience','Assembly audience',0,0,17,9,'audience',{meetingName:'assembly'})]};
+ export const seedWorlds=[{id:'universe',name:'Our Universe',rooms:[{id:'commons',name:'The Commons',scene:commons},{id:'studio',name:'The Studio',scene:studio},{id:'assembly',name:'Assembly',scene:assembly}]}];
+ export const clone = cloneWithImageContext;
+-export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');return{width:entry.version.widthPixels/IMAGE_PIXELS_PER_METRE,depth:entry.version.heightPixels/IMAGE_PIXELS_PER_METRE};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
++export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');const size=imagePhysicalSize(entry.version);return{width:size.widthMetres,depth:size.heightMetres};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
+ export function collisionBox(o,scene){if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);if(Math.round((o.rotation||0)/90)%2)[width,depth]=[depth,width];return {x:o.x,z:o.z,width,depth};}
+ export function contains(area,x,z,padding=0){return Math.abs(x-area.x)<=area.width/2+padding&&Math.abs(z-area.z)<=area.depth/2+padding;}
+ export function collisionBoxes(scene,object){if(object.type==='image')return imageGeometry(scene,object).collisionCells;return CATALOG[object.type]?.solid?[collisionBox(object,scene)]:[];}
+--- a/src/editor.js
++++ b/src/editor.js
+@@ -8,7 +8,7 @@
+ import {snapPoint,validatePlacement,screenGridStep,validateTerrainEdit,wallFromStroke} from './editor-geometry.js';
+ import {TERRAIN_MATERIALS,MAX_TERRAIN_CELLS,terrainCell,terrainRect,validateTerrain} from './terrain.js';
+ import {imageDefinitions,resolvedImage,bindImageDefinitions,mergeImageDefinitions} from './image-asset-context.js';
+-import {validateAssetReference,validateImageInstance,IMAGE_PIXELS_PER_METRE,imageLibraryMetadata} from './image-asset-schema.js';
++import {validateAssetReference,validateImageInstance,imagePhysicalSize,imageLibraryMetadata} from './image-asset-schema.js';
+ import {ACTION_TYPES,MAX_ACTIONS,createAction,itemActions,materializeItemActions,actionName,validateActions,safeActionUrl} from './action-schema.js';
+ import {jsonSnapshot,sceneChanges,reconcileScenes,rebaseHistory,createSceneOperationRequest,conflictLabel,conflictValueLabel,sceneRequestHash,reconciliationGeometryProblem,reconnectDraftReference} from './editor-collaboration.js';
+ const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;};
+@@ -275,7 +275,7 @@
+     const asset=resolvedImage(scene,v),summary=el('section','builder-image-summary');summary.ariaLabel='Custom image asset';
+     summary.append(el('strong','',asset?imageLibraryMetadata(asset).name:'Unavailable image version'));
+     summary.append(el('span','',asset?'Version '+asset.version.sequence+' · '+asset.version.versionId:'Version '+v.assetRef.versionId));
+-    if(asset){if(asset.status==='archived')summary.append(el('p','panel-hint','Archived image · Existing placement stays editable. Restore in Custom to place or duplicate.'));const version=asset.version;summary.append(el('span','',version.widthPixels+' × '+version.heightPixels+' px · '+version.widthPixels/IMAGE_PIXELS_PER_METRE+' × '+version.heightPixels/IMAGE_PIXELS_PER_METRE+' m'),el('p','panel-hint',version.floating?'Floating image · Free position by default. Use the Free position / Grid tool to snap.':'Collision image · Grid snapping keeps placement aligned with its source collision cells.'));}
++    if(asset){if(asset.status==='archived')summary.append(el('p','panel-hint','Archived image · Existing placement stays editable. Restore in Custom to place or duplicate.'));const version=asset.version;summary.append(el('span','',version.widthPixels+' × '+version.heightPixels+' px · '+imagePhysicalSize(version).widthMetres+' × '+imagePhysicalSize(version).heightMetres+' m'),el('p','panel-hint',version.floating?'Floating image · Free position by default. Use the Free position / Grid tool to snap.':'Collision image · Grid snapping keeps placement aligned with its source collision cells.'));}
+     inspector.append(summary);
+    }else{
+     const appearance=details('Appearance & interaction','item-properties');appearance.append(field('Color',v.color||CATALOG[v.type]?.color||'#ffffff',val=>patch('color',val),{type:'color'}),field('Description',v.text||'',val=>patch('text',val),{type:'textarea'}),field('Open URL on interaction',v.url||'',val=>patchLegacyLink(v,val),{type:'url'}));if(v.type==='portal')renderDestinationPicker(v,appearance,'legacy-destination',destination=>patchLegacyTarget(v,destination));inspector.append(appearance);

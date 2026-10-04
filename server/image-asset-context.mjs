@@ -14,10 +14,10 @@ function validatedDefinitions(definitions){
 }
 
 /** Host-owned adapter. No actor, room, session, or dimensions come from upload JSON. */
-export function createRoomImageAssets({store,session,now,emitRoom}){
+export function createRoomImageAssets({store,session,now,emitRoom,isPhysicalSizeEnabled=()=>false,assertCompatible=()=>{}}){
   initializeImageAssetSchema(store.db);
   const repo=createImageAssetRepository(store.db),epochs=new Map();
-  const service=createImageAssetService({repo,now,validateImage:validatePng,
+  const service=createImageAssetService({repo,now,validateImage:validatePng,isPhysicalSizeEnabled,
     resolveSession(token){
       const row=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
       return row?{userId:row.user_id,currentRoomId:row.current_room_id,expiresAt:row.expires_at,sessionEpoch:epochs.get(token)??0}:null;
@@ -53,7 +53,7 @@ export function createRoomImageAssets({store,session,now,emitRoom}){
     return {...room,imageDefinitions};
   };
   return Object.freeze({
-    handle:createImageAssetHttpHandler({service,getIdentity(req){const live=session(req);return {userId:live.user_id,sessionIdentity:live.token_hash};}}),
+    handle:createImageAssetHttpHandler({service,assertCompatible,getIdentity(req){const live=session(req);return {userId:live.user_id,sessionIdentity:live.token_hash};}}),
     sessionChanged(token){epochs.set(token,(epochs.get(token)??0)+1);},
     sessionEpoch(token){return epochs.get(token)??0;},
     forgetSession(token){epochs.delete(token);},

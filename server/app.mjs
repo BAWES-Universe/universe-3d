@@ -1,3 +1,4 @@
+import {createImageClientProtocol,IMAGE_RELOAD_MESSAGE} from './image-client-protocol.mjs';
 import {createArrivalService,readArrivalInput,readExpectedPlacement} from './arrivals.mjs';
 import http from 'node:http';
 import { randomBytes, randomUUID, createHash, scrypt, timingSafeEqual } from 'node:crypto';
@@ -29,6 +30,8 @@ import {createRoomImageAssets} from './image-asset-context.mjs';
 import {validateImageSceneDelta} from './image-scene-authority.mjs';
 import {createSceneOperationService} from './scene-operations.mjs';
 import {sceneOperationGeometryConflicts} from './scene-operation-geometry.mjs';
+import {createSiteAdmission} from './site-admission.mjs';
+import {readSiteAdmissionConfig,validateSiteAdmissionConfig} from './site-admission-config.mjs';
 
 const passwordHash = promisify(scrypt);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -39,10 +42,12 @@ const MODERATE = ['owner', 'admin', 'moderator'];
 const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','🤔','🙌','😮','😊','💜','✅','🎸','💃','🕺','🏳️'];
 const STATUS = ['online','away','busy','dnd','invisible'];
 
-export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers } = {}) {
+export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers, siteAdmissionConfig = readSiteAdmissionConfig({UNIVERSE_REGISTRATION_MODE:runtimeConfig.registrationMode}), imagePhysicalSizeEnabled = runtimeConfig.imagePhysicalSizeEnabled ?? false } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
+  siteAdmissionConfig=validateSiteAdmissionConfig(siteAdmissionConfig);
+  if(siteAdmissionConfig.enabled!==(runtimeConfig.registrationMode==='invite-only'))throw new Error('Site admission configuration must match the explicit invite-only registration mode');
   if(proximityMembershipConfig!==undefined)proximityMembershipConfig=validateProximityMembershipConfig(proximityMembershipConfig);
   if(proximityTextConfig!==undefined)proximityTextConfig=validateProximityTextConfig(proximityTextConfig,proximityMembershipConfig);
   const store = new Store(database, seeds, clock, {claimUnownedOnCreate:runtimeConfig.mode==='local'});
@@ -50,12 +55,16 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   try{accessGate.assertReady();}catch(error){store.close();throw error;}
   const requestSecurity=createRequestSecurity(runtimeConfig,{listeningPort:()=>server.address()?.port});
   const serveStatic=createStaticAssets({dist});
-  const connections = new Map();
+  const connections = new Map(),responseRequests=new WeakMap(),streamCapabilities=new WeakMap(),streamScopes=new WeakMap();
+  let imageProtocol=null;
   const presence = new Map();
   const rates = new Map();
   const sessionRoles=new Map();
   let closed = false, residentTurns=null, proximityControls=null;
   const now = () => clock();
+  try{imageProtocol=createImageClientProtocol({store,enabled:imagePhysicalSizeEnabled,onChange:status=>{
+    for(const clients of connections.values())for(const client of clients){if(!streamCapabilities.get(client.res)&&imageProtocol.isRequired())retireIncompatibleStream(client.res);else rawSse(client.res,'client-protocol',status);}
+  }});}catch(error){store.close();throw error;}
   const arrivals=createArrivalService({store,presence,now,residents:(roomId,options)=>bots.arrivalOccupants(roomId,options)});
   function limit(key, max, span = 60000) {
     const t = now(); let bucket = rates.get(key);
@@ -64,9 +73,23 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   }
   function send(res, status, data, headers = {}) {
     if (res.destroyed || res.writableEnded) return;
+    if(status<400&&responseRequests.has(res))imageProtocol?.assertRequest(responseRequests.get(res));
     res.writeHead(status, { 'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers }); res.end(JSON.stringify(data));
   }
-  function sse(res, event, data) { if (!res.destroyed && !res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); }
+  function rawSse(res,event,data){if(!res.destroyed&&!res.writableEnded)res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);}
+  function retireIncompatibleStream(res,scope=streamScopes.get(res)){
+    if(res.destroyed||res.writableEnded)return;
+    if(!res.headersSent)res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});
+    const live=scope?.token?store.get('SELECT current_room_id FROM sessions WHERE token_hash=? AND expires_at>?',scope.token,now()):null;
+    const rooms=new Set([live?.current_room_id,scope?.roomId].filter(roomId=>typeof roomId==='string'&&roomId));
+    const retirement={code:'CLIENT_RELOAD_REQUIRED',reason:IMAGE_RELOAD_MESSAGE,recoverDraft:true,...imageProtocol.status()};
+    // The old arrival buffer recognizes only a matching room, so deny known
+    // pending-room commits before the global fallback retires the visible UI.
+    for(const roomId of rooms)rawSse(res,'access-revoked',{...retirement,roomId});
+    rawSse(res,'access-revoked',{...retirement,roomId:null});res.end();
+  }
+  function sse(res,event,data){if(imageProtocol?.isRequired()&&!streamCapabilities.get(res)){retireIncompatibleStream(res);return;}rawSse(res,event,data);}
+
   function emitUser(userId,event,data) { for (const [token,clients] of connections) { const session=store.get('SELECT user_id FROM sessions WHERE token_hash=? AND expires_at>?',token,now()); if(session?.user_id===userId)for(const client of clients)sse(client.res,event,data); } }
   function emitRoom(roomId,event,data) {
     for (const [token, clients] of connections) {
@@ -105,13 +128,14 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     res.setHeader('Set-Cookie',cookie(token,req)); return { token_hash: tokenHash,user_id:userId,current_room_id:null };
   }
   function session(req, required = true) {
+    imageProtocol?.assertRequest(req);
     const token = String(req.headers.cookie || '').split(';').map(p => p.trim()).find(p => p.startsWith(`${COOKIE}=`))?.slice(COOKIE.length+1);
     const row = token && /^[A-Za-z0-9_-]{43}$/.test(token) ? store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',digest(token),now()) : null;
     if (!row && required) v.fail(401,'AUTH_REQUIRED',runtimeConfig.mode==='public'?'Sign in with an operator-provisioned account first':'Create a guest profile or sign in first');
     if(row?.current_room_id){let permitted=false;try{permitted=store.canSeeRoom(store.roomRow(row.current_room_id),row.user_id);}catch{}if(!permitted){const old=row.current_room_id;store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',row.token_hash);images.sessionChanged(row.token_hash);arrivals.retire(row.token_hash);proximityText?.retire(row.token_hash);proximityControls?.retire(row.token_hash);residentTurns?.sessionChanged(row.token_hash);ice.retire(row.token_hash);row.current_room_id=null;sessionRoles.delete(row.token_hash);presence.delete(`${old}:${row.user_id}`);}}
     return row;
   }
-  function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id }; }
+  function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id,siteAdmission:siteAdmission.publicPolicy(s),...imageProtocol.status() }; }
   function join(roomId,s,input={}) {
     readArrivalInput(input);
     if(input.mode==='resume'&&s.current_room_id!==roomId)v.fail(409,'RESUME_CONTEXT_CHANGED','Your room changed. Choose a destination before travelling again.');
@@ -150,6 +174,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) v.fail(415,'JSON_REQUIRED','Use Content-Type: application/json');
     const chunks=[]; let n=0;
     for await (const chunk of req) { n+=chunk.length; if (n>600000) v.fail(413,'TOO_LARGE','Request is too large'); chunks.push(chunk); }
+    imageProtocol?.assertRequest(req);
     try { const result=v.record(JSON.parse(Buffer.concat(chunks).toString('utf8')));const path=new URL(req.url,'http://127.0.0.1').pathname;if(!(req.method==='POST'&&['/api/session','/api/login'].includes(path)))session(req);return result; } catch(e) { if(e.status) throw e; v.fail(400,'INVALID_JSON','The request body is not valid JSON'); }
   }
   function originCheck(req) {
@@ -181,7 +206,8 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const quests=createQuestService({store,presence,media,emitUser,now,enabled:questsEnabled});
   const expressions=createExpressionService({store,presence,emitRoom,now,limit});
   const files=createRoomFileService({store,now,send,session});
-  const images=createRoomImageAssets({store,session,now,emitRoom});
+  const images=createRoomImageAssets({store,session,now,emitRoom,isPhysicalSizeEnabled:()=>imageProtocol?.isEnabled()===true,assertCompatible:req=>imageProtocol?.assertRequest(req)});
+
   function policyChanged(reason,force={}) {
     residentTurns?.policyChanged();
     const affected=new Set(),revoked=new Set();
@@ -232,14 +258,19 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     emitRoom(roomId,'scene',{roomId,room,actorId:userId});bots.reconcileRoom(roomId);media.refresh(roomId,batch=>proximityControls?.refresh(roomId,batch));proximityText?.refresh(roomId);quests.reconcileRoom(roomId);
   }
   const sceneOperations=createSceneOperationService({store,session,arrivals,images,body,send,commitScene,afterCommit:afterSceneCommit});
+  const siteAdmission=createSiteAdmission({store,config:siteAdmissionConfig,now,session,send});
   const server=http.createServer(async(req,res) => {
+    responseRequests.set(res,req);
     res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
     try {
       const url=new URL(req.url,'http://127.0.0.1'); const path=url.pathname; const method=req.method;
       originCheck(req);
       if (!path.startsWith('/api/')) return await serveStatic(req,res,path);
+      imageProtocol.assertRequest(req);
+      if(path==='/api/client-protocol'&&method==='GET')return send(res,200,imageProtocol.status());
       if(path==='/api/health'&&method==='GET') return send(res,200,{ok:true,persistence:'sqlite',identity:'httpOnly-session',scope:runtimeConfig.mode==='public'?'standalone-private-preview':'standalone-local'});
-      if(path==='/api/access'&&method==='GET')return send(res,200,accessGate.publicPolicy());
+      if(path==='/api/access'&&method==='GET')return send(res,200,{...accessGate.publicPolicy(),inviteRegistration:siteAdmissionConfig.enabled,siteAdmission:siteAdmission.publicPolicy(session(req,false))});
+      if(await siteAdmission.handle({req,res,path,method,url}))return;
       if(path==='/api/session'&&method==='POST') {
         limit(`guest:${req.socket.remoteAddress}`,60);
         const b=await body(req); const existing=session(req,false);
@@ -259,15 +290,23 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         return send(res,200,sessionState(createSession(account.user_id,req,res)));
       }
       const s=session(req); const userId=s.user_id;
+      if(path==='/api/events'&&method==='GET'&&imageProtocol.isRequired()&&!imageProtocol.accepts(req))return retireIncompatibleStream(res,{token:s.token_hash,roomId:s.current_room_id});
       limit(`requests:${s.token_hash}`,1200);
       if(await images.handle(req,res))return;
+      imageProtocol.assertRequest(req);
       if(await personalAreas.handle({req,res,path,method,userId,url}))return;
+      imageProtocol.assertRequest(req);
       if(await actionAuthority.handle({req,res,path,method,userId,session:s}))return;
+      imageProtocol.assertRequest(req);
       if(residentTurns&&await residentTurns.handle({req,res,path,method,userId}))return;
+      imageProtocol.assertRequest(req);
       if(!residentTurns&&/^\/api\/rooms\/[A-Za-z0-9_-]+\/bots\/[A-Za-z0-9_-]+\/turns(?:\/|$)/.test(path)){store.authorize(path.split('/')[3],userId);if(!bots.capabilities(path.split('/')[3],userId).canManage)v.fail(403,'BOT_FORBIDDEN');v.fail(503,'RESIDENT_PROVIDER_UNAVAILABLE','No local test provider is configured');}
       if(await bots.handle({req,res,path,method,userId,session:s}))return;
+      imageProtocol.assertRequest(req);
       if(await hierarchy.handle({req,res,path,method,userId,url}))return;
+      imageProtocol.assertRequest(req);
       if(await files.handle({req,res,path,method,userId,url}))return;
+      imageProtocol.assertRequest(req);
       if(path==='/api/quests'&&method==='GET')return send(res,200,quests.state(userId,s.current_room_id));
       if(path==='/api/quests/preferences'&&method==='PATCH'){const b=await body(req);quests.changePreferences(userId,b);return send(res,200,quests.state(userId,s.current_room_id));}
       if(path==='/api/quests/accept'&&method==='POST'){const b=await body(req);const result=quests.accept(userId,s.current_room_id,b);return send(res,result.duplicate?200:201,{...result,...quests.state(userId,s.current_room_id)});}
@@ -290,11 +329,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         if(store.user(userId).account) v.fail(409,'ALREADY_REGISTERED','This profile already has an account');
         if(store.get('SELECT 1 FROM accounts WHERE username=?',username)) v.fail(409,'USERNAME_TAKEN','That username is already used');
         const salt=randomBytes(16).toString('hex'), hash=await passwordHash(password,salt,64);
+        imageProtocol.assertRequest(req);
         try{store.run('INSERT INTO accounts(username,user_id,salt,password_hash) VALUES(?,?,?,?)',username,userId,salt,hash.toString('hex'));}catch{v.fail(409,'USERNAME_TAKEN','That username is already used');}
         return send(res,201,{user:store.user(userId)});
       }
       if(path==='/api/logout'&&method==='POST') { leave(s.token_hash,userId); store.run('DELETE FROM sessions WHERE token_hash=?',s.token_hash); for(const c of connections.get(s.token_hash)||[])c.res.end();connections.delete(s.token_hash); return send(res,200,{ok:true},{'Set-Cookie':cookie('',req,true)}); }
       if(await sceneOperations(req,res,url,s))return;
+      imageProtocol.assertRequest(req);
       let match;
       match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)(?:\/(join|entries|leave|scene|messages|emote|moderate|invites|expression|expressions))?$/);
       if(match) {
@@ -401,12 +442,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         const live=session(req);let reconnectArrival=null;const previous=presence.get(`${live.current_room_id}:${userId}`);if(live.current_room_id&&(!previous?.admissionId||now()-previous.lastSeen>=60000)){media.assertAdmission(live,live.current_room_id);reconnectArrival=arrivals.prepare(live.current_room_id,userId,{resume:true});}
         let clients=connections.get(s.token_hash);if(!clients){clients=new Set();connections.set(s.token_hash,clients);}if(clients.size>=4)v.fail(429,'TOO_MANY_CONNECTIONS');
         res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');
-        const client={res,userId};clients.add(client);quests.disconnected(userId,s.current_room_id);sse(res,'hello',{user:store.user(userId),currentRoomId:s.current_room_id,serverTime:now(),arrivalEpoch:arrivals.epoch});if(live.current_room_id){const fields=reconnectArrival?arrivals.commit(live.current_room_id,userId,reconnectArrival):null;sessionRoles.set(live.token_hash,store.role(store.roomRow(live.current_room_id),userId));putPresence(userId,live.current_room_id,fields?{x:fields.x,z:fields.z,admissionId:fields.admissionId,admissionEpoch:fields.admissionEpoch,admissionRevision:fields.admissionRevision,...(!fields.resumed?{moving:false,running:false,velocity:{x:0,z:0},emote:null}:{})}:{});sse(res,'bots',{roomId:live.current_room_id,bots:bots.snapshot(live.current_room_id)});}
+        streamCapabilities.set(res,imageProtocol.accepts(req));streamScopes.set(res,{token:live.token_hash,roomId:live.current_room_id});
+        const client={res,userId};clients.add(client);quests.disconnected(userId,s.current_room_id);sse(res,'hello',{user:store.user(userId),currentRoomId:s.current_room_id,serverTime:now(),arrivalEpoch:arrivals.epoch,...imageProtocol.status()});if(live.current_room_id){const fields=reconnectArrival?arrivals.commit(live.current_room_id,userId,reconnectArrival):null;sessionRoles.set(live.token_hash,store.role(store.roomRow(live.current_room_id),userId));putPresence(userId,live.current_room_id,fields?{x:fields.x,z:fields.z,admissionId:fields.admissionId,admissionEpoch:fields.admissionEpoch,admissionRevision:fields.admissionRevision,...(!fields.resumed?{moving:false,running:false,velocity:{x:0,z:0},emote:null}:{})}:{});sse(res,'bots',{roomId:live.current_room_id,bots:bots.snapshot(live.current_room_id)});}
         proximityText?.register(s.token_hash,client);proximityControls?.register(s.token_hash,client);
         req.on('close',()=>{proximityControls?.disconnect(client);proximityText?.disconnect(client);quests.disconnected(userId,s.current_room_id);clients.delete(client);if(!clients.size)connections.delete(s.token_hash);});return;
       }
       v.fail(404,'NOT_FOUND','API endpoint not found');
-    } catch(e) { if(e.status)send(res,e.status,{error:e.code,code:e.code,message:e.message,...e.details});else{console.error('Request failed:',e);send(res,500,{error:'SERVER_ERROR',code:'SERVER_ERROR',message:'The server could not complete the request'});} }
+    } catch(e) { if(e.status===429&&Number.isSafeInteger(e.retryAfter)&&e.retryAfter>=1&&e.retryAfter<=60)res.setHeader('Retry-After',String(e.retryAfter));if(e.status)send(res,e.status,{error:e.code,code:e.code,message:e.message,...e.details});else{console.error('Request failed:',e);send(res,500,{error:'SERVER_ERROR',code:'SERVER_ERROR',message:'The server could not complete the request'});} }
   });
   const heartbeat=setInterval(()=>{
     if(closed)return;expressions.prune();ice.prune();media.sweep();proximityText?.refresh();proximityControls?.refresh();
@@ -417,5 +459,5 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     store.run('DELETE FROM sessions WHERE expires_at<?',now());
   },15000);heartbeat.unref();
   server.requestTimeout=15000;server.headersTimeout=10000;
-  return {server,store,presence,listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();proximityControls?.close();proximityText?.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
+  return {server,store,presence,setImagePhysicalSizeEnabledForTest:value=>imageProtocol.setEnabledForTest(value),listen(port=runtimeConfig.port){accessGate.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();proximityControls?.close();proximityText?.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
 }

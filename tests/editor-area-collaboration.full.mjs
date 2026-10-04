@@ -100,7 +100,7 @@ try{
  alice=await enter(a,'alice');bob=await enter(b,'bob');
  assert.equal((await state(alice)).room.sceneOperations.version,1,'V1 capability remains available');
  assert.equal((await state(alice)).room.sceneOperationsV2.version,2);
- await bob.route(base+'/api/events',route=>blockBobEvents?route.abort('failed'):route.continue());
+ await bob.route(/\/api\/events(?:\?.*)?$/,route=>blockBobEvents?route.abort('failed'):route.continue());
 
  await check('A native Silent area and an independent peer object save in both orders with current privacy policy',async()=>{
   await onEntry(alice,'quiet','silent');await field(bob,'chair-a','Name','Bob keeps this chair');
