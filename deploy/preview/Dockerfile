@@ -1,5 +1,5 @@
-# Only used by the trusted preview builder. BASE_IMAGE is policy-validated at an
-# exact digest, and this Dockerfile comes from the trusted controller checkout.
+# Used by the trusted preview builder and the reviewed MVP publishing workflow.
+# Each caller supplies an exact-digest BASE_IMAGE and an exact source checkout.
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS build
 WORKDIR /app
@@ -20,7 +20,7 @@ COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY src ./src
 COPY server.mjs package.json ./
-COPY scripts/operator-account.mjs scripts/healthcheck.mjs ./scripts/
+COPY scripts/operator-account.mjs scripts/promote-owner.mjs scripts/healthcheck.mjs ./scripts/
 RUN mkdir -p /data && chown node:node /data && chmod 0700 /data
 USER node:node
 EXPOSE 4190

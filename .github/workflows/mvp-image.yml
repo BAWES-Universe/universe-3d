@@ -1,0 +1,221 @@
+name: Publish MVP image
+on:
+  push:
+    branches: [release/mvp-open-signup]
+permissions:
+  contents: read
+env:
+  IMAGE: ghcr.io/bawes-universe/universe-3d
+  # Official library/node:24-bookworm-slim index, resolved 2026-10-04.
+  BASE_IMAGE: node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+jobs:
+  verify:
+    if: >-
+      github.repository == 'BAWES-Universe/universe-3d' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/release/mvp-open-signup' &&
+      github.workflow_sha == github.sha
+    uses: ./.github/workflows/verify.yml
+    permissions:
+      contents: read
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      artifact: ${{ steps.artifact.outputs.artifact-id }}
+      workflow_blob: ${{ steps.source.outputs.workflow_blob }}
+      build_attempt: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: source
+          persist-credentials: false
+      - name: Bind fresh source to the completed verification
+        id: source
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_TREE: ${{ needs.verify.outputs.tree }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C source rev-parse HEAD^{tree})" = "$SOURCE_TREE"
+          test "$WORKFLOW_SHA" = "$SOURCE_SHA"
+          blob=$(git -C source rev-parse "$WORKFLOW_SHA:.github/workflows/mvp-image.yml")
+          echo "workflow_blob=$blob" >> "$GITHUB_OUTPUT"
+      - name: Build exact source without registry-write authority
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_TREE: ${{ needs.verify.outputs.tree }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_BLOB: ${{ steps.source.outputs.workflow_blob }}
+        run: |
+          mkdir -p output
+          docker build --platform linux/amd64 --file source/deploy/preview/Dockerfile \
+            --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "net.bawes.universe.source-tree=$SOURCE_TREE" \
+            --label "net.bawes.universe.workflow-sha=$WORKFLOW_SHA" \
+            --label "net.bawes.universe.workflow-blob=$WORKFLOW_BLOB" \
+            --tag "universe-mvp-build:$SOURCE_SHA" "$GITHUB_WORKSPACE/source"
+          id=$(docker image inspect "universe-mvp-build:$SOURCE_SHA" --format '{{.Id}}')
+          docker save "$id" --output output/image.tar
+          archive=$(sha256sum output/image.tar | cut -d ' ' -f 1)
+          jq -n --arg sha "$SOURCE_SHA" --arg tree "$SOURCE_TREE" \
+            --arg workflowSha "$WORKFLOW_SHA" --arg workflowBlob "$WORKFLOW_BLOB" \
+            --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF" \
+            --arg runId "$GITHUB_RUN_ID" --arg buildAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg imageId "$id" --arg archiveSha256 "$archive" --arg baseImage "$BASE_IMAGE" \
+            '{schemaVersion:1,repository:$repository,ref:$ref,sha:$sha,tree:$tree,
+              workflowSha:$workflowSha,workflowBlob:$workflowBlob,runId:$runId,
+              buildAttempt:$buildAttempt,imageId:$imageId,archiveSha256:$archiveSha256,
+              baseImage:$baseImage,platform:"linux/amd64"}' > output/source.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        id: artifact
+        with:
+          name: mvp-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+  publish:
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No checkout, dependencies, build, container run, or application execution.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      pin: ${{ steps.publish.outputs.pin }}
+      image_id: ${{ steps.validate.outputs.image_id }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact }}
+          path: input
+          merge-multiple: true
+      - name: Validate this run's archive and source labels
+        id: validate
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_TREE: ${{ needs.verify.outputs.tree }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_BLOB: ${{ needs.build.outputs.workflow_blob }}
+          BUILD_ATTEMPT: ${{ needs.build.outputs.build_attempt }}
+        run: |
+          jq -e --arg sha "$SOURCE_SHA" --arg tree "$SOURCE_TREE" \
+            --arg workflowSha "$WORKFLOW_SHA" --arg workflowBlob "$WORKFLOW_BLOB" \
+            --arg repository "$GITHUB_REPOSITORY" --arg ref "$GITHUB_REF" \
+            --arg runId "$GITHUB_RUN_ID" --arg buildAttempt "$BUILD_ATTEMPT" --arg baseImage "$BASE_IMAGE" '
+              .schemaVersion == 1 and .repository == $repository and .ref == $ref and
+              .sha == $sha and .tree == $tree and .workflowSha == $workflowSha and
+              .workflowBlob == $workflowBlob and .runId == $runId and
+              .buildAttempt == $buildAttempt and .baseImage == $baseImage and
+              .platform == "linux/amd64" and
+              (.imageId | test("^sha256:[a-f0-9]{64}$")) and
+              (.archiveSha256 | test("^[a-f0-9]{64}$"))' input/source.json > /dev/null
+          test "$(sha256sum input/image.tar | cut -d ' ' -f 1)" = "$(jq -r .archiveSha256 input/source.json)"
+          docker load --input input/image.tar
+          id=$(jq -r .imageId input/source.json)
+          docker image inspect "$id" | jq -e --arg id "$id" --arg sha "$SOURCE_SHA" \
+            --arg tree "$SOURCE_TREE" --arg workflowSha "$WORKFLOW_SHA" --arg workflowBlob "$WORKFLOW_BLOB" '
+              length == 1 and .[0].Id == $id and .[0].Architecture == "amd64" and .[0].Os == "linux" and
+              .[0].Config.User == "node:node" and
+              .[0].Config.Labels["org.opencontainers.image.revision"] == $sha and
+              .[0].Config.Labels["net.bawes.universe.source-tree"] == $tree and
+              .[0].Config.Labels["net.bawes.universe.workflow-sha"] == $workflowSha and
+              .[0].Config.Labels["net.bawes.universe.workflow-blob"] == $workflowBlob' > /dev/null
+          echo "image_id=$id" >> "$GITHUB_OUTPUT"
+      - name: Push one tag and confirm the registry digest
+        id: publish
+        env:
+          PACKAGE_TOKEN: ${{ github.token }}
+          IMAGE_ID: ${{ steps.validate.outputs.image_id }}
+          DOCKER_CONFIG: ${{ runner.temp }}/mvp-publish-auth
+        run: |
+          mkdir -m 0700 "$DOCKER_CONFIG"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$PACKAGE_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          unset PACKAGE_TOKEN
+          tag="$IMAGE:sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker tag "$IMAGE_ID" "$tag"
+          docker push "$tag"
+          docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' > registry.json
+          digest=$(jq -er '.digest | select(test("^sha256:[a-f0-9]{64}$"))' registry.json)
+          pin="$IMAGE@$digest"
+          # Resolve immutable content at the registry, not Docker's local tag cache.
+          docker buildx imagetools inspect "$pin" --raw > manifest.json
+          jq -e --arg id "$IMAGE_ID" '.config.digest == $id' manifest.json > /dev/null
+          jq --arg image "$IMAGE" --arg tag "$tag" --arg digest "$digest" \
+            --arg pin "$pin" --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg runUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '. + {image:$image,tag:$tag,digest:$digest,pin:$pin,runAttempt:$runAttempt,
+              runUrl:$runUrl,published:true,smoke:"pending"}' input/source.json > release.json
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          printf 'Published: `%s`\n\nReceipt records source SHA/tree, workflow SHA/blob, run/attempt and registry digest. Anonymous pull and smoke follow separately.\n' "$pin" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mvp-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release.json
+          if-no-files-found: error
+          retention-days: 90
+  smoke:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Pull published digest anonymously
+        env:
+          PIN: ${{ needs.publish.outputs.pin }}
+          DOCKER_CONFIG: ${{ runner.temp }}/mvp-anonymous
+        run: |
+          mkdir -m 0700 "$DOCKER_CONFIG"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          # New GHCR packages start private. If this fails, make the approved
+          # package public and rerun only failed jobs; do not republish to fix it.
+          docker pull "$PIN"
+      - name: Smoke exact digest without retained credentials
+        env:
+          PIN: ${{ needs.publish.outputs.pin }}
+          IMAGE_ID: ${{ needs.publish.outputs.image_id }}
+        run: |
+          test "$(docker image inspect "$PIN" --format '{{.Id}}')" = "$IMAGE_ID"
+          name="mvp-smoke-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+          docker run -d --name "$name" --pull never --network none --user 1000:1000 \
+            --cap-drop ALL --security-opt no-new-privileges --ulimit nproc=128:128 \
+            --memory 768m --cpus 1 --tmpfs /data:rw,nosuid,uid=1000,gid=1000,mode=0700,size=128m \
+            -e UNIVERSE_MODE=local -e UNIVERSE_BIND_ADDRESS=127.0.0.1 \
+            -e UNIVERSE_TLS_MODE=local-http -e UNIVERSE_COOKIE_SECURE=socket "$PIN"
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if docker exec "$name" node scripts/healthcheck.mjs; then healthy=true; break; fi
+            sleep 1
+          done
+          test "$healthy" = true
+          docker exec "$name" node --input-type=module -e '
+            if (process.getuid() !== 1000) process.exit(1);
+            // Fetch blocks port 4190 (sieve); probe the internal HTTP service directly.
+            const http = await import("node:http");
+            const body = await new Promise((resolve, reject) => {
+              const req = http.get("http://127.0.0.1:4190/", {signal: AbortSignal.timeout(5000)}, res => {
+                let text = "";
+                res.setEncoding("utf8");
+                res.on("data", chunk => {
+                  text += chunk;
+                  if (text.length > 1048576) req.destroy(new Error("Static response too large"));
+                });
+                res.on("error", reject);
+                res.on("end", () => res.statusCode === 200 ? resolve(text) : reject(new Error("Static page must return HTTP 200")));
+              });
+              req.on("error", reject);
+            });
+            if (!body.includes("/main.js")) process.exit(2);
+            await import("node:fs/promises").then(fs => fs.access("scripts/promote-owner.mjs"));'
+          printf 'Anonymous pull and isolated non-root health/static smoke passed: `%s`\n\nThis is not live TLS, durable-volume, ownership-promotion or deployment evidence.\n' "$PIN" >> "$GITHUB_STEP_SUMMARY"

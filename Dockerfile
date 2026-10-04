@@ -25,7 +25,7 @@ COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY src ./src
 COPY server.mjs package.json ./
-COPY scripts/operator-account.mjs scripts/healthcheck.mjs ./scripts/
+COPY scripts/operator-account.mjs scripts/promote-owner.mjs scripts/healthcheck.mjs ./scripts/
 RUN mkdir -p /data && chown node:node /data && chmod 0700 /data
 USER node:node
 # Metadata only. No host port is published by this image.
