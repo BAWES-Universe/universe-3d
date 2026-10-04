@@ -2,7 +2,7 @@
  * Fault injection delays/drops actual HTTP responses, never fabricates creation success.
  */
 import assert from 'node:assert/strict';
-import {mkdir,writeFile,mkdtemp,rm} from 'node:fs/promises';
+import {mkdir,writeFile,mkdtemp,rm,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -10,6 +10,21 @@ import {launch} from '../scripts/browser.mjs';
 import {seedWorlds} from '../src/worlds.js';
 import {createGameServer} from '../server/app.mjs';
 const out='evidence/places-creation';await mkdir(out,{recursive:true});
+const recordingEvidence={commands:[],output:null};
+const saveRecordingEvidence=()=>writeFile(out+'/recording-results.json',JSON.stringify(recordingEvidence,null,2));
+async function recordingCommand(command,args,stage,timeout=15000){
+ const result=spawnSync(command,args,{encoding:'utf8',timeout,maxBuffer:1024*1024});
+ const detail={stage,command,args,status:result.status,signal:result.signal,errorCode:result.error?.code||null,errorMessage:result.error?.message||null,stdout:result.stdout||'',stderr:result.stderr||''};
+ recordingEvidence.commands.push(detail);await saveRecordingEvidence();
+ if(result.error||result.status!==0)throw Error(`${stage} failed. ${result.error?.code==='ENOENT'?'Install FFmpeg with libx264 and its ffprobe companion, and ensure both commands are on PATH. The H264 recording is required.':'The required recording command did not complete successfully.'} ${JSON.stringify(detail)}`);
+ return result;
+}
+// Fail before creating a database, starting the server, or launching Chromium.
+const ffmpegVersion=await recordingCommand('ffmpeg',['-version'],'FFmpeg availability');
+const ffprobeVersion=await recordingCommand('ffprobe',['-version'],'FFprobe availability');
+const encoders=await recordingCommand('ffmpeg',['-hide_banner','-encoders'],'H264 encoder availability');
+assert.match(encoders.stdout,/\blibx264\b/,'Install an FFmpeg build with the required libx264 H264 encoder.');
+console.log('Recording tools:',ffmpegVersion.stdout.split('\n')[0],';',ffprobeVersion.stdout.split('\n')[0]);
 const temp=await mkdtemp(join(tmpdir(),'places-creation-'));
 const app=createGameServer({database:join(temp,'test.sqlite'),dist:new URL('../dist',import.meta.url).pathname,seeds:seedWorlds});
 const {port}=await app.listen(0),base=`http://127.0.0.1:${port}`,browser=await launch();
@@ -39,10 +54,17 @@ async function record(page){
  const cdp=await page.context().newCDPSession(page),frames=[];
  cdp.on('Page.screencastFrame',({data,metadata,sessionId})=>{frames.push({data,time:metadata.timestamp});void cdp.send('Page.screencastFrameAck',{sessionId}).catch(()=>{});});
  await cdp.send('Page.startScreencast',{format:'jpeg',quality:50,maxWidth:1100,maxHeight:740,everyNthFrame:3});
- return async()=>{await cdp.send('Page.stopScreencast');await cdp.detach();const lines=[];
+ return async()=>{await cdp.send('Page.stopScreencast');await cdp.detach();assert(frames.length>0,'The required creation recording captured no browser frames.');const lines=[];
   for(let i=0;i<frames.length;i++){const path=join(temp,`frame-${i}.jpg`);await writeFile(path,Buffer.from(frames[i].data,'base64'));lines.push(`file '${path}'`, `duration ${Math.max(.04,Math.min(2,(frames[i+1]?.time??frames[i].time+.4)-frames[i].time))}`);}
   await writeFile(join(temp,'frames.txt'),lines.join('\n'));
-  const result=spawnSync('ffmpeg',['-y','-loglevel','error','-f','concat','-safe','0','-i',join(temp,'frames.txt'),'-vf','pad=ceil(iw/2)*2:ceil(ih/2)*2','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',out+'/creation-journey.mp4'],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);return frames.length;
+  const output=out+'/creation-journey.mp4';
+  await recordingCommand('ffmpeg',['-nostdin','-y','-loglevel','error','-f','concat','-safe','0','-i',join(temp,'frames.txt'),'-vf','pad=ceil(iw/2)*2:ceil(ih/2)*2','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',output],'H264 MP4 encoding',120000);
+  const file=await stat(output);assert(file.size>0,'The required H264 MP4 is empty.');
+  const probe=await recordingCommand('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=codec_name,width,height,nb_frames:format=format_name,duration','-of','json',output],'H264 MP4 verification');
+  const metadata=JSON.parse(probe.stdout),video=metadata.streams?.[0];
+  assert.equal(video?.codec_name,'h264');assert(video.width>0&&video.height>0);assert(Number(video.nb_frames)>0);assert(Number(metadata.format?.duration)>0);assert(metadata.format.format_name.split(',').includes('mp4'));
+  recordingEvidence.output={path:output,bytes:file.size,capturedFrames:frames.length,...video,duration:Number(metadata.format.duration),format:metadata.format.format_name};await saveRecordingEvidence();
+  return frames.length;
  };
 }
 try{
