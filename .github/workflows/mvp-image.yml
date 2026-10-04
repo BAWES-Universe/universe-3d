@@ -201,7 +201,21 @@ jobs:
           test "$healthy" = true
           docker exec "$name" node --input-type=module -e '
             if (process.getuid() !== 1000) process.exit(1);
-            const r = await fetch("http://127.0.0.1:4190/");
-            if (r.status !== 200 || !(await r.text()).includes("/main.js")) process.exit(2);
+            // Fetch blocks port 4190 (sieve); probe the internal HTTP service directly.
+            const http = await import("node:http");
+            const body = await new Promise((resolve, reject) => {
+              const req = http.get("http://127.0.0.1:4190/", {signal: AbortSignal.timeout(5000)}, res => {
+                let text = "";
+                res.setEncoding("utf8");
+                res.on("data", chunk => {
+                  text += chunk;
+                  if (text.length > 1048576) req.destroy(new Error("Static response too large"));
+                });
+                res.on("error", reject);
+                res.on("end", () => res.statusCode === 200 ? resolve(text) : reject(new Error("Static page must return HTTP 200")));
+              });
+              req.on("error", reject);
+            });
+            if (!body.includes("/main.js")) process.exit(2);
             await import("node:fs/promises").then(fs => fs.access("scripts/promote-owner.mjs"));'
           printf 'Anonymous pull and isolated non-root health/static smoke passed: `%s`\n\nThis is not live TLS, durable-volume, ownership-promotion or deployment evidence.\n' "$PIN" >> "$GITHUB_STEP_SUMMARY"

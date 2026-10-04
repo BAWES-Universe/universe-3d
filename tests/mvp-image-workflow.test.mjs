@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile, writeFile, mkdtemp, mkdir, rm, chmod, access} from 'node:fs/promises';
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
+import {createServer} from 'node:http';
 import {createHash} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -190,4 +191,50 @@ test('smoke rejects a different downloaded image before application execution', 
   const f = await fixture(t); const r = f.run(smokeScript, {PIN: `${f.env.IMAGE}@${digest}`, MOCK_ID: `sha256:${'0'.repeat(64)}`});
   assert.notEqual(r.status, 0);
   assert.doesNotMatch(await readFile(f.env.MOCK_LOG, 'utf8'), /"run"|"exec"/);
+});
+
+
+// Exercise the exact inline application probe, not only a mocked docker exec.
+const staticProbe = smokeScript.match(/node --input-type=module -e '([\s\S]*?)'\n/)[1];
+test('Fetch rejects the internal service port before making an HTTP request', async () => {
+  await assert.rejects(fetch('http://127.0.0.1:4190/'), error => error.cause?.message === 'bad port');
+  assert.doesNotMatch(staticProbe, /\bfetch\(/);
+  assert.match(staticProbe, /http\.get\("http:\/\/127\.0\.0\.1:4190\/"/);
+  assert.match(staticProbe, /AbortSignal\.timeout\(5000\)/);
+});
+
+for (const [name, options, expected] of [
+  ['HTTP 200 with app script and helper', {}, 0],
+  ['non-200 response', {status: 503}, 1],
+  ['HTTP redirect', {status: 302}, 1],
+  ['missing app script', {body: 'not the app'}, 2],
+  ['missing promotion helper', {helper: false}, 1],
+  ['wrong UID', {uid: 999}, 1],
+  ['stalled response', {stall: true}, 1],
+  ['oversized response', {body: 'x'.repeat(1048577)}, 1],
+]) test(`native HTTP smoke: ${name}`, {timeout: 10000}, async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'universe-mvp-probe-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+  if (options.helper !== false) {
+    await mkdir(join(dir, 'scripts'));
+    await writeFile(join(dir, 'scripts/promote-owner.mjs'), '// fixture helper');
+  }
+  const server = createServer((req, res) => {
+    assert.equal(req.method, 'GET'); assert.equal(req.url, '/');
+    if (options.stall) return;
+    res.writeHead(options.status ?? 200, {'Content-Type': 'text/html'});
+    res.end(options.body ?? '<script src="/main.js"></script>');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  // The fixture varies only the local listener port and simulated container UID.
+  // Its transport, status/body/helper checks and timeout are the shipped code.
+  const code = `process.getuid = () => ${options.uid ?? 1000};\n` +
+    staticProbe.replace('http://127.0.0.1:4190/', `http://127.0.0.1:${server.address().port}/`);
+  const result = await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', code], {cwd: dir, stdio: ['ignore', 'pipe', 'pipe']});
+    let stderr = ''; child.stderr.on('data', chunk => stderr += chunk);
+    child.on('error', reject); child.on('exit', status => resolve({status, stderr}));
+  });
+  assert.equal(result.status, expected, result.stderr);
 });
