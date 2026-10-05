@@ -13,6 +13,7 @@ import {launch} from '../scripts/browser.mjs';
 import {makePng} from '../fixtures/png-fixtures.mjs';
 import {buildClients,bounded,deferred,instrument,ok,request,assertFenced,makeDirty,exportRetiredDraft,assertLegacyRetirement,capability,sha} from './fixtures/image-client-protocol-fixture.mjs';
 
+const currentCapability=capability+',composition-furniture-v1';
 const output=process.env.UNIVERSE_PROTOCOL_EVIDENCE||'evidence/image-client-protocol';await mkdir(output,{recursive:true});
 const clients=await buildClients(),browser=await launch(),checks=[];
 const sourceSha256=Object.fromEntries(await Promise.all(['server/app.mjs','server/image-client-protocol.mjs','server/image-assets.mjs','src/main.js','src/client-protocol.js','src/image-library-shell.js','src/image-library-panel.js','src/image-library-setup.js','src/files.js','src/image-asset-loader.js','src/image-recovery-export.js','server/image-protocol-capabilities.json'].map(async path=>[path,sha(await readFile(new URL('../'+path,import.meta.url)))])));
@@ -73,8 +74,8 @@ try{
   const room=(await ok(f.context,f.base,'/api/rooms/room')).room,entry=Object.values(room.imageDefinitions)[0],placed=room.scene.objects.find(object=>object.type==='image');
   assert(placed);assert.equal(entry.version.widthMetres,2);assert.equal(entry.version.heightMetres,2);
   assert.equal(await f.oldPage.evaluate(()=>__universe.getState().room),null);assertLegacyRetirement(f.old.events,before);
-  for(const req of fresh.requests.filter(req=>req.path!=='/api/events'&&!/\/assets\/[^/]+\/versions\/[^/]+\/image$/.test(req.path)&&!/\/files\/[^/]+$/.test(req.path)))assert.equal(req.capability,capability,'Every current API call carries its own capability: '+req.path);
-  assert(fresh.requests.some(req=>req.path==='/api/events'&&req.query.includes('capabilities='+capability)));
+  for(const req of fresh.requests.filter(req=>req.path!=='/api/events'&&!/\/assets\/[^/]+\/versions\/[^/]+\/image$/.test(req.path)&&!/\/files\/[^/]+$/.test(req.path)))assert.equal(req.capability,currentCapability,'Every current API call carries its complete capability declaration: '+req.path);
+  assert(fresh.requests.some(req=>req.path==='/api/events'&&new URLSearchParams(req.query).get('capabilities')===currentCapability));
   assert(f.old.requests.every(req=>req.capability===null),'Updated sibling never blesses the old tab');
   f.observations.sizedVersion={widthMetres:entry.version.widthMetres,heightMetres:entry.version.heightMetres,versionId:entry.version.versionId,placementId:placed.id};
   await current.locator('#image-render-status').waitFor({state:'hidden'});await current.screenshot({path:join(output,'current-tab-sized-image.png')});assert.deepEqual(fresh.errors,[]);
@@ -134,8 +135,8 @@ try{
   await library.getByRole('button',{name:'Add PNG',exact:true}).click();const chooser=f.oldPage.waitForEvent('filechooser');await library.getByRole('button',{name:'Choose PNG',exact:true}).click();await(await chooser).setFiles({name:'Unsent recovery PNG.png',mimeType:'image/png',buffer:png});
   await library.getByAltText('Local image preview').waitFor();const form=library.locator('.uil-draft').first();await form.getByRole('spinbutton',{name:'Width (metres)',exact:true}).fill('3');await form.getByRole('combobox',{name:'Representation and depth',exact:true}).selectOption('floor');
   await library.getByRole('button',{name:'Close Custom image library',exact:true}).click();await library.waitFor({state:'hidden'});
-  const held=deferred(),release=deferred();let closing=false,hold=true,omitStreamCapability=false;
-  await f.oldPage.route(f.base+'/api/events?capabilities='+capability,route=>omitStreamCapability?route.continue({url:f.base+'/api/events'}):route.continue());
+  const held=deferred(),release=deferred(),omitted=deferred();let closing=false,hold=true,omitStreamCapability=false;
+  await f.oldPage.route(f.base+'/api/events?capabilities='+encodeURIComponent(currentCapability),route=>{if(!omitStreamCapability)return route.continue();omitted.resolve(true);return route.continue({url:f.base+'/api/events'});});
   await f.oldPage.route(f.base+'/api/rooms/room/join',async route=>{
    if(!hold||route.request().method()!=='POST')return route.continue();hold=false;
    try{const response=await route.fetch();assert.equal(response.status(),200);held.resolve(await response.json());await release.promise;await route.fulfill({response});}catch(error){held.reject(error);if(!closing)throw error;}
@@ -144,6 +145,7 @@ try{
    f.getApp().server.closeAllConnections();const receipt=await bounded(held.promise,'current pre-retirement resume response');assert.equal(receipt.room.id,'room');
    await f.oldPage.locator('#dock-more').click();await f.oldPage.locator('#shell-more').waitFor({state:'visible'});
    const before=f.old.events.length;omitStreamCapability=true;f.getApp().server.closeAllConnections();
+   await bounded(omitted.promise,'current EventSource capability omission');
    await f.oldPage.getByRole('heading',{name:'Reload to continue',exact:true}).waitFor();
    assert(await f.oldPage.locator('#shell-more').isHidden(),'Retirement dismisses More so recovery owns native keyboard focus');
    await f.oldPage.keyboard.press('Tab');assert(await f.oldPage.locator('#dialog').evaluate(node=>node.contains(document.activeElement)),'Native Tab remains in the foreground recovery dialog');
