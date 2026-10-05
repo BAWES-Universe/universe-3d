@@ -66,7 +66,7 @@ Body: `{token}`. A currently usable invitation and available account quota retur
 
 ### POST `/api/site-admission/redeem`
 
-Body: `{token, clientOperationId, username, password, name, woka?}`. Username is 3–32 lowercase letters, digits, or underscores. Display name is 1–40 trimmed characters with no control characters. Password is 16–256 characters, with no leading/trailing whitespace or control characters, matching offline account provisioning and existing login normalization. Optional `woka` is a catalog integer from 0 to 31, default 0. Account and profile validation cannot inject authority fields.
+Body: `{token, clientOperationId, username, password, name, woka?}`. Username is 3–32 lowercase letters, digits, or underscores. Display name is 1–40 trimmed characters with no control characters. Password is 10–256 characters, with no leading/trailing whitespace or control characters, matching offline account provisioning and existing login normalization. Optional `woka` is a catalog integer from 0 to 31, default 0. Account and profile validation cannot inject authority fields.
 
 First success: `201 {created:true, username, duplicate:false, loginRequired:true}`. A proven retry: the same response with status 200 and `duplicate:true`. Neither response establishes a session.
 

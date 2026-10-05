@@ -196,12 +196,12 @@ export function createAvatarRig(scene,input,options={}){
     for(const [parent,pieces]of groups){if(!pieces.length)continue;const merged=Mesh.MergeMeshes(pieces,true,true,undefined,false,false);merged.name=parent.name+'-geometry';merged.parent=parent;merged.material=material;merged.isPickable=false;merged.useVertexColors=true;merged.hasVertexAlpha=false;merged.metadata={type:'avatar-mesh',joint:parent.name};meshes.push(merged);shadowGenerator?.addShadowCaster?.(merged);}
   }
   build(input);
-  function update({position,velocity,heading,moving,running=false,dt=1/60,time}={}){
+  function update({position,velocity,heading,moving,running=false,seated=false,seatHeight=.61,airborne=false,waving=false,dt=1/60,time}={}){
     if(disposed)return;
     const step=Math.min(.1,Math.max(0,Number.isFinite(dt)?dt:0));clock=Number.isFinite(time)?time:clock+step;
     if(position)root.position.set(position.x||0,position.y||0,position.z||0);
     const speed=velocity?Math.hypot(velocity.x||0,velocity.z||0):0;
-    const walking=moving??speed>.025;
+    const walking=!seated&&!airborne&&(moving??speed>.025);
     // Heading comes from world velocity, independently of camera orbit or pitch.
     if(speed>.025)lastHeading=Math.atan2(velocity.x,velocity.z);
     else if(Number.isFinite(heading))lastHeading=heading;
@@ -215,6 +215,9 @@ export function createAvatarRig(scene,input,options={}){
     armL.rotation.z=-.09-Math.sin(clock*1.7)*.014*(1-gait);armR.rotation.z=.09+Math.sin(clock*1.7)*.014*(1-gait);
     body.position.y=Math.sin(clock*2)*.012*(1-gait)+Math.abs(Math.sin(phase))*(running?.065:.027)*gait;
     body.rotation.x=(running?.055:.015)*gait;body.rotation.z=swing*.018*gait;
+    if(seated){body.position.y=seatHeight/root.scaling.y-.70;body.rotation.x=0;body.rotation.z=0;legL.rotation.x=legR.rotation.x=-Math.PI/2;shinL.rotation.x=shinR.rotation.x=Math.PI/2;armL.rotation.x=armR.rotation.x=-.35;}
+    else if(airborne){legL.rotation.x=-.2;legR.rotation.x=.18;shinL.rotation.x=shinR.rotation.x=.3;armL.rotation.z=-.4;armR.rotation.z=.4;}
+    if(waving){armR.rotation.z=2.45+Math.sin(clock*13)*.25;armR.rotation.x=-.25;}
     head.rotation.x=-.018*gait+Math.sin(clock*1.3)*.012*(1-gait);head.rotation.z=Math.sin(clock*.8)*.015*(1-gait);
   }
   update({dt:0});

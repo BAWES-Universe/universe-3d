@@ -345,3 +345,12 @@ test('receipt is bound to the original signup credentials even after offline acc
   expectCode(await f.redeem(input), 410, 'INVITE_UNAVAILABLE');
   assert.equal(f.store.get('SELECT COUNT(*) AS n FROM accounts').n, 2);
 });
+
+test('invite redemption accepts shared 10 and 256 character boundaries', async t => {
+  const f=await fixture(t);
+  for(const [username,password]of [['ten_friend','tenletters'],['max_friend','x'.repeat(256)]]) {
+    const invite=(await f.mint()).body;const result=await f.redeem(signupInput(invite,{username,password}));
+    assert.equal(result.status,201,JSON.stringify(result.body));const account=f.store.get('SELECT * FROM accounts WHERE username=?',username);
+    assert.equal(account.password_hash,scryptSync(password,account.salt,64).toString('hex'));
+  }
+});

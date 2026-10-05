@@ -2,25 +2,34 @@ import {Vector3} from '@babylonjs/core/Maths/math.vector.js';
 import {Color3} from '@babylonjs/core/Maths/math.color.js';
 import {CreateSphere} from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import {CreateLines} from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
+import {CreatePlane} from '@babylonjs/core/Meshes/Builders/planeBuilder.js';
+import {DynamicTexture} from '@babylonjs/core/Materials/Textures/dynamicTexture.js';
 import {StandardMaterial} from '@babylonjs/core/Materials/standardMaterial.js';
 import {createAvatarRig} from './avatar-rig.js';
 import {navigationPolicy} from '../server/bot-navigation.mjs';
 export function createBotMapPreview(scene,bot,world){
  const avatar=createAvatarRig(scene,bot.appearance,{id:'resident-draft'}),material=new StandardMaterial('resident-handle',scene);material.diffuseColor=Color3.FromHexString('#e9c74c');material.emissiveColor=material.diffuseColor.scale(.35);
- let config=bot,handles=[],circle=null,route=null,routeCount=-1;
+ let config=bot,handles=[],labels=[],circle=null,route=null,routeCount=-1;
  function handle(id){const mesh=CreateSphere('resident-'+id,{diameter:.5,segments:8},scene);mesh.material=material;mesh.isPickable=true;mesh.metadata={type:'bot-handle',id};handles.push(mesh);return mesh;}
+ function label(index){
+  const texture=new DynamicTexture('resident-waypoint-label-'+index,{width:128,height:128},scene,false),context=texture.getContext();
+  context.clearRect(0,0,128,128);context.fillStyle='#251932';context.beginPath();context.arc(64,64,53,0,Math.PI*2);context.fill();context.strokeStyle='#e9c74c';context.lineWidth=7;context.stroke();context.fillStyle='#ffffff';context.font='bold 64px Arial';context.textAlign='center';context.textBaseline='middle';context.fillText(String(index+1),64,68);texture.update();
+  const material=new StandardMaterial('resident-label-material-'+index,scene);material.diffuseTexture=texture;material.emissiveColor=new Color3(1,1,1);material.disableLighting=true;material.backFaceCulling=false;texture.hasAlpha=true;material.useAlphaFromDiffuseTexture=true;
+  const mesh=CreatePlane('resident-waypoint-number-'+index,{size:.65},scene);mesh.material=material;mesh.billboardMode=7;mesh.isPickable=true;mesh.metadata={type:'bot-handle',id:'waypoint:'+index};
+  labels.push({mesh,dispose(){mesh.dispose();material.dispose();texture.dispose();}});
+ }
  const radius=handle('radius');
  function set(next){
   config=structuredClone(next);avatar.setAppearance(config.appearance);avatar.root.position.set(config.spawn.x,.08,config.spawn.z);for(const mesh of avatar.meshes){mesh.isPickable=true;mesh.metadata={type:'bot-handle',id:'spawn'};}
   const valid=navigationPolicy(world,config),color=Color3.FromHexString(valid(config.spawn)&&config.waypoints.every(valid)?'#e9c74c':'#ee806c');material.diffuseColor=color;material.emissiveColor=color.scale(.35);
   const points=Array.from({length:65},(_,i)=>{const a=i/64*Math.PI*2;return new Vector3(config.spawn.x+Math.cos(a)*config.radius,.13,config.spawn.z+Math.sin(a)*config.radius);});circle=CreateLines('resident-radius',{points,instance:circle||undefined,updatable:true},scene);circle.color=color;circle.isPickable=false;
   radius.position.set(config.spawn.x+Math.max(.8,config.radius),.25,config.spawn.z);
-  if(routeCount!==config.waypoints.length){for(const mesh of handles.slice(1))mesh.dispose();handles=[radius];for(let i=0;i<config.waypoints.length;i++)handle('waypoint:'+i);route?.dispose();route=null;routeCount=config.waypoints.length;}
-  config.waypoints.forEach((point,i)=>handles[i+1].position.set(point.x,.25,point.z));
+  if(routeCount!==config.waypoints.length){for(const mesh of handles.slice(1))mesh.dispose();for(const mark of labels)mark.dispose();labels=[];handles=[radius];for(let i=0;i<config.waypoints.length;i++){handle('waypoint:'+i);label(i);}route?.dispose();route=null;routeCount=config.waypoints.length;}
+  config.waypoints.forEach((point,i)=>{handles[i+1].position.set(point.x,.25,point.z);labels[i].mesh.position.set(point.x,.85,point.z);});
   if(config.waypoints.length){const routePoints=[config.spawn,...config.waypoints,...(config.loop?[config.waypoints[0]]:[])].map(p=>new Vector3(p.x,.14,p.z));if(route&&route.getTotalVertices()!==routePoints.length){route.dispose();route=null;}route=CreateLines('resident-route',{points:routePoints,instance:route||undefined,updatable:true},scene);route.color=Color3.FromHexString('#7dd3fc');route.isPickable=false;}
  }
  set(bot);
- return {set,setWorld(next){world=next;set(config);},tick(dt,time){avatar.update({dt,time,heading:0,moving:false});},get position(){return config.spawn;},dispose(){avatar.dispose();for(const mesh of handles)mesh.dispose();circle?.dispose();route?.dispose();material.dispose();}};
+ return {set,setWorld(next){world=next;set(config);},tick(dt,time){avatar.update({dt,time,heading:0,moving:false});},get position(){return config.spawn;},dispose(){avatar.dispose();for(const mesh of handles)mesh.dispose();for(const mark of labels)mark.dispose();circle?.dispose();route?.dispose();material.dispose();}};
 }
 export function moveBotHandle(bot,handle,point,snap=.5){
  const next=structuredClone(bot),round=v=>Math.round(v/snap)*snap;

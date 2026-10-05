@@ -141,7 +141,7 @@ export async function createRenderer(canvas,labels){
     for(const [x,y,z,r,sy]of [[0,2.72,0,1.1,1.12],[-.78,2.33,.1,.89,1.12],[.68,2.47,.25,.88,1.1],[.1,2.27,-.63,.85,1.22],[-.25,3.38,.05,.64,.95]])sphere('leaf-canopy',x,y,z,r,c,n,sy,{surface:'leaves'});
    }else{for(let i=0;i<7;i++){const a=i*2.4,r=.17+i*.025;const leaf=sphere('planter-leaf',Math.cos(a)*r,.63+i*.05,Math.sin(a)*r,.24,i%2?c:'#9dba87',n,1.6,{surface:'leaves'});leaf.rotation.z=Math.sin(a)*.38;}}
   }else if(o.type==='wall'){
-   b(0,1.3,0,w,2.6,d,o.color?c:'#c4bac5',{surface:'stone'});wood(0,.16,0,w,.18,d+.035,'#aa9290');wood(0,2.65,0,w+.1,.1,d+.09,'#cdb8ae');
+   b(0,1.3,0,w,2.6,d,o.color?c:'#c4bac5',{surface:'stone'});wood(0,.16,0,w,.18,d,'#aa9290');wood(0,2.65,0,w,.1,d,'#cdb8ae');
   }else if(o.type==='lamp'){
    cylinder('lamp-base',0,.055,0,.24,.11,'#756777',n);cylinder('lamp-pole',0,1.06,0,.055,2.06,'#74657a',n);
    b(0,2.05,0,.32,.43,.32,'#ffe3a4',{glow:true});b(0,2.31,0,.5,.09,.5,'#675b70');b(0,1.81,0,.4,.075,.4,'#675b70');
@@ -204,19 +204,19 @@ export async function createRenderer(canvas,labels){
   updateCamera();
  }
  function avatar(p){let a=avatars.get(p.id);const appearance=p.appearance??p.woka,key=JSON.stringify(appearance);
-  if(!a){const character=createAvatarRig(scene,appearance,{id:p.id});const shadow=contact('avatar-contact',p.x,.084,p.z,.9,.9);a={rig:character,shadow,el:label(p.id,p.name,'player-label'),appearanceKey:key,x:p.x,z:p.z};avatars.set(p.id,a);}
+  if(!a){const character=createAvatarRig(scene,appearance,{id:p.id});const shadow=contact('avatar-contact',p.x,.084,p.z,.9,.9);a={rig:character,shadow,el:label(p.id,p.name,'player-label'),appearanceKey:key,x:p.x,y:p.y||0,z:p.z};avatars.set(p.id,a);}
   if(a.appearanceKey!==key){a.rig.setAppearance(appearance);a.appearanceKey=key;}
   a.p=p;for(const mesh of a.rig.meshes){mesh.isPickable=p.kind==='bot';if(p.kind==='bot')mesh.metadata={type:'bot',id:p.id};}const labelText=(p.emote?p.emote+' ':'')+p.name+(p.kind==='bot'?' · Bot':'');if(a.el.textContent!==labelText)a.el.textContent=labelText;a.el.classList.toggle('self',!!p.self);a.el.classList.toggle('away',p.status==='away');return a;
  }
  function syncPeople(people){const seen=new Set();for(const p of people){seen.add(p.id);avatar(p);}for(const [id,a]of avatars)if(!seen.has(id)){a.rig.dispose();a.shadow.dispose();a.el.remove();avatars.delete(id);}}
 
- function updateCamera(){const p=rig.getPosition(),s=rig.getState();camera.position.set(p.x,p.y,p.z);camera.setTarget(new Vector3(s.target.x,.6,s.target.z));camera.getViewMatrix(true);camera.unfreezeProjectionMatrix();const projection=camera.getProjectionMatrix(true);const shift=projectionShift(framing.offset,canvas.clientWidth,canvas.clientHeight);projection.setRowFromFloats(2,projection.m[8]+shift.x,projection.m[9]+shift.y,projection.m[10],projection.m[11]);camera.freezeProjectionMatrix(projection);scene.updateTransformMatrix(true);}
+ function updateCamera(){const p=rig.getPosition(),s=rig.getState();camera.position.set(p.x,p.y,p.z);camera.setTarget(new Vector3(s.target.x,.6+(s.targetY||0),s.target.z));camera.getViewMatrix(true);camera.unfreezeProjectionMatrix();const projection=camera.getProjectionMatrix(true);const shift=projectionShift(framing.offset,canvas.clientWidth,canvas.clientHeight);projection.setRowFromFloats(2,projection.m[8]+shift.x,projection.m[9]+shift.y,projection.m[10],projection.m[11]);camera.freezeProjectionMatrix(projection);scene.updateTransformMatrix(true);}
  function updateFraming(dt){
   const s=rig.getState();if(s.framingMode==='manual'){framing={...framing,status:'manual',offset:framingTransition.step(null,dt,{manual:true})};return;}
   const {panels,hud}=measurePanelOcclusion(canvas),points=[],anchor=s.follow?s.player:s.target;
   // Conservative envelope includes the widest avatar/accessory and label anchor.
   // Remove the existing shift before fitting; otherwise projection feeds itself.
-  for(const x of [-.72,.72])for(const z of [-.72,.72])for(const y of [.02,2.85]){const p=screenPoint(anchor.x+x,anchor.z+z,y);points.push({x:p.x-framing.offset.x,y:p.y-framing.offset.y});}
+  for(const x of [-.72,.72])for(const z of [-.72,.72])for(const y of [.02,2.85]){const p=screenPoint(anchor.x+x,anchor.z+z,y+(s.follow?s.playerY:s.targetY||0));points.push({x:p.x-framing.offset.x,y:p.y-framing.offset.y});}
   const footprint={left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x)),top:Math.min(...points.map(p=>p.y)),bottom:Math.max(...points.map(p=>p.y))};
   const input={width:canvas.clientWidth,height:canvas.clientHeight,panels,hud,footprint};const key=JSON.stringify(input,(_,v)=>typeof v==='number'?Math.round(v*4)/4:v);
   if(key!==framingKey){framingGoal=frameInFreeArea(input);framingKey=key;}
@@ -254,10 +254,10 @@ export async function createRenderer(canvas,labels){
   restoreLabels();
   tick+=dt;const ambienceMotion=!motionPreference.matches&&!build;if(ambienceMotion)ambienceTime+=dt;surfaces.tick(ambienceTime,{motion:ambienceMotion});frameTimes.push(actualDt*1000);if(frameTimes.length>300)frameTimes.shift();const s=rig.step(dt);updateCamera();updateFraming(actualDt);updateCamera();
   for(const a of avatars.values()){
-   const p=a.p,rate=p.self||frame.resumed?1:1-Math.exp(-dt*20);a.x+=(p.x-a.x)*rate;a.z+=(p.z-a.z)*rate;
+   const p=a.p,rate=p.self||frame.resumed?1:1-Math.exp(-dt*20);a.x+=(p.x-a.x)*rate;a.z+=(p.z-a.z)*rate;a.y+=((p.y||0)-a.y)*rate;
    const motion=resolveAvatarMotion(p);
-   a.rig.update({position:{x:a.x,y:.08,z:a.z},...motion,dt,time:tick});
-   a.shadow.position.set(a.x,.084,a.z);positionLabel(a.el,new Vector3(a.x,2.48,a.z));
+   a.rig.update({position:{x:a.x,y:.08+a.y,z:a.z},...motion,dt,time:tick});
+   a.shadow.position.set(a.x,.084,a.z);positionLabel(a.el,new Vector3(a.x,2.48+a.y,a.z));
   }
   for(const motion of motions){if(motion.kind==='portal'){const p=1+Math.sin(ambienceTime*1.8+motion.phase)*.025;motion.mesh.scaling.setAll(p);}}
   for(const marker of [destination,guide])if(marker){const p=1+Math.sin(ambienceTime*4)*.09;marker.scaling.setAll(p);marker.position.y=.105+Math.sin(ambienceTime*3)*.014;}
@@ -325,8 +325,8 @@ export async function createRenderer(canvas,labels){
   setDestination(target){if(destination&&target&&Math.hypot(destination.position.x-target.x,destination.position.z-target.z)<.01)return;destination?.dispose();destination=marker('walk-destination',target,'#ffe6a4',.75);},
   setGuide(target){guide?.dispose();guide=marker('quest-marker',target,'#e9c74c',1.7);},
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},
-  focusPoint:act((x,z)=>rig.focusPoint(x,z)),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
+  focusPoint:act((x,z)=>rig.focusPoint(x,z)),setTarget:(x,z,y=0)=>rig.setTarget(x,z,y),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
   getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width,framing:structuredClone({...framing,targetOffset:framingGoal?.offset||null})}),getCameraAngle:()=>rig.getState().yaw,
-  getStats:()=>({presentation:{...presentation.snapshot(),drawnFrames,lastRenderDt,resizePending,avatarCount:avatars.size,actors:[...avatars].map(([id,a])=>({id,x:a.x,z:a.z}))},ambience:{reducedMotion:motionPreference.matches,paused:motionPreference.matches||build,time:ambienceTime},resources:{materials:scene.materials.length,textures:scene.textures.length,geometries:scene.geometries.length,nodes:scene.transformNodes.length},engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState(),hardwareScalingLevel:engine.getHardwareScalingLevel(),renderWidth:engine.getRenderWidth(),renderHeight:engine.getRenderHeight()}),
+  getStats:()=>({presentation:{...presentation.snapshot(),drawnFrames,lastRenderDt,resizePending,avatarCount:avatars.size,actors:[...avatars].map(([id,a])=>({id,x:a.x,y:a.y,z:a.z,seated:!!a.p.seatId,waving:resolveAvatarMotion(a.p).waving}))},ambience:{reducedMotion:motionPreference.matches,paused:motionPreference.matches||build,time:ambienceTime},resources:{materials:scene.materials.length,textures:scene.textures.length,geometries:scene.geometries.length,nodes:scene.transformNodes.length},engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState(),hardwareScalingLevel:engine.getHardwareScalingLevel(),renderWidth:engine.getRenderWidth(),renderHeight:engine.getRenderHeight()}),
   dispose(){restoreLabels();setBotPreview(null);setGhost(null);clearWorld();for(const a of avatars.values())a.el.remove();avatars.clear();destination?.dispose();destination=null;ghostImage?.dispose();for(const view of imageViews.values())view.dispose();imageViews.clear();imagePool.dispose();window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
 }

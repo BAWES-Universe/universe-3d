@@ -14,7 +14,7 @@ import {seedWorlds} from '../src/worlds.js';
 
 const folder=await mkdtemp(join(tmpdir(),'universe-open-signup-ui-')),database=join(folder,'site.sqlite'),out='evidence/open-signup';
 await mkdir(out,{recursive:true});
-const password='synthetic account password only',checks=[],errors=[],requests=[],wireRequests=[];
+const password='tenletters',checks=[],errors=[],requests=[],wireRequests=[];
 let app,browser,base,alice,bob,phone,game,ownerId,friendId;
 const config=setup=>readRuntimeConfig({UNIVERSE_REGISTRATION_MODE:'open',UNIVERSE_SETUP_ONLY:setup?'1':'0'});
 async function start(setup){app=createGameServer({database,seeds:seedWorlds,dist:new URL('../dist',import.meta.url).pathname,runtimeConfig:config(setup)});base='http://127.0.0.1:'+(await app.listen(0)).port;app.server.on('request',req=>wireRequests.push({path:req.url,referer:req.headers.referer}));}
@@ -28,6 +28,12 @@ try{
  await check('1. Two independent ordinary signups and separate email logins use the open account cap',async()=>{
   await enter(alice.page);assert.match(await alice.page.locator('.signup-disclosure').textContent(),/not verified.*no password reset.*Save your password/);assert.equal((await (await alice.context.request.get(base+'/api/signup')).json()).maxAccounts,10000);
   await alice.page.getByLabel('What should we call you?').fill('Synthetic Owner Candidate');await alice.page.getByLabel('Email',{exact:true}).fill('Creator+dev@Example.test');await alice.page.locator('#signup-form').getByLabel('Password',{exact:true}).fill(password);await alice.page.getByLabel('Confirm password',{exact:true}).fill(password+' mismatch');await alice.page.getByLabel('Confirm password',{exact:true}).press('Enter');await alice.page.getByText('Your passwords don’t match. Try them again.').waitFor();assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,0);
+  assert.equal(await alice.page.locator('#signup-password').getAttribute('minlength'),'10');
+  await alice.page.getByLabel('Confirm password',{exact:true}).fill(password);
+  const rateLimit=route=>route.request().method()==='POST'?route.fulfill({status:429,contentType:'text/plain',body:'Too many attempts'}):route.continue();
+  await alice.page.route('**/api/signup',rateLimit);await alice.page.getByLabel('Confirm password',{exact:true}).press('Enter');
+  await alice.page.getByRole('alert').filter({hasText:'Too many attempts. Wait a minute'}).waitFor();assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,0);assert(await alice.page.locator('#signup-submit').isEnabled());assert.equal(await alice.page.locator('#signup-password').inputValue(),password);
+  await alice.page.unroute('**/api/signup',rateLimit);
   await signup(alice.page,'Synthetic Owner Candidate','Creator+dev@Example.test');assert.equal((await alice.context.cookies()).length,0,'Signup does not create a session');ownerId=await login(alice.page,'  CREATOR+DEV@example.test  ');
   await enter(bob.page);await signup(bob.page,'Synthetic Friend','friend@example.test');friendId=await login(bob.page,'FRIEND@example.test');assert.notEqual(ownerId,friendId);
   assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,2);assert.match(ownerId,/^[a-f0-9-]{36}$/);await alice.page.screenshot({path:out+'/setup-account-desktop.png',fullPage:true});

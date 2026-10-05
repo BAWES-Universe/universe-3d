@@ -113,7 +113,7 @@ try{
   for(const {control,held} of [{control:'Return to world',held:true},{control:'Close this panel',held:true},{control:'Return to world',held:false},{control:'Close this panel',held:false}]){
    // Let the prior surface dismissal's documented500ms keyup guard expire.
    await p.waitForTimeout(600);const point=await p.evaluate(()=>window.__universe.getScreenPoint(0,0,0));assert.equal(await p.evaluate(point=>document.elementFromPoint(point.x,point.y)?.id,point),'game');await p.mouse.click(point.x,point.y);assert(await p.locator('#game').evaluate(node=>document.activeElement===node));
-   await p.keyboard.press('Space');await p.locator('#dialog-actions').getByRole('button',{name:'Open window form',exact:true}).click();await input().waitFor();await surface('content');const frame=await p.locator('iframe.embedded-frame').elementHandle();await input().pressSequentially('Native keyboard dismissal proof');
+   await p.keyboard.press('t');await p.locator('#dialog-actions').getByRole('button',{name:'Open window form',exact:true}).click();await input().waitFor();await surface('content');const frame=await p.locator('iframe.embedded-frame').elementHandle();await input().pressSequentially('Native keyboard dismissal proof');
    // Do not let the item-dialog close timestamp mask the content-dismissal case.
    await p.waitForTimeout(600);await p.locator('.embedded-header strong').click();await p.keyboard.press('Tab');assert(await p.getByRole('button',{name:'Return to world',exact:true}).evaluate(node=>document.activeElement===node));
    if(control==='Close this panel')for(let i=0;i<4;i++)await p.keyboard.press('Tab');assert(await p.getByRole('button',{name:control,exact:true}).evaluate(node=>document.activeElement===node));

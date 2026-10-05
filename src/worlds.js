@@ -1,6 +1,6 @@
 import {SILENT_MEDIA_MESSAGE} from './media-policy-copy.js';
 import {imagePhysicalSize} from './image-asset-schema.js';
-import {cloneWithImageContext,imageGeometry,resolvedImage} from './image-asset-context.js';
+import {cloneWithImageContext,inheritImageDefinitions,imageGeometry,resolvedImage} from './image-asset-context.js';
 import {terrainBlocks} from './terrain.js';
 // Original standalone room layouts; source-native Woka identity is rendered as legacy sprites.
 export const CATALOG = {
@@ -45,11 +45,42 @@ const assembly={...emptyScene('assembly'),objects:[
 export const seedWorlds=[{id:'universe',name:'Our Universe',rooms:[{id:'commons',name:'The Commons',scene:commons},{id:'studio',name:'The Studio',scene:studio},{id:'assembly',name:'Assembly',scene:assembly}]}];
 export const clone = cloneWithImageContext;
 export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');const size=imagePhysicalSize(entry.version);return{width:size.widthMetres,depth:size.heightMetres};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
-export function collisionBox(o,scene){if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);if(Math.round((o.rotation||0)/90)%2)[width,depth]=[depth,width];return {x:o.x,z:o.z,width,depth};}
+export function collisionBox(o,scene){if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);const angle=(o.rotation||0)*Math.PI/180,c=Math.round(Math.abs(Math.cos(angle))*1e12)/1e12,s=Math.round(Math.abs(Math.sin(angle))*1e12)/1e12;return {x:o.x,z:o.z,width:width*c+depth*s,depth:width*s+depth*c};}
 export function contains(area,x,z,padding=0){return Math.abs(x-area.x)<=area.width/2+padding&&Math.abs(z-area.z)<=area.depth/2+padding;}
 export function collisionBoxes(scene,object){if(object.type==='image')return imageGeometry(scene,object).collisionCells;return CATALOG[object.type]?.solid?[collisionBox(object,scene)]:[];}
 export function canStand(scene,x,z,r=.3){if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(r)||r<0||Math.abs(x)>scene.bounds.width/2-r||Math.abs(z)>scene.bounds.depth/2-r)return false;try{if(terrainBlocks(scene,x,z,r))return false;}catch{return false;}for(const object of scene.objects){try{if(object.type==='image'&&!contains(imageGeometry(scene,object).editBounds,x,z,r))continue;if(collisionBoxes(scene,object).some(box=>contains(box,x,z,r)))return false;}catch{return false;}}return true;}
-export function movePlayer(scene,p,dx,dz){let {x,z}=p;const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.15));for(let i=0;i<steps;i++){if(canStand(scene,x+dx/steps,z))x+=dx/steps;if(canStand(scene,x,z+dz/steps))z+=dz/steps;}return {x,z};}
+// Feet are measured above the room floor. Image masks and blocked terrain keep
+// their authored ground-only contract: they are barriers, never invented ledges.
+export const PLAYER_RADIUS=.3;
+export const SOLID_HEIGHTS=Object.freeze({table:1.01,chair:1.22,sofa:1.3,plant:1.15,tree:4.3,wall:2.7,lamp:2.355,screen:2.445,podium:1.68,board:1.855,bench:.625,rock:.76});
+export function objectTop(object){return SOLID_HEIGHTS[object.type]??Infinity;}
+export function canOccupy(scene,x,z,y=0,r=PLAYER_RADIUS){
+ if(!Number.isFinite(y)||y<0||!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)>scene.bounds.width/2-r||Math.abs(z)>scene.bounds.depth/2-r)return false;
+ try{if(terrainBlocks(scene,x,z,r))return false;for(const object of scene.objects){if(y>=objectTop(object)-.00001)continue;if(collisionBoxes(scene,object).some(box=>contains(box,x,z,r)))return false;}}catch{return false;}
+ return true;
+}
+export function supportHeight(scene,x,z,ceiling=Infinity,r=PLAYER_RADIUS){
+ let top=0;
+ for(const object of scene.objects){const height=objectTop(object);if(!Number.isFinite(height)||height>ceiling+.00001||height<=top)continue;if(collisionBoxes(scene,object).some(box=>contains(box,x,z,r-.0001)))top=height;}
+ return top;
+}
+export function movePlayer(scene,p,dx,dz){let {x,z}=p;const y=p.y??0,steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.15));for(let i=0;i<steps;i++){if(canOccupy(scene,x+dx/steps,z,y))x+=dx/steps;if(canOccupy(scene,x,z+dz/steps,y))z+=dz/steps;}return {...p,x,z};}
+export function seatPose(scene,object){
+ const height={chair:.61,bench:.625,sofa:.87}[object?.type];if(height===undefined)return null;
+ return{x:object.x,y:0,z:object.z,heading:-(object.rotation||0)*Math.PI/180,seatId:object.id,seatHeight:height};
+}
+export function canReachSeat(scene,position,object){
+ const pose=seatPose(scene,object);if(!pose||(position.y??0)>.05||Math.hypot(position.x-pose.x,position.z-pose.z)>2.7)return false;
+ const withoutSeat=inheritImageDefinitions(scene,{...scene,objects:scene.objects.filter(item=>item.id!==object.id)}),moved=movePlayer(withoutSeat,{x:position.x,z:position.z},pose.x-position.x,pose.z-position.z);
+ return Math.hypot(moved.x-pose.x,moved.z-pose.z)<.01;
+}
+export function seatExit(scene,object){
+ if(!seatPose(scene,object))return null;const box=collisionBox(object,scene),angle=-(object.rotation||0)*Math.PI/180;
+ // Prefer the front, but do not cross another obstacle to leave the seat.
+ const withoutSeat=inheritImageDefinitions(scene,{...scene,objects:scene.objects.filter(item=>item.id!==object.id)});
+ for(const turn of [0,Math.PI/2,-Math.PI/2,Math.PI]){const a=angle+turn,dx=Math.sin(a),dz=Math.cos(a),distance=Math.abs(dx)*box.width/2+Math.abs(dz)*box.depth/2+PLAYER_RADIUS+.14,p={x:object.x+dx*distance,z:object.z+dz*distance};if(!canStand(scene,p.x,p.z))continue;const moved=movePlayer(withoutSeat,{x:object.x,z:object.z},p.x-object.x,p.z-object.z);if(Math.hypot(moved.x-p.x,moved.z-p.z)<.01)return{...p,y:0};}
+ return null;
+}
 export function nearestWalkable(scene,p){if(canStand(scene,p.x,p.z))return p;for(let r=.5;r<20;r+=.5)for(let a=0;a<Math.PI*2;a+=Math.PI/8){let q={x:p.x+Math.cos(a)*r,z:p.z+Math.sin(a)*r};if(canStand(scene,q.x,q.z))return q;}return scene.spawn;}
 // Bounded A* for click movement, sharing the same solid-object predicate as keyboard movement.
 export function findPath(scene,start,end){const g=.5,key=(x,z)=>x+','+z;const s={x:Math.round(start.x/g),z:Math.round(start.z/g)},t={x:Math.round(end.x/g),z:Math.round(end.z/g)};if(!canStand(scene,t.x*g,t.z*g))return [];

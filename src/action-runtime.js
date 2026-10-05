@@ -1,5 +1,6 @@
 import {itemActions,actionName,safeActionUrl} from './action-schema.js';
 import {contains} from './worlds.js';
+import {activeMediaArea} from './media-policy-copy.js';
 import {createAreaActionController} from './actions.js';
 import {createAudioActions} from './audio-actions.js';
 import {mountEmbeddedPanels} from './embedded-panels.js';
@@ -8,6 +9,17 @@ const legacyAreaActions=area=>[...(area.action==='link'&&area.url?[{id:'legacy-a
 export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve=async()=>{},onDialog,onCloseDialog=()=>{},onNavigate,onOpenChange=()=>{},getGameWidth,onWindowChange=()=>{},toast=()=>{}}){
  let scope='',userId='',epoch=0,activeMenu=null,lastFrameRef=null,lastFrameKey=null,restoreEpoch=0;const inflight=new Map(),resources=new Map(),controls=new Map(),landingExits=new Set();
  const areaList=el('div','area-action-list'),audioRoot=el('div','world-audio-controls');controlsRoot.replaceChildren(areaList,audioRoot);
+ // Automatic area messages are readable, dismissible notices, not movement-locking dialogs.
+ const notices=el('section','area-entry-messages');notices.setAttribute('aria-label','Area messages');notices.hidden=true;(root.parentElement||controlsRoot.parentElement||controlsRoot).append(notices);
+ const noticeEntries=new Map(),dismissedNotices=new Map();
+ const banner=document.getElementById?.('area-banner');let bannerKey='';
+ if(banner){banner.setAttribute('role','status');banner.setAttribute('aria-live','polite');const dismiss=el('button','area-banner-dismiss','×');dismiss.type='button';dismiss.setAttribute('aria-label','Dismiss area message');dismiss.onclick=()=>{banner.dataset.dismissed='true';};banner.append(dismiss);}
+ function showNotice(id,message,ref){
+  if(dismissedNotices.has(id))return;
+  let row=noticeEntries.get(id);if(!row){const card=el('article','area-entry-message'),title=el('strong'),text=el('p'),dismiss=el('button','','×');dismiss.type='button';dismiss.setAttribute('aria-label','Dismiss '+message.title);card.setAttribute('role','status');card.setAttribute('aria-live','polite');dismiss.onclick=()=>{dismissedNotices.set(id,{ref:{...ref},fingerprint:JSON.stringify(find(ref)?.action)});card.hidden=true;notices.hidden=![...noticeEntries.values()].some(v=>!v.card.hidden);};card.append(title,text,dismiss);notices.append(card);row={card,title,text};noticeEntries.set(id,row);}
+  row.title.textContent=message.title;row.text.textContent=message.text;row.card.hidden=false;notices.hidden=false;
+ }
+ function clearNotice(id){const row=noticeEntries.get(id);if(row){row.card.remove();noticeEntries.delete(id);}notices.hidden=![...noticeEntries.values()].some(v=>!v.card.hidden);}
  const frames=mountEmbeddedPanels({root,onOpenChange,getGameWidth,onWindowChange,toast});
  let storedVolume=1;try{storedVolume=Number(localStorage.getItem('universe-world-volume')??1);}catch{}
  const audio=createAudioActions({initialVolume:storedVolume,saveVolume:value=>{try{localStorage.setItem('universe-world-volume',String(value));}catch{}},onChange:renderAudio,onError:()=>{}});
@@ -41,7 +53,7 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
    const action=response.action;if(['type','url','target','entry','message','volume','loop','width','closable'].some(field=>action[field]!==current.action[field]))throw Error('This action changed. Open the item again.');const safe=action.url?safeActionUrl(action.url,location.origin):null;
    if(action.url&&!safe)throw Error('This item needs a safe HTTP(S), asset or protected document address');
    resources.set(id,{ref,fingerprint:JSON.stringify(current.action)});activeMenu=null;
-   if(action.type==='message')onDialog({owner:'room-action:'+id,eyebrow:response.entity.name,title:action.name||action.label||'A message for you',text:action.message||''});
+   if(action.type==='message'){const message={owner:'room-action:'+id,eyebrow:response.entity.name,title:action.name||action.label||'A message for you',text:action.message||''};if(ref.entityType==='area'&&!deliberate)showNotice(id,message,ref);else onDialog(message);}
    if(action.type==='teleport'){await onNavigate(action.target,{...(action.entry===undefined?{}:{entry:action.entry}),sourceAction:{...ref,revision:response.revision}});return true;}
    if(action.type==='audio'){
     if(safe.kind==='document')throw Error('Protected documents download; they cannot be used as room audio');
@@ -65,12 +77,14 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
   const trigger=action.trigger??(action.type==='audio'||action.type==='teleport'?'enter':'interact');
   if(trigger==='enter'&&!(action.type==='teleport'&&landingExits.has(area.id)))void activate(ref);
  },leave:({area,action})=>{const id=key({roomId:scope,entityType:'area',entityId:area.id,actionId:action.id});controls.get(id)?.parentElement?.remove();controls.delete(id);release(id);}});
- function release(id){if(lastFrameRef&&key(lastFrameRef)===id){lastFrameRef=null;restoreEpoch++;}const pending=inflight.get(id);try{pending?.popup?.close();}catch{}inflight.delete(id);resources.delete(id);audio.stop(id);frames.close(id);if(!frames.isOpen()&&!lastFrameRef)lastFrameKey=null;}
- function clear(){epoch++;restoreEpoch++;landingExits.clear();lastFrameRef=null;lastFrameKey=null;if(activeMenu)onCloseDialog('room-item:'+activeMenu.entityId);for(const id of resources.keys())onCloseDialog('room-action:'+id);areaController.clear();for(const pending of inflight.values())try{pending.popup?.close();}catch{}inflight.clear();resources.clear();controls.clear();areaList.replaceChildren();audio.clear();frames.clear();activeMenu=null;}
+ function release(id){clearNotice(id);if(lastFrameRef&&key(lastFrameRef)===id){lastFrameRef=null;restoreEpoch++;}const pending=inflight.get(id);try{pending?.popup?.close();}catch{}inflight.delete(id);resources.delete(id);audio.stop(id);frames.close(id);if(!frames.isOpen()&&!lastFrameRef)lastFrameKey=null;}
+ function clear(){dismissedNotices.clear();for(const id of [...noticeEntries.keys()])clearNotice(id);bannerKey='';if(banner)delete banner.dataset.dismissed;epoch++;restoreEpoch++;landingExits.clear();lastFrameRef=null;lastFrameKey=null;if(activeMenu)onCloseDialog('room-item:'+activeMenu.entityId);for(const id of resources.keys())onCloseDialog('room-action:'+id);areaController.clear();for(const pending of inflight.values())try{pending.popup?.close();}catch{}inflight.clear();resources.clear();controls.clear();areaList.replaceChildren();audio.clear();frames.clear();activeMenu=null;}
  function arrive(roomId,scene,position){clear();scope=roomId;userId=getState().user?.id||'';for(const area of scene?.areas||[])if(contains(area,position.x,position.z))landingExits.add(area.id);}
  function update({suppressed=false}={}){
   const state=getState(),room=state.room?.id||'',person=state.user?.id||'';if(scope!==room||userId!==person){clear();scope=room;userId=person;lastFrameRef=null;}
   if(!state.ready||!room){clear();return;}
+  for(const[id,value]of dismissedNotices){const current=find(value.ref);if(!current||JSON.stringify(current.action)!==value.fingerprint||!contains(current.entity,state.position.x,state.position.z))dismissedNotices.delete(id);}
+  if(banner){const area=activeMediaArea((state.scene?.areas||[]).filter(area=>contains(area,state.position.x,state.position.z)));const next=area?JSON.stringify([room,person,area.id,area.message,area.action]):'';if(next!==bannerKey){bannerKey=next;delete banner.dataset.dismissed;}}
   if(activeMenu){const item=state.scene.objects.find(o=>o.id===activeMenu.entityId);if(!item){onCloseDialog('room-item:'+activeMenu.entityId);activeMenu=null;}}
   for(const id of landingExits){const area=state.scene.areas?.find(area=>area.id===id);if(!area||!contains(area,state.position.x,state.position.z))landingExits.delete(id);}
   const scene={...state.scene,areas:(state.scene.areas||[]).map(area=>({...area,actions:legacyAreaActions(area)}))};areaController.update(room,scene,state.position,{suppressed});
@@ -79,5 +93,5 @@ export function mountActionRuntime({root,controlsRoot,api,getState,beforeResolve
  function cancelRestore(){restoreEpoch++;for(const[id,token]of inflight)if(token.restoring)inflight.delete(id);}
  function close(){cancelRestore();frames.clear();}
  async function restore(contentKey,{focus=true,isCurrent=()=>true}={}){const state=getState();if(!lastFrameRef||contentKey!==lastFrameKey||scope!==state.room?.id||userId!==state.user?.id||!state.ready)return false;cancelRestore();const current=restoreEpoch;const ok=await activate(lastFrameRef,{restoring:true,focus,isCurrent:()=>current===restoreEpoch&&contentKey===lastFrameKey&&isCurrent()});return current===restoreEpoch&&isCurrent()?ok:null;}
- return {openItem,activate,update,clear,arrive,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,windowState:()=>frames.windowState(),setWindowForeground:value=>frames.setForeground(value),setWindowMaximized:value=>frames.setMaximized(value),handleWindowEscape:event=>frames.handleEscape(event),refreshWindowLayout:()=>frames.refreshLayout(),close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();controlsRoot.replaceChildren();}};
+ return {openItem,activate,update,clear,arrive,isOpen:()=>frames.isOpen(),hasFocus:()=>frames.hasFocus(),historyKey:()=>lastFrameKey,windowState:()=>frames.windowState(),setWindowForeground:value=>frames.setForeground(value),setWindowMaximized:value=>frames.setMaximized(value),handleWindowEscape:event=>frames.handleEscape(event),refreshWindowLayout:()=>frames.refreshLayout(),close,restore,audio,hasActions:item=>itemActions(item).length>0,destroy(){clear();frames.destroy();notices.remove();banner?.querySelector('.area-banner-dismiss')?.remove();controlsRoot.replaceChildren();}};
 }

@@ -66,6 +66,7 @@ export function describeMediaError(error, kind = 'microphone') {
   const label = labelFor(kind);
   if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') return `${label} was not allowed. Nothing is being shared. You can allow it in your browser and try again.`;
   if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') return `No ${kind === 'camera' ? 'camera' : 'microphone'} was found. Connect a device and try again.`;
+  if (error?.name === 'OverconstrainedError') return `The selected ${kind === 'camera' ? 'camera' : 'microphone'} is unavailable. Choose another device in Settings and try again.`;
   if (error?.name === 'NotReadableError' || error?.name === 'TrackStartError') return `${label} could not start. Another application may be using it.`;
   if (error?.name === 'AbortError') return `${label} was cancelled. Nothing is being shared.`;
   return `${label} could not start: ${String(error?.message || 'browser capture failed').slice(0, 180)}`;
@@ -87,6 +88,38 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   // Captured tracks awaiting policy/join are still live devices and must be stoppable.
   const pendingStreams = { microphone: null, camera: null, screen: null };
   const devices = Object.fromEntries(KINDS.map(k => [k, { status: 'off', error: '' }]));
+  // Tab-local choices are preferences, never permission or restored capture intent.
+  const settings = {microphone:'',camera:'',noiseSuppression:true,echoCancellation:true,cameraQuality:'normal',mirror:true};
+  let deviceList = [], deviceListError = '', listingDevices = false, listEpoch = 0, devicesRequested = false;
+  async function refreshDevices() {
+    if (disposed) return;
+    devicesRequested = true;
+    const ticket = ++listEpoch; listingDevices = true; deviceListError = ''; emit();
+    try {
+      if (typeof env.navigator?.mediaDevices?.enumerateDevices !== 'function') throw Error('Device selection is unavailable in this browser. The system default is still used.');
+      const list = await env.navigator.mediaDevices.enumerateDevices();
+      if (disposed || ticket !== listEpoch) return;
+      deviceList = list.filter(device => ['audioinput','videoinput','audiooutput'].includes(device.kind)).map(device => ({deviceId:device.deviceId,kind:device.kind,label:device.label}));
+    } catch (error) { if (!disposed && ticket === listEpoch) deviceListError = error.message || 'Devices could not be listed. Try again.'; }
+    finally { if (!disposed && ticket === listEpoch) { listingDevices = false; emit(); } }
+  }
+  async function setCaptureSetting(name, value) {
+    if (disposed || !Object.hasOwn(settings,name)) return false;
+    if (['camera','microphone'].includes(name) && (typeof value !== 'string' || (value && !deviceList.some(d => d.deviceId === value && d.kind === (name === 'camera' ? 'videoinput' : 'audioinput'))))) return false;
+    if (['noiseSuppression','echoCancellation','mirror'].includes(name) && typeof value !== 'boolean') return false;
+    if (name === 'cameraQuality' && !['low','normal','high'].includes(value)) return false;
+    if (settings[name] === value) return true;
+    settings[name] = value;
+    const kind = name === 'mirror' ? null : ['camera','cameraQuality'].includes(name) ? 'camera' : 'microphone';
+    const restart = kind && devices[kind].status === 'on';
+    // A settings change cancels pending capture. Only an already-on device can
+    // restart from this fresh gesture, through the existing authority fences.
+    if (kind && (restart || devices[kind].status === 'requesting' || awayIntent[kind])) stopDevice(kind);
+    emit();
+    return restart ? toggleDevice(kind) : true;
+  }
+  const deviceChange = () => { if (devicesRequested) void refreshDevices(); };
+  env.navigator?.mediaDevices?.addEventListener?.('devicechange', deviceChange);
   const peers = new Map();
   const earlyCandidates = new Map();
   const deviceJoins = {microphone:null,camera:null,screen:null};
@@ -152,7 +185,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   const emit = () => { if (!disposed) onChange(snapshot()); };
   function snapshot() {
-    return { capabilities, roomId, joined, joining, policy, policyError, iceError, transportNotice:scopedPolicyError(policy)||proximityMediaNotice(policy), iceTransport:ice.transport(iceContext())||(policy&&!hasProximityScope(policy)&&!policy.iceRequired&&!policy.iceScope?'host-only':null), notice, localSilent, awaitingPolicy,
+    return { capabilities, settings:{...settings}, availableDevices:deviceList.map(d=>({...d})), listingDevices, deviceListError, roomId, joined, joining, policy, policyError, iceError, transportNotice:scopedPolicyError(policy)||proximityMediaNotice(policy), iceTransport:ice.transport(iceContext())||(policy&&!hasProximityScope(policy)&&!policy.iceRequired&&!policy.iceScope?'host-only':null), notice, localSilent, awaitingPolicy,
       awayPrivacy: {...awayLatch.snapshot(),...awayPreference.snapshot(),conversation:readAwayConversation(policy),suspended:KINDS.filter(kind=>!!awayIntent[kind])},
       devices: Object.fromEntries(KINDS.map(k => [k, { ...devices[k], stream: streams[k] }])),
       peers: [...peers.values()].map(p => ({ id: p.id, name: p.info.displayName || p.info.name || 'Participant', canSend: p.info.canSend, canReceive: p.info.canReceive,
@@ -565,7 +598,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       // Invoke immediately from the user's click so getDisplayMedia retains activation.
       const capture = kind === 'screen'
         ? env.navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-        : env.navigator.mediaDevices.getUserMedia(kind === 'camera' ? { video: { width: { ideal: 640 }, height: { ideal: 360 } }, audio: false } : { video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        : env.navigator.mediaDevices.getUserMedia(kind === 'camera' ? { video: { width: { ideal: {low:320,normal:640,high:1280}[settings.cameraQuality] }, height: { ideal: {low:180,normal:360,high:720}[settings.cameraQuality] }, ...(settings.camera ? {deviceId:{exact:settings.camera}} : {}) }, audio: false } : { video: false, audio: { echoCancellation: settings.echoCancellation, noiseSuppression: settings.noiseSuppression, autoGainControl: true, ...(settings.microphone ? {deviceId:{exact:settings.microphone}} : {}) } });
       stream = await capture; checkVisibility();
       if (!ownsCapture()) { stopStream(stream, awayLatch.snapshot().away); return false; }
       pendingStreams[kind] = stream;
@@ -583,7 +616,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       for (const track of stream.getTracks()) track.onended = () => { if (streams[kind] === stream) { stopDevice(kind, 'Sharing stopped by your browser or device.'); emit(); } };
       for (const p of peers.values()) await applyTracks(p);
       if (!ownsCapture()) { stopStream(stream, awayLatch.snapshot().away); return false; }
-      emit(); return true;
+      emit(); if (devicesRequested) void refreshDevices(); return true;
     } catch (error) {
       stopStream(stream);
       if (ownsCapture()) { devices[kind] = { status: 'error', error: describeMediaError(error, kind) }; emit(); }
@@ -676,6 +709,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     }
   }
   function destroy() {
+    listEpoch++; env.navigator?.mediaDevices?.removeEventListener?.('devicechange', deviceChange);
     if (disposed) return;
     env.document?.removeEventListener?.('visibilitychange', checkVisibility);
     retireIce();disposed = true; generation++; policyEpoch++; joined = false; joining = false; retirePolicyRequest();
@@ -685,7 +719,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   env.document?.addEventListener?.('visibilitychange', checkVisibility);
   checkVisibility();
-  return { snapshot, update, checkVisibility, setKeepMicrophoneAway, checkLocalPolicy, acceptCommittedRoom, refreshPolicy, acceptPolicy, setJoined, toggleDevice, retry, onSignal, destroy };
+  return { snapshot, update, refreshDevices, setCaptureSetting, checkVisibility, setKeepMicrophoneAway, checkLocalPolicy, acceptCommittedRoom, refreshPolicy, acceptPolicy, setJoined, toggleDevice, retry, onSignal, destroy };
 }
 
 const ICONS = {
@@ -700,10 +734,31 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
   if (!root) throw new Error('A media container is required');
   const awayHelpId = `media-away-help-${++mediaMountSequence}`;
   root.classList.add('universe-media');
-  root.innerHTML = `<div class="media-peers" aria-label="Call participants"></div><section class="media-dock" aria-label="Live media controls"><div class="media-context"><span class="media-dot"></span><div><strong class="media-context-label">Spatial audio</strong><span class="media-context-detail">Mic and camera stay off until you choose</span></div></div><div class="media-actions"><button class="media-join" type="button">Join audio</button><span class="media-divider"></span>${KINDS.map(k => `<button type="button" class="media-device" data-media="${k}" aria-label="${labelFor(k)} off" aria-pressed="false" title="Turn on ${k}">${icon(k)}<span>${k === 'microphone' ? 'Mic' : k === 'camera' ? 'Camera' : 'Share'}</span></button>`).join('')}<button class="media-details-toggle" type="button" aria-expanded="false" aria-label="Media connection details">···</button></div></section><div class="media-warning" role="status" hidden></div><section class="media-details" aria-label="Media connection details" hidden><div class="media-details-heading"><strong>Connection details</strong><button type="button" class="media-retry">Retry connections</button></div><p class="media-policy-detail"></p><fieldset class="media-away-settings"><legend>When this page is hidden</legend><label class="media-away-choice"><input type="checkbox" class="media-keep-microphone" aria-describedby="${awayHelpId}"><span>Keep my microphone on while away</span></label><p id="${awayHelpId}" class="media-away-help"></p><p class="media-away-status" role="status"></p></fieldset><div class="media-transport"></div><p class="media-network-note">Peer-to-peer transport · Server ICE configuration is requested after authorized opt-in.</p></section>`;
+  root.innerHTML = `<div class="media-peers" aria-label="Call participants"></div><section class="media-dock" aria-label="Live media controls"><div class="media-context"><span class="media-dot"></span><div><strong class="media-context-label">Spatial audio</strong><span class="media-context-detail">Mic and camera stay off until you choose</span></div></div><div class="media-actions"><button class="media-join" type="button">Join audio</button><span class="media-divider"></span>${KINDS.map(k => `<button type="button" class="media-device" data-media="${k}" aria-label="${labelFor(k)} off" aria-pressed="false" title="Turn on ${k}">${icon(k)}<span>${k === 'microphone' ? 'Mic' : k === 'camera' ? 'Camera' : 'Share'}</span></button>`).join('')}<button class="media-details-toggle" type="button" aria-expanded="false" aria-label="Media connection details" title="Microphone, camera and connection settings">Settings</button></div></section><div class="media-warning" role="status" hidden></div><section class="media-details" aria-label="Media connection details" hidden><div class="media-details-heading"><strong>Sound and video</strong><button type="button" class="media-settings-close" aria-label="Close media settings">×</button></div><div class="media-self-preview"><video autoplay muted playsinline aria-label="Your camera preview"></video><span class="media-preview-empty">Your camera is off</span><span class="media-preview-label">You · camera preview</span></div><p class="media-preview-help">Turning on your camera also shares it with your authorized conversation.</p><div class="media-setting-row"><label for="${awayHelpId}-camera">Camera</label><select id="${awayHelpId}-camera" data-media-setting="camera"><option value="">System default</option></select><button type="button" class="media-settings-camera">Turn camera on</button></div><p class="media-capture-error" data-capture-error="camera" role="status" hidden></p><label class="media-setting-row">Camera quality<select data-media-setting="cameraQuality"><option value="low">Save data · 180p</option><option value="normal">Normal · 360p</option><option value="high">High · 720p</option></select></label><label class="media-setting-choice"><input type="checkbox" data-media-setting="mirror" checked>Mirror my preview</label><div class="media-setting-row"><label for="${awayHelpId}-microphone">Microphone</label><select id="${awayHelpId}-microphone" data-media-setting="microphone"><option value="">System default</option></select><button type="button" class="media-settings-microphone">Turn microphone on</button></div><p class="media-capture-error" data-capture-error="microphone" role="status" hidden></p><label class="media-setting-choice"><input type="checkbox" data-media-setting="noiseSuppression" checked>Reduce background noise</label><label class="media-setting-choice"><input type="checkbox" data-media-setting="echoCancellation" checked>Reduce echo</label><label class="media-setting-row">Speakers<select class="media-speaker"><option value="">System default</option></select></label><p class="media-speaker-help"></p><div class="media-device-list-actions"><button type="button" class="media-refresh-devices">Refresh devices</button><span class="media-device-list-status" role="status"></span></div><p class="media-device-help">Device names appear after you allow access. Choosing a device while it is off keeps it off. Switching an active device restarts it.</p><details class="media-connection-details"><summary>Connection details</summary><button type="button" class="media-retry">Retry connections</button><p class="media-policy-detail"></p><div class="media-transport"></div><p class="media-network-note"></p></details><fieldset class="media-away-settings"><legend>When this page is hidden</legend><label class="media-away-choice"><input type="checkbox" class="media-keep-microphone" aria-describedby="${awayHelpId}"><span>Keep my microphone on while away</span></label><p id="${awayHelpId}" class="media-away-help"></p><p class="media-away-status" role="status"></p></fieldset></section>`;
   const $ = selector => root.querySelector(selector);
   let destroyed = false, expanded = false, lastWarning = '', lastRoom = currentRoomId(getState());
   const elements = new Map();
+  let selectedSpeaker = '', speakerError = '', speakerEpoch = 0;
+  const canSelectSpeaker = typeof HTMLMediaElement.prototype.setSinkId === 'function';
+  function renderOptions(select, list, selected, kind) {
+    const options = [{deviceId:'',label:'System default'},...list.filter(d=>d.kind===kind&&d.deviceId).map((d,i)=>({...d,label:d.label||`${kind==='videoinput'?'Camera':kind==='audioinput'?'Microphone':'Speaker'} ${i+1}`}))];
+    if(selected&&!options.some(d=>d.deviceId===selected))options.push({deviceId:selected,label:'Selected device (disconnected)'});
+    const signature=JSON.stringify(options);
+    if(select.dataset.options!==signature){select.replaceChildren(...options.map(d=>new Option(d.label,d.deviceId)));select.dataset.options=signature;}
+    select.value=selected;
+  }
+  function setExpanded(value) {
+    expanded = !!value; $('.media-details').hidden = !expanded;
+    $('.media-details-toggle').setAttribute('aria-expanded', String(expanded));
+    if (expanded) { void session.refreshDevices(); $('.media-settings-close').focus(); }
+    else { $('.media-details-toggle').focus(); }
+  }
+  async function applySpeaker(media) {
+    if(!canSelectSpeaker)return;
+    const requestedSpeaker=selectedSpeaker;
+    try { await media.setSinkId(requestedSpeaker);if(!destroyed&&requestedSpeaker!==selectedSpeaker)await applySpeaker(media); }
+    catch(error) { if(!destroyed&&requestedSpeaker===selectedSpeaker){speakerError='Speaker could not change. Use your browser or system sound settings.';$('.media-speaker-help').textContent=speakerError;} }
+  }
   function mediaTile(key, name, kind, stream, local = false) {
     let tile = elements.get(key);
     if (!tile) {
@@ -718,10 +773,10 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
     }
     tile.title.textContent = `${name}${kind === 'screen' ? ' · screen' : kind === 'microphone' ? ' · audio' : ''}`;
     const live = stream?.getTracks().some(t => t.readyState === 'live' && !t.muted);
-    tile.el.classList.toggle('media-audio-tile', kind === 'microphone'); tile.el.classList.toggle('media-track-muted', !live);
+    tile.el.classList.toggle('media-self-camera', local && kind === 'camera'); tile.el.dataset.mirrored=String(local && kind === 'camera' && session.snapshot().settings.mirror); tile.el.classList.toggle('media-audio-tile', kind === 'microphone'); tile.el.classList.toggle('media-track-muted', !live);
     tile.fallback.textContent = kind === 'microphone' ? (live ? 'Audio track live' : 'No audio arriving') : 'Waiting for video';
     if (tile.media.srcObject !== stream) {
-      tile.media.srcObject = stream;
+      tile.media.srcObject = stream; if(!local)void applySpeaker(tile.media);
       const playback = tile.media.play();
       playback?.catch(() => { if (!destroyed && elements.has(key) && !local) tile.play.hidden = false; });
     }
@@ -729,6 +784,25 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
   }
   function render(s) {
     if (destroyed) return;
+    for(const kind of ['camera','microphone']) {
+      const select=$(`[data-media-setting="${kind}"]`);
+      renderOptions(select,s.availableDevices,s.settings[kind],kind==='camera'?'videoinput':'audioinput');
+      select.disabled=s.listingDevices||!s.capabilities.devices;
+      const button=$(`.media-settings-${kind}`),status=s.devices[kind].status;
+      const error=$(`[data-capture-error="${kind}"]`);error.textContent=s.devices[kind].error;error.hidden=!s.devices[kind].error;
+      button.textContent=status==='requesting'?'Cancel request':status==='on'?`Turn ${kind} off`:`Turn ${kind} on`;
+    }
+    for(const name of ['noiseSuppression','echoCancellation','mirror'])$(`[data-media-setting="${name}"]`).checked=s.settings[name];
+    $('[data-media-setting="cameraQuality"]').value=s.settings.cameraQuality;
+    renderOptions($('.media-speaker'),s.availableDevices,selectedSpeaker,'audiooutput');$('.media-speaker').disabled=!canSelectSpeaker;
+    $('.media-speaker-help').textContent=speakerError||(!canSelectSpeaker?'Choose speakers in your browser or system sound settings.':'Applies to conversation audio.');
+    $('.media-device-list-status').textContent=s.deviceListError||(s.listingDevices?'Looking for devices…':'');
+    $('.media-refresh-devices').disabled=s.listingDevices;
+    const preview=$('.media-self-preview video'),camera=s.devices.camera.stream;
+    if(preview.srcObject!==camera){preview.srcObject=camera;if(camera)preview.play()?.catch(()=>{});else preview.pause();}
+    preview.hidden=!camera;preview.style.transform=s.settings.mirror?'scaleX(-1)':'none';
+    $('.media-preview-empty').hidden=!!camera;
+    $('.media-self-preview').dataset.live=String(!!camera);
     const context = s.policy?.context, silent = s.localSilent || context?.kind === 'silent';
     const label = s.localSilent ? 'No calls' : context?.label || context?.name || 'Spatial audio';
     $('.media-context-label').textContent = label;
@@ -741,6 +815,7 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
       const unsupported = kind === 'screen' ? s.capabilities.screenReason : s.capabilities.deviceReason;
       const denied = silent || s.awaitingPolicy || !!s.policyError || !!s.iceError || publishingDenied(s.policy);
       button.disabled = !!unsupported || denied || !s.roomId || !s.policy;
+      const settingsButton=$(`.media-settings-${kind}`);if(settingsButton)settingsButton.disabled=button.disabled;
       const suspended = s.awayPrivacy.suspended.includes(kind);
       button.setAttribute('aria-pressed', device.status === 'on' || suspended ? 'true' : 'false');
       button.setAttribute('aria-label', `${labelFor(kind)} ${suspended ? 'paused while away; turn off to cancel return' : device.status}`);
@@ -777,7 +852,18 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
   for (const kind of KINDS) $(`[data-media="${kind}"]`).addEventListener('click', () => handle(session.toggleDevice(kind)));
   $('.media-keep-microphone').addEventListener('change', event => session.setKeepMicrophoneAway(event.target.checked));
   $('.media-retry').addEventListener('click', () => handle(session.retry()));
-  $('.media-details-toggle').addEventListener('click', () => { expanded = !expanded; $('.media-details').hidden = !expanded; $('.media-details-toggle').setAttribute('aria-expanded', String(expanded)); });
+  $('.media-details-toggle').addEventListener('click', () => setExpanded(!expanded));
+  $('.media-settings-close').addEventListener('click',()=>setExpanded(false));
+  $('.media-refresh-devices').addEventListener('click',()=>void session.refreshDevices());
+  for(const kind of ['camera','microphone'])$(`.media-settings-${kind}`).addEventListener('click',()=>handle(session.toggleDevice(kind)));
+  for(const input of root.querySelectorAll('[data-media-setting]'))input.addEventListener('change',()=>handle(session.setCaptureSetting(input.dataset.mediaSetting,input.type==='checkbox'?input.checked:input.value)));
+  $('.media-speaker').addEventListener('change',async event=>{
+    const value=event.target.value;if(value&&!session.snapshot().availableDevices.some(d=>d.kind==='audiooutput'&&d.deviceId===value))return;
+    selectedSpeaker=value;speakerError='';const ticket=++speakerEpoch;
+    await Promise.all([...elements.values()].filter(tile=>!tile.media.muted).map(tile=>applySpeaker(tile.media)));
+    if(!destroyed&&ticket===speakerEpoch)render(session.snapshot());
+  });
+  root.addEventListener('keydown',event=>{if(event.isComposing)return;if(event.key==='Escape'&&expanded){event.preventDefault();event.stopPropagation();setExpanded(false);}else if(event.target.closest('input,select,button,summary'))event.stopPropagation();});
   render(session.snapshot()); void session.update();
   const interval = setInterval(() => void session.update(), 1100);
   return {
@@ -790,7 +876,7 @@ export function mountMedia({ root, api, getState, toast = () => {} }) {
     checkLocalPolicy: () => session.checkLocalPolicy(),
     acceptCommittedRoom: (room, actorId) => session.acceptCommittedRoom(room, actorId),
     update() { const room = currentRoomId(getState()); if (room !== lastRoom) { lastRoom = room; expanded = false; $('.media-details').hidden = true; $('.media-details-toggle').setAttribute('aria-expanded', 'false'); } void session.update(); },
-    destroy() { destroyed = true; clearInterval(interval); session.destroy(); for (const tile of elements.values()) { tile.media.pause(); tile.media.srcObject = null; } elements.clear(); root.replaceChildren(); },
+    destroy() { destroyed = true; speakerEpoch++; const preview=$('.media-self-preview video');preview.pause();preview.srcObject=null; clearInterval(interval); session.destroy(); for (const tile of elements.values()) { tile.media.pause(); tile.media.srcObject = null; } elements.clear(); root.replaceChildren(); },
     // Read-only diagnostics for automated checks; no fixture identities or synthetic success.
     getStatus: () => session.snapshot()
   };

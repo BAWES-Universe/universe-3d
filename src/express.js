@@ -71,7 +71,7 @@ export function mountExpress({ root, api, getState, project = () => null, before
   const emojiRow = el('div', 'express-emotes'); emojiRow.setAttribute('aria-label', 'Favorite expressions');
   const phraseRow = el('div', 'express-phrases'); phraseRow.setAttribute('aria-label', 'Quick phrases');
   const footer = el('div', 'express-footer'); const keyboardHint = el('span', '', 'Enter to say · Ctrl Enter to think');
-  const editButton = button('Make it yours', 'express-customize', () => editPreferences()); footer.append(keyboardHint, editButton);
+  const editButton = button('Make it yours', 'express-customize', () => editPreferences()); footer.append(button('👋 Wave', 'express-customize', () => sendEmote('👋')), keyboardHint, editButton);
   const editor = el('form', 'express-preferences'); editor.hidden = true;
   tray.append(header, modeRow, form, helper, errorNode, emojiRow, phraseRow, editor, footer); root.replaceChildren(layer, tray, live);
 
@@ -167,9 +167,12 @@ export function mountExpress({ root, api, getState, project = () => null, before
       return false;
     } finally { if (capturedEpoch === epoch) { pending = false; syncComposer(); } }
   }
-  async function playSlot(index) {
-    if (destroyed || pending || !syncScope() || index < 0 || index >= emotes.length || editing) return false;
-    const emoji = emotes[index], current = state(), roomId = current.room.id, actorId = current.user.id, capturedEpoch = epoch;
+  function playSlot(index) {
+    if(index < 0 || index >= emotes.length)return false;return sendEmote(emotes[index]);
+  }
+  async function sendEmote(emoji) {
+    if (destroyed || pending || !syncScope() || editing) return false;
+    const current = state(), roomId = current.room.id, actorId = current.user.id, capturedEpoch = epoch;
     pending = true; errorNode.hidden = true; syncComposer();
     try {
       await api(`/api/rooms/${enc(roomId)}/emote`, { method: 'POST', body: { emoji } });

@@ -15,7 +15,7 @@ export function mountEmbeddedPanels({root,onOpenChange=()=>{},onWindowChange=()=
  const header=element('header','embedded-header'),heading=element('strong','', 'Room content'),leave=element('button','small-btn','Return to world');leave.type='button';leave.onclick=()=>clear();
  const maximize=element('button','small-btn embedded-maximize','Maximize');maximize.type='button';maximize.onclick=()=>setMaximized(!maximized);
  const tabs=element('div','embedded-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Open room content');
- const status=element('p','embedded-status'),actions=element('div','embedded-actions'),external=element('button','small-btn','Open in new tab ↗'),retry=element('button','small-btn','Reload frame'),close=element('button','small-btn','Close this panel');
+ const status=element('p','embedded-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');const actions=element('div','embedded-actions'),external=element('button','small-btn','Open in new tab ↗'),retry=element('button','small-btn','Reload frame'),close=element('button','small-btn','Close this panel');
  const resize=element('button','embedded-resize');resize.type='button';resize.setAttribute('aria-label','Resize content window');resize.title='Resize content window. Drag, or use Left and Right arrow keys. Enter starts or finishes keyboard resizing; Escape cancels.';
  const resizeHint=element('span','embedded-resize-hint');resizeHint.id='embedded-resize-instructions';resizeHint.textContent='Use Left to widen, Right to narrow, Shift for a larger step, Home for minimum, End for maximum. Enter or Space starts or finishes resizing. Escape cancels.';resize.setAttribute('aria-describedby',resizeHint.id);
  const sizeStatus=element('span','embedded-size-status');sizeStatus.setAttribute('role','status');sizeStatus.setAttribute('aria-live','polite');
@@ -106,10 +106,10 @@ export function mountEmbeddedPanels({root,onOpenChange=()=>{},onWindowChange=()=
   clearTimeout(item.timer);item.frame?.remove();item.frame=null;item.holder.replaceChildren();
   const parsed=safeActionUrl(item.url,location.origin);item.embeddable=parsed?.kind==='external'&&parsed.protocol==='https:';
   if(!item.embeddable){item.status='This address must open separately. Protected documents download instead of loading inside a frame.';draw();return;}
-  item.status='Opening site. If it stays blank or the site refuses embedding, use Open in new tab.';
+  item.status=`Opening ${new URL(item.url).hostname}. Some sites require Open in new tab for sign-in or refuse embedding.`;
   const frame=element('iframe','embedded-frame');item.frame=frame;frame.title=item.title;frame.referrerPolicy='no-referrer';
   frame.setAttribute('sandbox','allow-scripts allow-forms allow-same-origin allow-popups allow-downloads');
-  frame.setAttribute('allow','fullscreen');frame.src=item.url;
+  frame.setAttribute('allow',"fullscreen; camera 'none'; microphone 'none'; geolocation 'none'; display-capture 'none'");frame.src=item.url;
   frame.onload=()=>{if(entries.get(item.key)!==item||item.frame!==frame)return;clearTimeout(item.timer);item.status='Site frame opened. If its contents are blank or blocked, use Open in new tab.';if(selected===item.key)draw();};
   frame.onerror=()=>{if(entries.get(item.key)!==item||item.frame!==frame)return;clearTimeout(item.timer);item.status='The site could not be displayed here. Open it in a new tab, or choose Reload frame.';if(selected===item.key)draw();};
   item.holder.append(frame);item.timer=setTimeout(()=>{if(entries.get(item.key)!==item||item.frame!==frame)return;item.status='Still loading, or the site may prohibit embedding. Open in new tab remains available.';if(selected===item.key)draw();},10000);draw();

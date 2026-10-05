@@ -82,7 +82,7 @@
         INVALID_USERNAME:'Choose a username with 3–32 lowercase letters, numbers, or underscores.',
         USERNAME_TAKEN:'That username is already taken. Try another one.',
         USERNAME_EXISTS:'That username is already taken. Try another one.',
-        INVALID_PASSWORD:'Use a password with 16–256 characters, no control characters, and no spaces at the beginning or end.',
+        INVALID_PASSWORD:'Use a password with 10–256 characters, no control characters, and no spaces at the beginning or end.',
         INVALID_NAME:'Use a name with 1–40 characters and no control characters.',
         INVALID_CREDENTIALS:'That username and password don’t match. Check them and try again.',
         SIGNUP_SIGN_OUT_REQUIRED:'You’re already signed in. Sign out before using an invite for a different account.',

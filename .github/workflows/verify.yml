@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [core, authoring, sharedareas, images, imageversions, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay, arrivals, signup, imagesizing, imageprotocol, placescreation, compactconversations, editorpolish, worldpolish, shellpolish, friendjourney]
+        group: [core, authoring, sharedareas, images, imageversions, media, framing, residents, presentation, hud, nearby, terrain, windows, groupplay, arrivals, signup, imagesizing, imageprotocol, placescreation, compactconversations, editorpolish, worldpolish, shellpolish, friendjourney, livefeedback]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

@@ -4,6 +4,7 @@ import {CATALOG,collisionBox,collisionBoxes,contains,canStand} from './worlds.js
 import {applyTerrainRect,validateTerrain,terrainCollisionBoxes} from './terrain.js';
 
 import {inheritImageDefinitions} from './image-asset-context.js';
+import {wallSnapCandidates} from './wall-snapping.js';
 
 export function snapPoint(point,step=1){
  if(!point||!Number.isFinite(point.x)||!Number.isFinite(point.z))return null;
@@ -43,6 +44,15 @@ export function validatePlacement(scene,item,{excludeId=item.id,position=null}={
  return {valid:true,reason:'Ready to place'};
 }
 
+// Snapping is only an authoring suggestion. Every proposed join goes through
+// the ordinary collision, boundary, arrival and occupied-player validation.
+export function snapWallPlacement(scene,item,{excludeId=item?.id,position=null,tolerance=.6}={}){
+ for(const candidate of wallSnapCandidates(scene,item,{excludeId,tolerance})){
+  if(validatePlacement(scene,candidate.item,{excludeId,position}).valid)return {...candidate,joined:true};
+ }
+ return {item,joined:false,targetId:null,kind:null,distance:0};
+}
+
 export function screenGridStep(key,angle,step=1){const dir=screenDirection({x:key==='arrowright'?1:key==='arrowleft'?-1:0,z:key==='arrowdown'?1:key==='arrowup'?-1:0},angle);return{x:Math.round(dir.x)*step,z:Math.round(dir.z)*step};}
 
 // A stroke is a pure preview until the editor commits its resulting terrain once.
@@ -63,8 +73,8 @@ export function validateTerrainEdit(scene,rect,options,{position=null}={}){
 }
 
 // Draw walls with the same object geometry, IDs, transforms and undo as furniture.
-export function wallFromStroke(from,to,rotation=0){
+export function wallFromStroke(from,to,rotation=0,{lockAxis=false}={}){
  const start=snapPoint(from),end=snapPoint(to);if(!start||!end)return null;
- const dx=end.x-start.x,dz=end.z-start.z,vertical=Math.abs(dz)>Math.abs(dx)||(dx===0&&dz===0&&rotation%180===90);
+ const dx=end.x-start.x,dz=end.z-start.z,turned=Math.abs(Math.round(rotation/90)%2)===1,vertical=lockAxis?turned:Math.abs(dz)>Math.abs(dx)||(dx===0&&dz===0&&turned);
  return {type:'wall',name:'Wall',x:vertical?start.x:(start.x+end.x)/2,z:vertical?(start.z+end.z)/2:start.z,width:Math.max(1,Math.abs(vertical?dz:dx)),depth:.3,rotation:vertical?90:0};
 }

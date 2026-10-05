@@ -33,6 +33,17 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     for(const p of candidates.slice(0,16))if(Math.hypot(origin.x-p.x,origin.z-p.z)<.6||findPath(scene,origin,p).length)return p;
     return null;
   }
+  function exitFor(area,scene,origin) {
+    // Guidance must lead outside before returning; walking to the area centre
+    // while already inside can never satisfy the post-acceptance entry rule.
+    const xs=[origin.x,area.x,area.x-area.width/2,area.x+area.width/2];
+    const zs=[origin.z,area.z,area.z-area.depth/2,area.z+area.depth/2];
+    const choices=[...xs.flatMap(x=>[{x,z:area.z-area.depth/2-.6},{x,z:area.z+area.depth/2+.6}]),...zs.flatMap(z=>[{x:area.x-area.width/2-.6,z},{x:area.x+area.width/2+.6,z}])]
+      .map(p=>({x:Math.round(p.x*2)/2,z:Math.round(p.z*2)/2}))
+      .filter(p=>!inside(area,p)&&canStand(scene,p.x,p.z));
+    choices.sort((a,b)=>Math.hypot(a.x-origin.x,a.z-origin.z)-Math.hypot(b.x-origin.x,b.z-origin.z));
+    return choices.find(p=>findPath(scene,origin,p).length)||null;
+  }
   function definition(kind,roomId,title,objective,target=null) {
     const key=kind==='explore'?`${kind}:${roomId}:${target.areaId}`:`${kind}:${roomId}`;
     return {id:'quest-'+hash(key),version:hash({kind,title,objective,target:target?.area||null}),kind,roomId,title,objective,target,reward:'A private '+({explore:'Explorer',build:'Builder',meet:'Connection'}[kind])+' stamp'};
@@ -48,8 +59,7 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
       // An entry objective is impossible if the entire reachable room is inside
       // the target. Require at least one collision-free exit edge when inside.
       if(inside(area,p)) {
-        const exits=[{x:area.x-area.width/2-.6,z:area.z},{x:area.x+area.width/2+.6,z:area.z},{x:area.x,z:area.z-area.depth/2-.6},{x:area.x,z:area.z+area.depth/2+.6}].map(q=>({x:Math.round(q.x*2)/2,z:Math.round(q.z*2)/2}));
-        if(!exits.some(q=>!inside(area,q)&&canStand(room.scene,q.x,q.z)&&findPath(room.scene,p,q).length))continue;
+        if(!exitFor(area,room.scene,p))continue;
       }
       // Version follows semantic target identity/geometry, never transient walking position.
       const target={roomId,areaId:area.id,label:area.name,...point,area:{id:area.id,name:area.name,x:area.x,z:area.z,width:area.width,depth:area.depth}};
@@ -64,17 +74,26 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     if(row.status!=='accepted')return {available:true,target:row.target?JSON.parse(row.target):null};
     if(row.room_id!==currentRoomId)return {available:false,reason:'Return to the room where you accepted this quest',target:null};
     let room;try{store.authorize(row.room_id,row.user_id);room=store.room(row.room_id,row.user_id);}catch{return {available:false,reason:'This room is no longer accessible',target:null};}
-    if(row.kind==='build')return {available:EDIT.includes(room.role),reason:EDIT.includes(room.role)?null:'Editor access is required to finish',target:null};
+    if(row.kind==='build')return {available:EDIT.includes(room.role),reason:EDIT.includes(room.role)?null:'Editor access is required to finish',target:null,guidance:{phase:'build-and-save',instruction:'Place a new object in Build, then choose Save room.',detail:'Moving an existing object or leaving an unsaved draft does not count.'}};
     if(row.kind==='meet') {
       const policy=media.policy(row.user_id,row.room_id);
       const ready=policy.enabled&&policy.context.kind==='proximity'&&policy.peers.some(p=>p.canSend&&p.canReceive);
-      return {available:ready,reason:ready?null:'Meet a real player nearby and both enable Connect, then exchange 👋 waves',target:null};
+      if(!ready)return {available:false,reason:'Meet a real player nearby and both enable Connect, then exchange 👋 waves',target:null};
+      reconcileRoom(row.room_id);
+      let progress={completed:0,total:2,ownWave:false,otherWave:false};
+      for(const bubble of bubbles.values()) {
+        if(bubble.roomId!==row.room_id||!bubble.people.includes(row.user_id))continue;
+        const ownWave=(bubble.greetings.get(row.user_id)?.sequence||0)>row.accepted_sequence;
+        const otherWave=(bubble.greetings.get(bubble.people.find(id=>id!==row.user_id))?.sequence||0)>row.accepted_sequence;
+        if(Number(ownWave)+Number(otherWave)>progress.completed)progress={completed:Number(ownWave)+Number(otherWave),total:2,ownWave,otherWave};
+      }
+      return {available:true,reason:null,target:null,progress,guidance:{phase:progress.ownWave?'waiting-for-wave':'send-wave',instruction:progress.ownWave?'Waiting for the other player to wave back.':progress.otherWave?'Wave back: More → Express → 👋.':'Send a wave: More → Express → 👋.',detail:'Both real players must keep Connect on and stay in the same nearby conversation. No microphone or camera is needed.'}};
     }
     const target=JSON.parse(row.target),area=room.scene.areas?.find(a=>a.id===target.areaId);
     const same=area&&['id','name','x','z','width','depth'].every(k=>area[k]===target.area[k]);
     if(!same)return {available:false,reason:'The target was changed or removed. You can set this quest aside.',target:null};
-    const p=presence.get(`${row.room_id}:${row.user_id}`),point=p&&pointFor(area,room.scene,p);
-    return point?{available:true,target:{...target,...point}}:{available:false,reason:'The target is not reachable from here',target:null};
+    const p=presence.get(`${row.room_id}:${row.user_id}`),leave=p&&inside(area,p),point=p&&(leave?exitFor(area,room.scene,p):pointFor(area,room.scene,p));
+    return point?{available:true,target:{...target,...point},guidance:{phase:leave?'leave-area':'enter-area',instruction:leave?`Step outside ${area.name} first.`:`Walk into ${area.name}.`,detail:leave?'You accepted while already inside. Walk outside, then return to finish.':'Enter the marked area to finish. Your stamp is awarded automatically.'}}:{available:false,reason:'The target is not reachable from here',target:null};
   }
   function state(userId,roomId) {
     if(!enabled)return {enabled:false,scope:'standalone-local',available:[],attempts:[],tracked:null,stampCount:0};
@@ -149,6 +168,9 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     store.transaction(()=>{for(const bubble of bubbles.values()) {
       if(bubble.roomId!==roomId||!bubble.people.includes(userId))continue;
       const active=store.all("SELECT * FROM quest_attempts WHERE room_id=? AND kind='meet' AND status='accepted' AND user_id IN (?,?)",roomId,...bubble.people);if(!active.length)continue;
+      // Partial progress is server-observed too. Let both affected quest logs
+      // refresh after a wave, without awarding anything before reciprocity.
+      changed.push(...active.map(row=>row.user_id));
       const obs=observation(userId,roomId,'reciprocal-wave',{bubbleId:bubble.id});bubble.greetings.set(userId,obs);
       for(const row of active){const own=bubble.greetings.get(row.user_id),other=bubble.greetings.get(bubble.people.find(id=>id!==row.user_id));if(own&&other&&own.sequence>row.accepted_sequence&&other.sequence>row.accepted_sequence){const receipt=observation(row.user_id,roomId,'reciprocal-wave-completed',{bubbleId:bubble.id,participants:bubble.people,waveObservationIds:[own.id,other.id]},`meet:${bubble.id}:${row.id}`);if(complete(row,receipt))changed.push(row.user_id);}}
     }});notify(changed);

@@ -311,3 +311,36 @@
 @media (max-width: 650px), (max-width: 900px) and (max-height: 540px) {
  .embedded-overlay .embedded-panel { background-color: var(--u-ink); }
 }
+
+/* Area information remains until exit or dismissal. No timed disappearance,
+   focus steal, backdrop, or animation; the world can keep moving underneath. */
+#app #area-banner#area-banner { top: calc(116px + env(safe-area-inset-top)); left: calc(var(--hud-left,0px) + 160px); width: min(440px,calc(var(--hud-width,100vw) - 184px)); max-width: none; box-sizing: border-box; padding: 14px 58px 14px 16px; border-radius: 14px; background: var(--u-ink,#14121e); color: #fff; z-index: 12; max-height: min(32vh,260px); overflow: auto; pointer-events: auto; }
+#app #area-banner[data-dismissed=true] { display:none!important; }
+#app #area-banner strong { font-size:16px!important; line-height:1.4; }
+#app #area-banner #area-message { display:block!important; font-size:15px; line-height:1.55; color: #eee8fa; white-space:pre-line; overflow-wrap:anywhere; }
+.area-banner-dismiss,.area-entry-message button { position:absolute; top:4px; right:4px; width:44px; height:44px; min-width:44px; border:0; background:transparent; color:#fff; border-radius:12px; font-size:24px; cursor:pointer; touch-action:manipulation; }
+.area-banner-dismiss:focus-visible,.area-entry-message button:focus-visible { outline:2px solid #fff; outline-offset:-3px; }
+.area-entry-messages { position:absolute; top:calc(220px + env(safe-area-inset-top)); left:calc(var(--hud-left,0px) + 160px); width:min(440px,calc(var(--hud-width,100vw) - 184px)); max-height: min(45vh,380px); overflow:auto; overscroll-behavior:contain; z-index:13; }
+.area-entry-message { position:relative; background:var(--u-ink,#14121e); color:#fff; border:1px solid #8b69d6; border-radius:14px; padding:16px 56px 16px 16px; margin:0 0 8px; }
+.area-entry-message strong { font-size:16px; line-height:1.4; }
+.area-entry-message p { margin:8px 0 0; font-size:15px; line-height:1.6; white-space:pre-line; overflow-wrap:anywhere; }
+#app:has(.area-entry-messages:not([hidden])) #area-banner { visibility:hidden; }
+#app:not(:has(.area-entry-messages:not([hidden]))) .area-entry-messages { pointer-events:none; }
+@media(max-width:700px),(max-height:540px) {
+ #app #area-banner#area-banner,.area-entry-messages { left:max(12px,env(safe-area-inset-left)); top:calc(208px + env(safe-area-inset-top)); width:calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height:min(28vh,220px); }
+ #app #area-banner strong,.area-entry-message strong { font-size:15px!important; }
+ #app #area-banner #area-message,.area-entry-message p { font-size:14px; }
+ #app:has(#media:not([hidden])) #area-banner,#app:has(#media:not([hidden])) .area-entry-messages { visibility:hidden; }
+}
+@media(max-height:540px) {
+ #app #area-banner#area-banner,.area-entry-messages { top:calc(76px + env(safe-area-inset-top)); left:calc(180px + env(safe-area-inset-left)); width:calc(100vw - 310px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height:calc(100dvh - 166px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+}
+@media(max-width:700px) and (min-height:541px) {
+ #app #area-banner#area-banner,.area-entry-messages { max-height:max(60px,min(28vh,220px,calc(100dvh - 462px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))); }
+}
+@media(max-height:540px) and (min-width:650px) {
+ #app #area-banner#area-banner,.area-entry-messages { top:calc(136px + env(safe-area-inset-top)); max-height:calc(100dvh - 226px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+}
+@media(max-height:540px) and (max-width:649px) {
+ #app #area-banner#area-banner,.area-entry-messages { top:calc(136px + env(safe-area-inset-top)); left:max(12px,env(safe-area-inset-left)); width:calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height:max(60px,calc(100dvh - 390px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+}

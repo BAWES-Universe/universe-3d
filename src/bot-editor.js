@@ -2,6 +2,8 @@ import {createResidentTestPanel} from './resident-test.js';
 import {icon as sourceIcon} from './universe-icons.js';
 import { AVATAR_OPTIONS, AVATAR_PALETTES, DEFAULT_APPEARANCE, normalizeAppearance, validateAppearance } from './avatar-spec.js';
 import './bot-editor.css';
+import {createBotPlanGeometry} from './bot-plan-geometry.js';
+import {navigationPolicy} from '../server/bot-navigation.mjs';
 
 const copy = value => structuredClone(value);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -62,7 +64,7 @@ async function defaultRequest(url, options = {}) {
  * operation and body. No credential or external-provider controls are exposed.
  * onPreview receives {roomId, botId, bot: config|null}; it never means a durable save.
  */
-export function createBotEditor({ getRoom = () => null, getActorId = () => null, request = defaultRequest, onPreview = () => {}, onClose = () => {}, onSaved = () => {}, onFocus = () => {}, host = document.body } = {}) {
+export function createBotEditor({ getRoom = () => null, getActorId = () => null, getCameraAngle = () => Math.PI / 4, request = defaultRequest, onPreview = () => {}, onClose = () => {}, onSaved = () => {}, onFocus = () => {}, host = document.body } = {}) {
   const uid = `resident-editor-${++editorSequence}`;
   // Deliberately memory-only: never store private instructions across reloads or
   // accounts. Navigation preserves a new draft; only explicit Save/Create commits it.
@@ -73,7 +75,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
   const panel = el('section', { class: 'resident-panel', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': `${uid}-title`, tabindex: '-1' });
   const roomLabel = el('p', { class: 'resident-room' });
   const backButton = button('← Residents', back, { class: 'resident-back', 'aria-label': 'Back to residents' });
-  const closeButton = button('×', close, { class: 'resident-close', 'aria-label': 'Save and close residents', title: 'Save and close (Escape)' });
+  const closeButton = button('×', close, { class: 'resident-close', 'aria-label': 'Close residents', title: 'Close residents (Escape)' });
   const header = el('header', { class: 'resident-header' }, el('div', {}, el('span', { class: 'resident-eyebrow', text: 'BRING YOUR WORLD TO LIFE' }), el('h2', { id: `${uid}-title`, text: 'Room residents' }), roomLabel), closeButton);
   const list = el('div', { class: 'resident-list', 'aria-label': 'Room residents' });
   const newButton = button('+ Create resident', () => select(null), { class: 'resident-primary', 'data-testid': 'bot-create' });
@@ -85,9 +87,10 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
   const recovery = el('div', { class: 'resident-recovery', hidden: true });
   const status = el('p', { class: 'resident-save-status', role: 'status', 'aria-live': 'polite' });
   const saveButton = button('Save resident', save, { class: 'resident-primary', 'data-testid': 'bot-save' });
-  const resetButton = button('Reset draft', reset, { class: 'resident-secondary', 'data-testid': 'bot-reset' });
+  const resetButton = button('Cancel changes', reset, { class: 'resident-secondary', 'data-testid': 'bot-reset' });
   const footer = el('footer', { class: 'resident-footer' }, el('div', { class: 'resident-footer-copy' }, errorBox, recovery, status), el('div', { class: 'resident-footer-buttons' }, resetButton, saveButton));
-  panel.append(header, backButton, content, footer); root.append(panel); host.append(root);
+  const mapToolbar = el('div', { class: 'resident-map-toolbar', hidden: true, 'data-testid': 'bot-map-toolbar' });
+  panel.append(header, backButton, content, mapToolbar, footer); root.append(panel); host.append(root);
 
   const active = s => !!s && !destroyed && opened && session === s && s.actorId === getActorId();
   const dirty = s => !!s?.draft && (!s.record || !same(s.draft, s.baseline));
@@ -112,9 +115,11 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     s.record = null; s.baseline = null; s.draft = copy(kept.draft); s.pendingOperation = kept.pendingOperation ? copy(kept.pendingOperation) : null; s.error = kept.error;
     return true;
   }
-  async function leaveDraft(s) {
+  async function leaveDraft(s, resume) {
     if (!s?.draft) return true;
-    if (s.record) return save();
+    if (s.mapSession) { s.error = 'Choose Done or Cancel to finish placing this resident.'; renderStatus(); return false; }
+    if (s.record && (dirty(s) || s.pendingOperation)) { s.leaveConfirm = true; s.leaveAction = resume; renderStatus(); return false; }
+    if (s.record) return !s.pendingOperation;
     // A Create already requested by the user may settle, but leaving never starts
     // or retries a POST. Preserve its exact receipt after an ambiguous failure.
     if (s.saving) {
@@ -143,22 +148,25 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     recovery.replaceChildren();
     if (s?.conflict) recovery.append(button('Reload saved version', () => reloadSelected(), { class: 'resident-secondary' }), hint('Reload replaces this draft. You can review and copy your text first.'));
     if(s?.draft&&!s.canManage)recovery.append(button('Download draft',()=>{if(!active(s))return;const url=URL.createObjectURL(new Blob([JSON.stringify({format:'universe-resident-draft',roomId:s.room.id,config:s.draft},null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='resident-draft.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}),button('Discard draft and close',()=>{if(!active(s)||busy(s))return;if(s.pendingOperation){setError(s,new Error('The last save has not been acknowledged. Keep this draft until you can retry the same operation.'));return;}if(!s.record)newDrafts.delete(s.room.id);clearDraft(s);close();}),hint('Your management access changed. Saving is disabled; keep a copy or leave this editor.'));
+    if (s?.leaveConfirm) { recovery.hidden = false; recovery.append(hint('Save your changes before leaving?'), row(button('Save changes', async () => { if (await save()) { const resume = s.leaveAction; s.leaveConfirm = false; s.leaveAction = null; renderStatus(); resume?.(); } }, { class: 'resident-primary', 'data-testid': 'bot-confirm-save' }), button('Discard changes', () => { const resume = s.leaveAction; if (reset()) { s.leaveConfirm = false; s.leaveAction = null; renderStatus(); resume?.(); } }, { class: 'resident-secondary', 'data-testid': 'bot-confirm-discard' })), button('Keep editing', () => { s.leaveConfirm = false; renderStatus(); }, { class: 'resident-secondary' })); }
     const localDraftNotice = 'Draft kept in this tab · Reloading or signing out clears it';
-    status.textContent = !s ? 'Choose a room to manage its residents.' : s.loading ? 'Loading this room’s residents…' : s.saving ? 'Saving to the room…' : s.deleting ? 'Deleting resident…' : s.commanding ? 'Sending local command…' : s.error ? `Your draft is still here.${!s.record ? ` ${localDraftNotice}.` : ' Nothing has been silently discarded.'}` : s.draft ? dirty(s) ? (s.record ? 'Changes pending · Back or Close saves them' : `Not created yet · Choose Create resident to save · ${localDraftNotice}`) : s.info || 'All changes saved to this room' : newDrafts.has(s.room.id) ? localDraftNotice : s.info || 'Disabled residents stay here and can be edited.';
+    status.textContent = !s ? 'Choose a room to manage its residents.' : s.loading ? 'Loading this room’s residents…' : s.saving ? 'Saving to the room…' : s.deleting ? 'Deleting resident…' : s.commanding ? 'Sending local command…' : s.error ? `Your draft is still here.${!s.record ? ` ${localDraftNotice}.` : ' Nothing has been silently discarded.'}` : s.draft ? dirty(s) ? (s.record ? 'Unsaved preview · Save resident to apply, or Cancel changes' : `Not created yet · Choose Create resident to save · ${localDraftNotice}`) : s.info || 'All changes saved to this room' : newDrafts.has(s.room.id) ? localDraftNotice : s.info || 'Disabled residents stay here and can be edited.';
     status.classList.toggle('is-dirty', dirty(s));
     saveButton.hidden = !s?.draft; resetButton.hidden = !s?.draft;
-    saveButton.disabled = !s?.canManage || busy(s) || s?.conflict || !dirty(s);
+    saveButton.disabled = !s?.canManage || busy(s) || s?.conflict || (!dirty(s) && !s?.pendingOperation);
     saveButton.textContent = s?.saving ? 'Saving…' : s?.record ? 'Save resident' : 'Create resident';
     resetButton.disabled = busy(s) || !dirty(s);
-    resetButton.textContent = s?.record ? 'Reset draft' : 'Discard draft';
+    resetButton.textContent = s?.record ? 'Cancel changes' : 'Discard draft';
     newButton.disabled = !s?.canManage || !!s?.loading || busy(s) || !s?.catalog?.appearances?.length;
     newButton.textContent = s && newDrafts.has(s.room.id) ? 'Resume new resident draft' : '+ Create resident';
     backButton.hidden = !s?.draft;
     closeButton.disabled = !!(s?.deleting || s?.commanding);
-    closeButton.setAttribute('aria-label', s?.record ? 'Save and close residents' : 'Close residents');
-    closeButton.title = s?.record ? 'Save and close (Escape)' : 'Close; keep draft in this tab (Escape)';
+    closeButton.setAttribute('aria-label', 'Close residents');
+    closeButton.title = 'Close residents (Escape)';
     panel.setAttribute('aria-busy', String(!!s?.loading));
     root.dataset.detail = String(!!s?.draft);
+    root.dataset.mapMode = s?.mapMode || '';
+    renderMapToolbar();
   }
   function renderList() {
     const s = session;
@@ -171,15 +179,15 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     for (const bot of s?.bots || []) {
       const data = configFrom(bot, s.room), selected = s.record?.id === bot.id;
       const avatar = el('span', { class: 'resident-swatch', 'aria-hidden': 'true', text: data.name?.slice(0, 1)?.toUpperCase() || 'R' }); avatar.style.setProperty('--resident-color', data.appearance.topColor);
-      const item = button('', () => select(bot.id), { class: `resident-list-item${selected ? ' is-selected' : ''}`, 'aria-pressed': String(selected), 'data-bot-id': bot.id });
-      item.append(avatar, el('span', { class: 'resident-list-copy' }, el('strong', { text: data.name }), el('small', { text: `${data.enabled ? 'Enabled' : 'Disabled'} · ${data.behavior === 'patrol' ? 'Patrol' : data.behavior === 'social' ? 'Social, unconnected' : 'Idle'}` })), el('span', { class: `resident-dot ${data.enabled ? 'is-enabled' : ''}`, 'aria-hidden': 'true' }));
+      const item = button('', () => select(bot.id), { class: `resident-list-item${selected ? ' is-selected' : ''}`, 'aria-pressed': String(selected), 'aria-label': `Edit ${data.name}`, 'data-bot-id': bot.id });
+      item.append(avatar, el('span', { class: 'resident-list-copy' }, el('strong', { text: data.name }), el('small', { text: `${data.enabled ? 'Enabled' : 'Disabled'} · ${data.behavior === 'patrol' ? 'Patrol' : data.behavior === 'social' ? 'Social, unconnected' : 'Idle'}` })), el('span', { class: 'resident-edit-label', text: 'Edit' }));
       list.append(item);
     }
   }
   function applyChange(s, draft, path, value, { rebuild = false } = {}) {
     if (!active(s) || s.draft !== draft || !s.canManage || s.deleting || s.commanding) return false;
     writePath(draft, path, value);
-    s.info = ''; s.deleteConfirm = false;
+    s.info = ''; s.deleteConfirm = false; s.leaveConfirm = false;
     if (rebuild) renderDetail(); else { syncFields(); renderPlan(); }
     renderStatus(); preview(s);
     return true;
@@ -237,9 +245,15 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     }
     wardrobe.append(appearanceGrid);
     const appearance = section('Original 3D appearance', hint('These looks use the same native 3D wardrobe as players.'), presets, wardrobe);
-    const placement = section('Home & movement area', el('div', { class: 'resident-room-lock' }, el('span', { 'aria-hidden': 'true', text: '⌖' }), el('span', { text: s.room.name || s.room.id }), badge('Room locked')), hint('Select another room in the world to manage its residents.'), row(field(s, draft, 'spawn.x', 'Home X', 'number', { step: .1 }), field(s, draft, 'spawn.z', 'Home Z', 'number', { step: .1 })), row(field(s, draft, 'radius', 'Movement radius', 'number', { min: 0, max: 100, step: .5, hint: 'Zero keeps this resident at home.' }), field(s, draft, 'responseRadius', 'Response radius', 'number', { min: 0, max: 20, step: .5, hint: 'No replies until AI is connected.' })));
-    placement.append(button('Focus resident on map', () => focus(s), { class: 'resident-secondary', 'data-testid': 'bot-focus' }));
-    placement.append(el('div', { class: 'resident-plan-wrap' }, el('div', { class: 'resident-plan-heading' }, el('strong', { text: 'Room plan' }), el('span', { text: 'Drag home, route points or radius' })), el('div', { 'data-plan-host': '', class: 'resident-plan-host' }), hint('Preview only until saved. The room server checks positions and obstructions.')));
+    const placement = section('Position & route', hint('Move the resident directly in the room. Click numbered route points to move them.'),
+      row(button('Move resident', () => beginMapMode('spawn'), { class: 'resident-primary', 'data-testid': 'bot-move-resident' }), button('Add waypoints', () => beginMapMode('add'), { class: 'resident-secondary', 'data-testid': 'bot-route-world' })),
+      button('Find resident', () => focus(s), { class: 'resident-secondary', 'data-testid': 'bot-focus' }));
+    const mapDetails = el('details', { class: 'resident-fold' }, el('summary', { text: 'Room plan & exact coordinates' }),
+      hint('This plan turns with your camera. Its right and left match the room on screen.'),
+      el('div', { class: 'resident-plan-wrap' }, el('div', { class: 'resident-plan-heading' }, el('strong', { text: 'Camera-aligned room plan' }), el('span', { text: 'Drag home or numbered points' })), el('div', { 'data-plan-host': '', class: 'resident-plan-host' })),
+      row(field(s, draft, 'spawn.x', 'Home X', 'number', { step: .1 }), field(s, draft, 'spawn.z', 'Home Z', 'number', { step: .1 })),
+      row(field(s, draft, 'radius', 'Movement radius', 'number', { min: 0, max: 100, step: .5, hint: 'Grows to fit points you place. Zero keeps the resident at home.' }), field(s, draft, 'responseRadius', 'Response radius', 'number', { min: 0, max: 20, step: .5, hint: 'No replies until AI is connected.' })));
+    placement.append(mapDetails);
     const areas = s.room.scene?.areas || [];
     if (areas.length) {
       const restricted = el('details', { class: 'resident-fold' }, el('summary', { text: 'Keep out of areas' }), hint('Selected areas are off-limits for this resident’s movement.'));
@@ -266,7 +280,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!s.record) tools.append(hint('Save this resident before sending a command.'));
     const danger = el('div', { class: 'resident-danger' });
     if (s.record) danger.append(button('Delete resident', () => { if (!active(s) || s.draft !== draft || busy(s)) return; s.deleteConfirm = true; renderDeleteConfirmation(); }, { class: 'resident-delete', 'data-testid': 'bot-delete' }), el('div', { 'data-delete-confirmation': '' }));
-    detail.append(heading, identity, appearance, placement, behavior, intelligence, tools, modelTools, ...(s.record?[testPanel.element]:[]), danger);
+    detail.append(heading, identity, placement, behavior, appearance, intelligence, tools, modelTools, ...(s.record?[testPanel.element]:[]), danger);
     for (const fold of detail.querySelectorAll('details')) fold.open = folds.includes(fold.querySelector('summary')?.textContent);
     detail.scrollTop = scrollTop; renderPlan(); syncFields(); renderDeleteConfirmation();
     if (focusPath) { const next = [...detail.querySelectorAll('[data-bot-field]')].find(node => node.dataset.botField === focusPath); next?.focus({ preventScroll: true }); if (typeof next?.setSelectionRange === 'function' && selectionStart != null) { try { next.setSelectionRange(selectionStart, selectionEnd); } catch { /* Number/select controls have no text selection. */ } } }
@@ -282,66 +296,138 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!draft.waypoints.length) routes.append(hint('Add at least one waypoint to give this patrol a route.'));
     draft.waypoints.forEach((point, index) => {
       const mutate = fn => { const points = copy(draft.waypoints); fn(points); applyChange(s, draft, 'waypoints', points, { rebuild: true }); };
-      const buttons = el('div', { class: 'resident-waypoint-tools' }, button('↑', () => mutate(points => [points[index - 1], points[index]] = [points[index], points[index - 1]]), { 'aria-label': `Move waypoint ${index + 1} earlier`, disabled: index === 0 }), button('↓', () => mutate(points => [points[index + 1], points[index]] = [points[index], points[index + 1]]), { 'aria-label': `Move waypoint ${index + 1} later`, disabled: index === draft.waypoints.length - 1 }), button('Insert after', () => mutate(points => { const next = points[index + 1] || draft.spawn; points.splice(index + 1, 0, { x: round((point.x + next.x) / 2), z: round((point.z + next.z) / 2) }); }), { 'aria-label': `Insert after waypoint ${index + 1}` }), button('Remove', () => mutate(points => points.splice(index, 1)), { 'aria-label': `Remove waypoint ${index + 1}` }));
+      const buttons = el('div', { class: 'resident-waypoint-tools' }, button('Move in room', () => beginMapMode(`waypoint:${index}`), { 'aria-label': `Move waypoint ${index + 1} in room` }), button('↑', () => mutate(points => [points[index - 1], points[index]] = [points[index], points[index - 1]]), { 'aria-label': `Move waypoint ${index + 1} earlier`, disabled: index === 0 }), button('↓', () => mutate(points => [points[index + 1], points[index]] = [points[index], points[index + 1]]), { 'aria-label': `Move waypoint ${index + 1} later`, disabled: index === draft.waypoints.length - 1 }), button('Insert after', () => mutate(points => { const next = points[index + 1] || draft.spawn; points.splice(index + 1, 0, { x: round((point.x + next.x) / 2), z: round((point.z + next.z) / 2) }); }), { 'aria-label': `Insert after waypoint ${index + 1}` }), button('Remove', () => mutate(points => points.splice(index, 1)), { 'aria-label': `Remove waypoint ${index + 1}` }));
       routes.append(el('div', { class: 'resident-waypoint', 'data-waypoint-index': index }, el('div', { class: 'resident-waypoint-heading' }, el('span', { class: 'resident-waypoint-number', text: index + 1 }), el('strong', { text: `Waypoint ${index + 1}` })), row(field(s, draft, `waypoints.${index}.x`, `Waypoint ${index + 1} X`, 'number', { step: .1 }), field(s, draft, `waypoints.${index}.z`, `Waypoint ${index + 1} Z`, 'number', { step: .1 })), buttons));
     });
     routes.append(button('+ Add waypoint', () => applyChange(s, draft, 'waypoints', [...draft.waypoints, copy(draft.waypoints.at(-1) || draft.spawn)], { rebuild: true }), { class: 'resident-secondary', disabled: draft.waypoints.length >= 64, 'data-testid': 'bot-add-waypoint' }));
     return routes;
   }
   const round = value => Math.round(value * 10) / 10;
+  const mapKeys = ['spawn', 'radius', 'waypoints', 'behavior'];
+  const mapSnapshot = draft => Object.fromEntries(mapKeys.map(key => [key, copy(draft[key])]));
+  function mapCandidate(draft, mode, point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.z)) return null;
+    const next = copy(draft), p = { x: round(point.x), z: round(point.z) };
+    if (mode === 'spawn') next.spawn = p;
+    else if (mode === 'radius') next.radius = round(Math.min(100, Math.max(0, Math.hypot(p.x - next.spawn.x, p.z - next.spawn.z))));
+    else if (mode === 'add') { if (next.waypoints.length >= 64) return null; next.waypoints.push(p); next.behavior = 'patrol'; }
+    else if (mode?.startsWith('waypoint:')) { const index = Number(mode.slice(9)); if (!next.waypoints[index]) return null; next.waypoints[index] = p; }
+    else return null;
+    if (mode !== 'radius' && next.waypoints.length) next.radius = Math.max(next.radius, Math.ceil(Math.max(...next.waypoints.map(p => Math.hypot(p.x - next.spawn.x, p.z - next.spawn.z))) * 10) / 10);
+    return next;
+  }
+  function validMap(s, draft) {
+    if (!draft || draft.radius > 100) return false;
+    const allowed = navigationPolicy(s.room.scene || { bounds: { width: 32, depth: 26 }, objects: [], areas: [] }, draft);
+    return allowed(draft.spawn) && draft.waypoints.every(allowed);
+  }
+  function beginMapMode(mode) {
+    const s = session;
+    if (!active(s) || !s.draft || !s.canManage || busy(s) || s.conflict || s.pendingOperation) return false;
+    if (!['spawn', 'add'].includes(mode) && !/^waypoint:\d+$/.test(mode)) return false;
+    if (mode.startsWith('waypoint:') && !s.draft.waypoints[Number(mode.slice(9))]) return false;
+    if (!s.mapSession) s.mapSession = { before: mapSnapshot(s.draft), history: [] };
+    s.mapMode = mode; s.error = ''; s.leaveConfirm = false; renderStatus();
+    try { onFocus(copy(mode.startsWith('waypoint:') ? s.draft.waypoints[Number(mode.slice(9))] : s.draft.spawn)); } catch { /* Camera focus cannot discard a draft. */ }
+    return true;
+  }
+  function previewMapPoint(point) {
+    const s = session;
+    if (!active(s) || !s.mapMode || !s.canManage || busy(s)) return null;
+    const next = mapCandidate(s.draft, s.mapMode, point);
+    return validMap(s, next) ? next : null;
+  }
+  function placeMapPoint(point) {
+    const s = session;
+    if (!active(s) || !s.mapMode || !s.canManage || busy(s)) return false;
+    const next = previewMapPoint(point);
+    if (!next) { s.error = s.draft.waypoints.length >= 64 && s.mapMode === 'add' ? 'A route can contain up to 64 waypoints.' : 'Choose clear ground inside this room, away from blocked or restricted areas.'; renderStatus(); return false; }
+    s.mapSession.history.push(mapSnapshot(s.draft));
+    Object.assign(s.draft, mapSnapshot(next)); s.error = ''; s.info = 'Position preview updated';
+    renderDetail(); renderStatus(); preview(s); return true;
+  }
+  function finishMapMode() {
+    const s = session; if (!active(s) || !s.mapSession) return false;
+    s.mapMode = null; s.mapSession = null; renderDetail(); renderStatus(); preview(s);
+    detail.querySelector('[data-testid="bot-move-resident"]')?.focus({ preventScroll: true }); return true;
+  }
+  function cancelMapMode() {
+    const s = session; if (!active(s) || !s.mapSession) return false;
+    Object.assign(s.draft, copy(s.mapSession.before)); s.mapMode = null; s.mapSession = null; s.error = '';
+    renderDetail(); renderStatus(); preview(s); detail.querySelector('[data-testid="bot-move-resident"]')?.focus({ preventScroll: true }); return true;
+  }
+  function renderMapToolbar() {
+    const focused = mapToolbar.contains(document.activeElement) ? { testid: document.activeElement.dataset.testid, label: document.activeElement.getAttribute('aria-label'), text: document.activeElement.textContent } : null;
+    const s = session; mapToolbar.hidden = !s?.mapMode; mapToolbar.replaceChildren(); if (!s?.mapMode) return;
+    const moving = s.mapMode === 'spawn', adding = s.mapMode === 'add';
+    mapToolbar.append(el('strong', { text: moving ? `Move ${s.draft.name}` : adding ? 'Add route waypoints' : `Move waypoint ${Number(s.mapMode.slice(9)) + 1}` }),
+      hint(moving ? 'Click clear ground to set a home, or drag the resident. This is a preview until you save.' : adding ? 'Click the floor to add numbered stops in order. Drag a point to adjust it. This is a preview until you save.' : 'Click clear ground to move this point, or drag it.'),
+      row(button('Move resident', () => beginMapMode('spawn'), { 'aria-pressed': String(moving) }), button('Add waypoints', () => beginMapMode('add'), { 'aria-pressed': String(adding), disabled: s.draft.waypoints.length >= 64 })),
+      el('div', { class: 'resident-map-points' }, s.draft.waypoints.map((_, index) => button(String(index + 1), () => beginMapMode(`waypoint:${index}`), { 'aria-label': `Select waypoint ${index + 1}`, 'aria-pressed': String(s.mapMode === `waypoint:${index}`) }))),
+      row(button('Undo', () => { const previous = s.mapSession.history.pop(); if (!previous) return; Object.assign(s.draft, previous); s.error = ''; renderDetail(); renderStatus(); preview(s); }, { disabled: !s.mapSession.history.length, 'data-testid': 'bot-map-undo' }),
+        button('Remove selected point', () => { const index = Number(s.mapMode.slice(9)); if (!s.draft.waypoints[index]) return; s.mapSession.history.push(mapSnapshot(s.draft)); s.draft.waypoints.splice(index, 1); if (!s.draft.waypoints.length) s.draft.behavior = 'idle'; s.mapMode = 'add'; renderDetail(); renderStatus(); preview(s); }, { disabled: !s.mapMode.startsWith('waypoint:'), 'data-testid': 'bot-map-remove' })),
+      ...(s.error ? [el('p', { class: 'resident-error', role: 'alert', text: s.error })] : []),
+      row(button('Cancel', cancelMapMode, { class: 'resident-secondary', 'data-testid': 'bot-map-cancel' }), button('Done', finishMapMode, { class: 'resident-primary', 'data-testid': 'bot-map-done' })));
+    if (focused) [...mapToolbar.querySelectorAll('button')].find(node => !node.disabled && (focused.testid ? node.dataset.testid === focused.testid : focused.label ? node.getAttribute('aria-label') === focused.label : node.textContent === focused.text))?.focus({ preventScroll: true });
+  }
+  function handleEscape() {
+    const s = session;
+    if (s?.planGesture) { s.planGesture = null; s.planPreview = null; renderPlan(); preview(s); return true; }
+    if (cancelMapMode()) return true;
+    if (s?.deleteConfirm) { s.deleteConfirm = false; renderDeleteConfirmation(); return true; }
+    if (s?.leaveConfirm) { s.leaveConfirm = false; renderStatus(); return true; }
+    close(); return true;
+  }
   function renderPlan() {
-    const s = session, draft = s?.draft, planHost = detail.querySelector('[data-plan-host]'); if (!draft || !planHost) return;
+    const s = session, draft = s?.planPreview || s?.draft, planHost = detail.querySelector('[data-plan-host]'); if (!draft || !planHost) return;
     const width = Number(s.room.scene?.bounds?.width) || 32, depth = Number(s.room.scene?.bounds?.depth) || 26;
-    const viewW = 360, viewH = 220, padding = 22, scale = Math.min((viewW - padding * 2) / width, (viewH - padding * 2) / depth);
-    const point = value => ({ x: viewW / 2 + (Number.isFinite(value.x) ? value.x : 0) * scale, y: viewH / 2 + (Number.isFinite(value.z) ? value.z : 0) * scale });
+    const viewW = 360, viewH = 220, angle = s.planGesture?.angle ?? getCameraAngle();
+    s.planAngle = angle;
+    const geometry = createBotPlanGeometry({ width, depth, angle, viewWidth: viewW, viewHeight: viewH }), point = geometry.project, scale = geometry.scale;
     const home = point(draft.spawn), arrowId = `${uid}-arrow`;
-    const plan = svg('svg', { viewBox: `0 0 ${viewW} ${viewH}`, role: 'group', 'aria-label': `Room plan for ${draft.name}. Home and ${draft.waypoints.length} ordered waypoints.`, class: 'resident-plan' });
+    const plan = svg('svg', { viewBox: `0 0 ${viewW} ${viewH}`, role: 'group', 'aria-label': `Camera-aligned room plan for ${draft.name}. Home and ${draft.waypoints.length} ordered waypoints.`, class: 'resident-plan', 'data-camera-angle': angle });
+    const polygon = (object, className) => svg('polygon', { points: geometry.rectangle(object).map(p => `${p.x},${p.y}`).join(' '), class: className });
     plan.append(svg('defs', {}, svg('marker', { id: arrowId, markerWidth: 6, markerHeight: 6, refX: 5, refY: 3, orient: 'auto', markerUnits: 'strokeWidth' }, svg('path', { d: 'M0,0 L6,3 L0,6', fill: '#c1a1fc' }))));
-    plan.append(svg('rect', { x: viewW / 2 - width * scale / 2, y: viewH / 2 - depth * scale / 2, width: width * scale, height: depth * scale, rx: 8, class: 'resident-plan-room' }));
-    for (const object of s.room.scene?.objects || []) {
-      const p = point(object), w = Number(object.width) || 1, d = Number(object.depth) || 1;
-      plan.append(svg('rect', { x: p.x - w * scale / 2, y: p.y - d * scale / 2, width: w * scale, height: d * scale, rx: 1.5, class: 'resident-plan-object', transform: `rotate(${Number(object.rotation) || 0} ${p.x} ${p.y})` }));
-    }
-    for (const area of s.room.scene?.areas || []) if (draft.restrictedAreaIds.includes(area.id)) { const p = point(area); plan.append(svg('rect', { x: p.x - area.width * scale / 2, y: p.y - area.depth * scale / 2, width: area.width * scale, height: area.depth * scale, class: 'resident-plan-restricted' })); }
+    plan.append(polygon({ width, depth }, 'resident-plan-room'));
+    for (const object of s.room.scene?.objects || []) plan.append(polygon(object, 'resident-plan-object'));
+    for (const area of s.room.scene?.areas || []) if (draft.restrictedAreaIds.includes(area.id) || area.personalArea || area.allowedTags?.length) plan.append(polygon(area, 'resident-plan-restricted'));
     const radius = Number.isFinite(draft.radius) ? Math.max(0, draft.radius) * scale : 0;
     plan.append(svg('circle', { cx: home.x, cy: home.y, r: radius, class: 'resident-plan-radius' }));
     if (draft.behavior === 'patrol') {
-      const route = [draft.spawn, ...draft.waypoints];
-      if (draft.loop && draft.waypoints.length > 1) route.push(draft.waypoints[0]);
+      const route = [draft.spawn, ...draft.waypoints]; if (draft.loop && draft.waypoints.length > 1) route.push(draft.waypoints[0]);
       for (let i = 1; i < route.length; i++) { const a = point(route[i - 1]), b = point(route[i]); plan.append(svg('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'resident-plan-route', 'marker-end': `url(#${arrowId})` })); }
-      draft.waypoints.forEach((value, index) => { const p = point(value), mark = svg('g', { 'data-plan-handle': 'waypoint', 'data-index': index, tabindex: 0, role: 'button', 'aria-label': `Move waypoint ${index + 1}. Arrow keys move half a unit.` }, svg('circle', { cx: p.x, cy: p.y, r: 10, class: 'resident-plan-waypoint' }), svg('text', { x: p.x, y: p.y + 3.5, 'text-anchor': 'middle', class: 'resident-plan-label' })); mark.lastChild.textContent = index + 1; const title = svg('title'); title.textContent = `Waypoint ${index + 1}: ${value.x}, ${value.z}`; mark.append(title); plan.append(mark); });
+      draft.waypoints.forEach((value, index) => { const p = point(value), mark = svg('g', { 'data-plan-handle': 'waypoint', 'data-index': index, tabindex: 0, role: 'button', 'aria-label': `Move waypoint ${index + 1}. Arrow keys move in screen direction.` }, svg('circle', { cx: p.x, cy: p.y, r: 10, class: 'resident-plan-waypoint' }), svg('text', { x: p.x, y: p.y + 3.5, 'text-anchor': 'middle', class: 'resident-plan-label' })); mark.lastChild.textContent = index + 1; plan.append(mark); });
     }
-    const homeMark = svg('g', { 'data-plan-handle': 'spawn', tabindex: 0, role: 'button', 'aria-label': `Move ${draft.name} home. Arrow keys move half a unit.` }, svg('circle', { cx: home.x, cy: home.y, r: 12, class: 'resident-plan-home' }), svg('path', { d: `M${home.x - 5},${home.y} L${home.x},${home.y - 5} L${home.x + 5},${home.y} V${home.y + 5} H${home.x - 5} Z`, class: 'resident-plan-home-icon' }));
+    const homeMark = svg('g', { 'data-plan-handle': 'spawn', tabindex: 0, role: 'button', 'aria-label': `Move ${draft.name} home. Arrow keys move in screen direction.` }, svg('circle', { cx: home.x, cy: home.y, r: 12, class: 'resident-plan-home' }), svg('path', { d: `M${home.x - 5},${home.y} L${home.x},${home.y - 5} L${home.x + 5},${home.y} V${home.y + 5} H${home.x - 5} Z`, class: 'resident-plan-home-icon' }));
     const radiusMark = svg('circle', { cx: home.x + radius, cy: home.y, r: 6, class: 'resident-plan-radius-handle', 'data-plan-handle': 'radius', tabindex: 0, role: 'button', 'aria-label': 'Resize movement radius. Arrow keys change half a unit.' });
-    const homeTitle = svg('title'); homeTitle.textContent = `${draft.name} · home (${draft.spawn.x}, ${draft.spawn.z})`; homeMark.append(homeTitle);
     plan.append(homeMark, radiusMark);
-    let drag = null;
-    const apply = (kind, index, x, z) => {
-      if (!active(s) || s.draft !== draft || busy(s)) return;
-      if (kind === 'radius') applyChange(s, draft, 'radius', round(Math.max(0, Math.min(100, Math.hypot(x - draft.spawn.x, z - draft.spawn.z)))));
-      else if (kind === 'spawn') applyChange(s, draft, 'spawn', { x: round(x), z: round(z) });
-      else { const points = copy(draft.waypoints); if (!points[index]) return; points[index] = { x: round(x), z: round(z) }; applyChange(s, draft, 'waypoints', points); }
+    const screenPoint = event => {
+      const rect = planHost.querySelector('svg').getBoundingClientRect(), fit = Math.min(rect.width / viewW, rect.height / viewH), offsetX = (rect.width - viewW * fit) / 2, offsetY = (rect.height - viewH * fit) / 2;
+      return geometry.unproject({ x: (event.clientX - rect.left - offsetX) / fit, y: (event.clientY - rect.top - offsetY) / fit });
     };
-    // Capture on the persistent host: the SVG can redraw without losing a drag.
+    const commit = next => { if (!validMap(s, next)) { s.error = 'Choose clear ground inside this room, away from blocked or restricted areas.'; renderStatus(); renderPlan(); preview(s); return false; } return updateMap(mapSnapshot(next)); };
     planHost.onpointerdown = event => {
-      const handle = event.target.closest?.('[data-plan-handle]'); if (!handle || busy(s)) return;
-      event.preventDefault(); event.stopPropagation(); drag = { kind: handle.dataset.planHandle, index: Number(handle.dataset.index), pointerId: event.pointerId }; planHost.setPointerCapture?.(event.pointerId);
+      const handle = event.target.closest?.('[data-plan-handle]'); if (!handle || busy(s) || !s.canManage || event.button !== 0) return;
+      event.preventDefault(); event.stopPropagation(); s.planGesture = { mode: handle.dataset.planHandle === 'waypoint' ? `waypoint:${handle.dataset.index}` : handle.dataset.planHandle, pointerId: event.pointerId, draft: s.draft, base: copy(s.draft), angle }; planHost.setPointerCapture?.(event.pointerId);
     };
     planHost.onpointermove = event => {
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      const rect = planHost.querySelector('svg').getBoundingClientRect(), fit = Math.min(rect.width / viewW, rect.height / viewH), offsetX = (rect.width - viewW * fit) / 2, offsetY = (rect.height - viewH * fit) / 2;
-      const x = ((event.clientX - rect.left - offsetX) / fit - viewW / 2) / scale, z = ((event.clientY - rect.top - offsetY) / fit - viewH / 2) / scale;
-      // Retain this handler across redraws until pointerup.
-      const move = planHost.onpointermove, up = planHost.onpointerup, cancel = planHost.onpointercancel;
-      apply(drag.kind, drag.index, x, z); planHost.onpointermove = move; planHost.onpointerup = up; planHost.onpointercancel = cancel;
+      const drag = s.planGesture; if (!drag || drag.pointerId !== event.pointerId || !active(s) || !s.canManage || s.draft !== drag.draft) return;
+      s.planPreview = mapCandidate(drag.base, drag.mode, screenPoint(event)); renderPlan();
+      try { onPreview({ roomId: s.room.id, botId: s.record?.id || null, bot: copy(s.planPreview) }); } catch { /* Preserve draft on renderer failure. */ }
     };
-    planHost.onpointerup = planHost.onpointercancel = event => { if (drag?.pointerId === event.pointerId) { drag = null; if (planHost.hasPointerCapture?.(event.pointerId)) planHost.releasePointerCapture(event.pointerId); } };
+    planHost.onpointerup = event => {
+      if (s.planGesture?.pointerId !== event.pointerId || !s.canManage || s.draft !== s.planGesture.draft) return;
+      const next = s.planPreview; s.planGesture = null; s.planPreview = null;
+      if (planHost.hasPointerCapture?.(event.pointerId)) planHost.releasePointerCapture(event.pointerId);
+      if (next) commit(next); else renderPlan();
+    };
+    planHost.onpointercancel = () => { s.planGesture = null; s.planPreview = null; renderPlan(); preview(s); };
     plan.addEventListener('keydown', event => {
       const handle = event.target.closest?.('[data-plan-handle]'), direction = { ArrowLeft: [-.5, 0], ArrowRight: [.5, 0], ArrowUp: [0, -.5], ArrowDown: [0, .5] }[event.key]; if (!handle || !direction || busy(s)) return;
-      event.preventDefault(); event.stopPropagation(); const kind = handle.dataset.planHandle, index = Number(handle.dataset.index);
-      if (kind === 'radius') applyChange(s, draft, 'radius', Math.max(0, round(draft.radius + (direction[0] || -direction[1]))));
-      else { const p = kind === 'spawn' ? draft.spawn : draft.waypoints[index]; apply(kind, index, p.x + direction[0], p.z + direction[1]); }
-      planHost.querySelector(`[data-plan-handle="${kind}"]${kind === 'waypoint' ? `[data-index="${index}"]` : ''}`)?.focus();
+      event.preventDefault(); event.stopPropagation(); const kind = handle.dataset.planHandle, index = Number(handle.dataset.index), mode = kind === 'waypoint' ? `waypoint:${index}` : kind;
+      let next; if (kind === 'radius') { next = copy(s.draft); next.radius = Math.max(0, round(next.radius + (direction[0] || -direction[1]))); }
+      else { const p = kind === 'spawn' ? s.draft.spawn : s.draft.waypoints[index], delta = geometry.delta(...direction); next = mapCandidate(s.draft, mode, { x: p.x + delta.x, z: p.z + delta.z }); }
+      commit(next); detail.querySelector(`[data-plan-handle="${kind}"]${kind === 'waypoint' ? `[data-index="${index}"]` : ''}`)?.focus();
     });
     planHost.replaceChildren(plan);
   }
@@ -372,7 +458,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!active(s) || !s.draft) return Promise.resolve(true);
     if (s.saving) return s.saving;
     if(!s.canManage&&!dirty(s)&&!s.pendingOperation)return Promise.resolve(true);
-    if (!s.canManage || s.loading || s.conflict || s.deleting || s.commanding) return Promise.resolve(false);
+    if (!s.canManage || s.loading || s.conflict || s.deleting || s.commanding || s.mapSession || s.planGesture) return Promise.resolve(false);
     if (!dirty(s) && !s.pendingOperation) return Promise.resolve(true);
     // Begin in a microtask, so even an immediately resolved request is serialized.
     s.saving = Promise.resolve().then(async () => {
@@ -422,12 +508,12 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!active(s) || s.loading || !s.canManage || s.deleting || s.commanding) return false;
     if (id && s.record?.id === id) return true;
     if (!id && s.draft && !s.record) return true;
-    if (s.draft && !await leaveDraft(s)) return false;
+    if (s.draft && !await leaveDraft(s, () => select(id))) return false;
     if (!active(s) || token !== navigation) return false;
     const record = id ? s.bots.find(bot => bot.id === id) : null;
     if (id && !record) { setError(s, new Error('That resident is no longer in this room. Reload the room list.')); return false; }
     if (!id && !s.catalog.appearances?.length) { setError(s, new Error('This room has no available resident appearances.')); return false; }
-    s.record = record ? copy(record) : null; s.draft = configFrom(record, s.room); s.baseline = record ? copy(s.draft) : null;
+    s.planGesture = null; s.planPreview = null; s.mapMode = null; s.mapSession = null; s.record = record ? copy(record) : null; s.draft = configFrom(record, s.room); s.baseline = record ? copy(s.draft) : null;
     if (!record) s.draft.appearance = normalizeAppearance(s.catalog.appearances[0].appearance);
     s.error = ''; s.conflict = false; s.pendingOperation = null; s.deleteOperation = null; s.pendingCommand = null; s.deleteConfirm = false;
     if (!record) restoreNewDraft(s);
@@ -438,11 +524,11 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     syncActor();
     const s = session, token = ++navigation;
     if (!active(s) || s.deleting || s.commanding) return false;
-    if (!await leaveDraft(s) || !active(s) || token !== navigation) return false;
+    if (!await leaveDraft(s, back) || !active(s) || token !== navigation) return false;
     clearDraft(s); newButton.focus(); return true;
   }
   function clearDraft(s) {
-    s.record = null; s.draft = null; s.baseline = null; s.pendingOperation = null; s.deleteOperation = null; s.pendingCommand = null; s.deleteConfirm = false;
+    s.planGesture = null; s.planPreview = null; s.mapMode = null; s.mapSession = null; s.leaveConfirm = false; s.record = null; s.draft = null; s.baseline = null; s.pendingOperation = null; s.deleteOperation = null; s.pendingCommand = null; s.deleteConfirm = false;
     s.error = ''; s.conflict = false; renderList(); renderDetail(); renderStatus(); preview(s);
   }
   function reset() {
@@ -451,7 +537,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     // different create could otherwise duplicate an already committed resident.
     if (s.pendingOperation) { setError(s, new Error('The last save has not been acknowledged. Retry Save before resetting this draft.')); return false; }
     if (!s.record) { newDrafts.delete(s.room.id); clearDraft(s); return true; }
-    s.draft = copy(s.baseline); s.deleteConfirm = false;
+    s.planGesture = null; s.planPreview = null; s.draft = copy(s.baseline); s.deleteConfirm = false; s.leaveConfirm = false; s.mapMode = null; s.mapSession = null;
     if (!s.conflict) s.error = '';
     renderDetail(); renderStatus(); preview(s); return true;
   }
@@ -536,7 +622,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (destroyed) return false;
     if (!opened) { session = null; testPanel.update(); return true; }
     if (s?.room.id === info?.id && !s.loadFailed) { s.room = { ...s.room, ...info }; roomLabel.textContent = s.room.name || s.room.id; if (s.draft) renderPlan(); return true; }
-    if (s?.draft && !await leaveDraft(s)) return false;
+    if (s?.draft && !await leaveDraft(s, () => setRoom(info))) return false;
     if (token !== navigation || destroyed || !opened) return false;
     return loadRoom(info);
   }
@@ -553,7 +639,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     const s = session, token = ++navigation;
     closePromise = Promise.resolve().then(async () => {
       if (s && (s.deleting || s.commanding)) return false;
-      if (!await leaveDraft(s) || destroyed || token !== navigation || session !== s) return false;
+      if (!await leaveDraft(s, close) || destroyed || token !== navigation || session !== s) return false;
       opened = false; root.hidden = true; session = null; testPanel.update();
       try { if (s) onPreview({ roomId: s.room.id, botId: s.record?.id || null, bot: null }); } catch { /* Cleanup remains available. */ }
       try { Promise.resolve(onClose()).catch(() => {}); } catch { /* The surface is already closed. */ } finally { if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); }
@@ -567,28 +653,31 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     if (!active(s) || !draft || !s.canManage || s.deleting || s.commanding) return false;
     if (changes.roomId !== undefined && changes.roomId !== s.room.id) return false;
     if (changes.botId !== undefined && changes.botId !== (s.record?.id || null)) return false;
-    for (const key of ['spawn', 'radius', 'waypoints']) if (changes[key] !== undefined) draft[key] = copy(changes[key]);
+    if (s.mapSession) s.mapSession.history.push(mapSnapshot(draft));
+    for (const key of mapKeys) if (changes[key] !== undefined) draft[key] = copy(changes[key]);
+    s.error = ''; s.leaveConfirm = false;
     renderDetail(); renderStatus(); preview(s); return true;
   }
   function onKey(event) {
     if (!opened) return;
     // Keyboard input in this panel must never reach world movement shortcuts.
     event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); if (session?.deleteConfirm) { session.deleteConfirm = false; renderDeleteConfirmation(); } else close(); }
+    if (event.key === 'Escape') { event.preventDefault(); handleEscape(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); }
   }
   function beforeUnload(event) { syncActor(); if (newDrafts.size || (opened && (dirty(session) || session?.pendingOperation))) { event.preventDefault(); event.returnValue = ''; } }
   root.addEventListener('keydown', onKey); root.addEventListener('keyup', event => event.stopPropagation()); root.addEventListener('pointerdown', event => event.stopPropagation());
   window.addEventListener('beforeunload', beforeUnload);
+  const orientationTimer = setInterval(() => { const s = session; if (active(s) && s.draft && !s.planGesture && Math.abs((s.planAngle ?? 0) - getCameraAngle()) > .001) renderPlan(); }, 150);
   return {
-    open, close, setRoom, select, save, updateMap, isOpen: () => { syncActor(); return opened; }, isDirty: () => { syncActor(); return dirty(session); }, isSaving: () => !!session?.saving,
-    updateAuthority(canManage){syncActor();if(!session)return;session.canManage=!!canManage;if(!canManage){session.error='Your resident-management permission changed. Your draft is kept.';onPreview({roomId:session.room.id,botId:session.record?.id||null,bot:null});}renderDetail();renderStatus();},
+    open, close, setRoom, select, save, updateMap, beginMapMode, placeMapPoint, previewMapPoint, cancelMapMode, handleEscape, getMapMode: () => active(session) ? session.mapMode || null : null, isOpen: () => { syncActor(); return opened; }, isDirty: () => { syncActor(); return dirty(session); }, isSaving: () => !!session?.saving,
+    updateAuthority(canManage){syncActor();if(!session)return;session.canManage=!!canManage;if(!canManage){session.mapMode=null;session.mapSession=null;session.planGesture=null;session.planPreview=null;session.error='Your resident-management permission changed. Your draft is kept.';onPreview({roomId:session.room.id,botId:session.record?.id||null,bot:null});}renderDetail();renderStatus();},
     getDraft: () => active(session) && session.draft ? copy(session.draft) : null,
     getIdentity: () => ({ roomId: active(session) ? session.room.id : undefined, botId: active(session) ? session.record?.id || null : null }),
     destroy() {
       if (destroyed) return; destroyed = true; navigation++; opened = false;
       if (session) { try { onPreview({ roomId: session.room.id, botId: session.record?.id || null, bot: null }); } catch { /* Dispose even if renderer is gone. */ } }
-      window.removeEventListener('beforeunload', beforeUnload); testPanel.destroy(); root.remove(); session = null; newDrafts.clear();
+      clearInterval(orientationTimer); window.removeEventListener('beforeunload', beforeUnload); testPanel.destroy(); root.remove(); session = null; newDrafts.clear();
     },
   };
 }
