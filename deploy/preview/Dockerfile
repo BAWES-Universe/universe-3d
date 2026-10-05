@@ -7,6 +7,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY public ./public
 COPY src ./src
+COPY modules/asset-workshop ./modules/asset-workshop
 COPY server/bot-navigation.mjs ./server/bot-navigation.mjs
 COPY scripts/build.mjs ./scripts/build.mjs
 RUN npm run build
@@ -19,6 +20,7 @@ WORKDIR /app
 COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY src ./src
+COPY modules/asset-workshop ./modules/asset-workshop
 COPY server.mjs package.json ./
 COPY scripts/operator-account.mjs scripts/promote-owner.mjs scripts/healthcheck.mjs ./scripts/
 RUN mkdir -p /data && chown node:node /data && chmod 0700 /data

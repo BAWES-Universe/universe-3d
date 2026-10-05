@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
+import {bindCompositionDefinitions} from '../src/composition-context.js';
 const {createMediaSession} = await import(process.env.MEDIA_SOURCE || '../src/media.js');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
@@ -203,7 +204,7 @@ test('actual EventSource hooks reject retired streams, closed generations and sw
 test('actual scene-event handler denies new saved Silent before dirty editor preserves its draft',async t=>{
  const f=fixture();t.after(()=>f.session.destroy());f.state.room.revision=1;const draft=f.state.scene;await f.session.toggleDevice('camera');const track=f.session.snapshot().devices.camera.stream.getTracks()[0],wait=deferred();f.intercept((path,o,normal)=>path==='/api/media'?wait.promise:normal());void f.session.refreshPolicy(true);
  const path=process.env.MAIN_SOURCE || new URL('../src/main.js',import.meta.url),source=await readFile(path,'utf8'),start=source.indexOf('function handleEvent('),end=source.indexOf('\nfunction rememberSurface',start),order=[];
- const ctx={state:f.state,event:{type:'scene',actorId:'a',data:{roomId:'r',room:{id:'r',revision:2,scene:{areas:[{...silentArea,x:0}]}}}},media:{acceptCommittedRoom:(room,actor)=>f.session.acceptCommittedRoom(room,actor),onEvent(){}},editor:{cancelGesture(){},receiveScene(){order.push(track.readyState);}},imageLibrary:null,updateTitle(){},social:{onEvent(){}},quests:null,places:null,express:null};
+ const ctx={state:f.state,event:{type:'scene',actorId:'a',data:{roomId:'r',room:{id:'r',revision:2,scene:{areas:[{...silentArea,x:0}]}}}},bindCompositionDefinitions,media:{acceptCommittedRoom:(room,actor)=>f.session.acceptCommittedRoom(room,actor),onEvent(){}},editor:{cancelGesture(){},receiveScene(){order.push(track.readyState);}},imageLibrary:null,workshop:null,updateTitle(){},social:{onEvent(){}},quests:null,places:null,express:null};
  vm.runInNewContext(source.slice(start,end)+';handleEvent(event);',ctx);assert.deepEqual(order,['ended']);assert.equal(f.state.room.revision,1);assert.equal(f.state.scene,draft);assert.equal(f.session.snapshot().localSilent,true);assert.equal(f.session.snapshot().peers.length,0);wait.resolve(f.policy);
 });
 import {createClientProtocolGuard,clientEventsUrl,isClientReloadRequired} from '../src/client-protocol.js';

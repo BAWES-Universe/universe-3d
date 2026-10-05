@@ -4,6 +4,7 @@ import {canonicalStringify,sceneOperationContext,applySceneOperations,hashSceneO
 import {collisionBoxes,contains} from './worlds.js';
 import {objectFootprint,footprintInside} from './personal-area-policy.js';
 import {imageDefinitions,inheritImageDefinitions} from './image-asset-context.js';
+import {compositionDefinitions} from './composition-context.js';
 import {canLeaveArrival,overlaps} from './editor-geometry.js';
 import {validateArrivalGeometry} from './arrivals.js';
 import {validateTerrain,terrainCollisionBoxes} from './terrain.js';
@@ -43,9 +44,9 @@ export function reconcileScenes({base,mine,server,choices={},validate=()=>null,f
  const hasContextConflict=!!localChanged&&(remoteContextChanged||delta.legacy||forceReview)&&!equalSceneValue(base,server);
  if(hasContextConflict&&!choices.context)conflicts.push({kind:'context',key:'context',base:sceneOperationContext(base,version),mine:sceneOperationContext(mine,version),server:sceneOperationContext(server,version),reason:delta.legacy||forceReview?'Room settings, areas, import or item order require a whole-room review.':'Room settings or areas changed while you were building.'});
  if(version===2&&delta.changes.length)try{
-  const dependencies=sceneOperationDependencyView(base,delta.changes,imageDefinitions(base)),current=sceneOperationDependencyView(server,delta.changes,imageDefinitions(server));
-  if(!equalSceneValue(dependencies,current)&&!choices.dependencies)conflicts.push({kind:'dependencies',key:'dependencies',base:dependencies,mine:sceneOperationDependencyView(mine,delta.changes,imageDefinitions(mine)),server:current,reason:'Nearby areas, items, ground or room geometry changed. Review their combined behavior before keeping this draft.'});
- }catch(error){dependencyProblem=error.message||'The shared space could not be checked. Refresh its image definitions before reviewing.';}
+  const dependencies=sceneOperationDependencyView(base,delta.changes,imageDefinitions(base),compositionDefinitions(base)),current=sceneOperationDependencyView(server,delta.changes,imageDefinitions(server),compositionDefinitions(server));
+  if(!equalSceneValue(dependencies,current)&&!choices.dependencies)conflicts.push({kind:'dependencies',key:'dependencies',base:dependencies,mine:sceneOperationDependencyView(mine,delta.changes,imageDefinitions(mine),compositionDefinitions(mine)),server:current,reason:'Nearby areas, items, ground or room geometry changed. Review their combined behavior before keeping this draft.'});
+ }catch(error){dependencyProblem=error.message||'The shared space could not be checked. Refresh its custom asset definitions before reviewing.';}
  for(const change of delta.changes){
   const current=valueAt(server,change),key=targetKey(change);
   const conflict=!equalSceneValue(current,change.before)&&!equalSceneValue(current,change.after);
@@ -60,6 +61,7 @@ export function reconcileScenes({base,mine,server,choices={},validate=()=>null,f
  }
  for(const [key,changed]of [['objects',delta.objectOrderChanged],['areas',delta.areaOrderChanged]])if(changed&&(!hasContextConflict||choices.context==='mine')){const indexed=new Map(scene[key].map(item=>[item.id,item])),ordered=mine[key].map(item=>indexed.get(item.id)).filter(Boolean),included=new Set(ordered.map(item=>item.id));scene[key]=[...ordered,...scene[key].filter(item=>!included.has(item.id))];}
  if(choices.geometry==='server'||choices.dependencies==='server')scene=sceneSnapshot(server);
+ scene=inheritImageDefinitions(server,scene);
  const problem=choices.geometry==='server'||choices.dependencies==='server'?validate(scene,server):dependencyProblem||validate(scene,server);
  if(problem)conflicts.push({kind:'geometry',key:'geometry',base,mine,server,reason:typeof problem==='string'?problem:problem.reason});
  return {scene,conflicts,legacy:sceneChanges(server,scene,{version}).legacy,changes:delta.changes};
@@ -88,7 +90,7 @@ export async function createSceneOperationRequest({base,mine,baseRevision,operat
  if(delta.legacy)throw new Error(version===2?'Unsupported room settings, imports and item/area order use the reviewed whole-room save.':'Room settings, areas and item order use the reviewed whole-room save.');
  if(delta.changes.length>(version===2?6199:6096))throw new Error('This save touches too many items, areas or ground cells. Export the draft before reducing it.');
  const operations=await Promise.all(delta.changes.map(async change=>({...change,before:change.kind==='object'?await hashSceneObject(change.before):change.kind==='area'?await hashSceneArea(change.before):change.kind==='scene'?await hashSceneField(base,change.field):change.before})));
- const request={version,operationId,baseRevision,contextHash:await hashSceneContext(base,version),...(version===2?{dependenciesHash:await hashSceneOperationDependencies(base,operations,imageDefinitions(base))}:{}),operations,...(personalAreaRevisions?{personalAreaRevisions:jsonSnapshot(personalAreaRevisions)}:{}),admission:jsonSnapshot(admission)};
+ const request={version,operationId,baseRevision,contextHash:await hashSceneContext(base,version),...(version===2?{dependenciesHash:await hashSceneOperationDependencies(base,operations,imageDefinitions(base),compositionDefinitions(base))}:{}),operations,...(personalAreaRevisions?{personalAreaRevisions:jsonSnapshot(personalAreaRevisions)}:{}),admission:jsonSnapshot(admission)};
  // Freeze nested data too: a retry must not pick up later edits or permissions.
  const freeze=value=>{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};return freeze(request);
 }
@@ -119,17 +121,17 @@ export async function sceneRequestHash(roomId,request){
 
 /** Compare actual geometry, not names/actions/color. A legacy overlap is not a
  * newly introduced collider and must remain editable. Callers bind authorized
- * image definitions on both snapshots before invoking this pure check. */
+ * custom asset definitions on both snapshots before invoking this pure check. */
 export function reconciliationGeometryProblem(before,next){
  try{
   validateArrivalGeometry(next);validateTerrain(next.terrain,next.bounds);
-  const old=objects(before),oldImages=imageDefinitions(before),nextImages=imageDefinitions(next);
-  const entries=next.objects.map(item=>({item,box:objectFootprint(item,nextImages),cells:collisionBoxes(next,item)}));
+  const old=objects(before),oldImages=imageDefinitions(before),nextImages=imageDefinitions(next),oldCompositions=compositionDefinitions(before),nextCompositions=compositionDefinitions(next);
+  const entries=next.objects.map(item=>({item,box:objectFootprint(item,nextImages,nextCompositions),cells:collisionBoxes(next,item)}));
   const blocked=terrainCollisionBoxes(next.terrain),oldBlocked=new Set((before.terrain?.cells||[]).filter(c=>c[3]).map(c=>`${c[0]},${c[1]}`));
   const newBlocked=blocked.filter(c=>!oldBlocked.has(`${c.x-.5},${c.z-.5}`));
   const boundsChanged=!equalSceneValue(before.bounds,next.bounds),spawnChanged=!equalSceneValue(before.spawn,next.spawn),roomBox={x:0,z:0,width:next.bounds.width,depth:next.bounds.depth};let introduced=!!newBlocked.length;
   for(const entry of entries){
-   const {item,box,cells}=entry,prior=old.get(item.id),oldBox=prior?objectFootprint(prior,oldImages):null,oldCells=prior?collisionBoxes(before,prior):[];
+   const {item,box,cells}=entry,prior=old.get(item.id),oldBox=prior?objectFootprint(prior,oldImages,oldCompositions):null,oldCells=prior?collisionBoxes(before,prior):[];
    if((boundsChanged||!equalSceneValue(box,oldBox))&&!footprintInside(roomBox,box))return (item.name||item.type)+': Keep the whole item inside the room edge';
    const changed=!equalSceneValue(cells,oldCells);
    if(changed&&cells.length){

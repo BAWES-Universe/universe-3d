@@ -11,7 +11,8 @@ test('a missing persisted floor differs from an invalid empty or future floor',(
 });
 test('package reader descriptor explicitly declares the capability retained by storage',async()=>{
  const descriptor=JSON.parse(await readFile(new URL('../server/image-protocol-capabilities.json',import.meta.url),'utf8'));
- assert.deepEqual(descriptor,{version:1,readerCapabilities:[capability]});
+ assert.deepEqual(descriptor,{version:1,readerCapabilities:[capability,'composition-furniture-v1']});
+ assert.deepEqual(checkImageReaderCompatibility({version:1,requiredReaderCapabilities:descriptor.readerCapabilities},descriptor),{compatible:true,code:'IMAGE_READER_COMPATIBLE'});
 });
 test('binary and admission exceptions are exact; metadata and writes remain fenced',()=>{
  const f=fixture({value:capability}),policy=createImageClientProtocol({store:f.store});

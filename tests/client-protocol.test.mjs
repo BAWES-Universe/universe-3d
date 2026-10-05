@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {IMAGE_PHYSICAL_SIZE_CAPABILITY,clientProtocolHeaders,clientEventsUrl,normalizeClientProtocol,supportsClientProtocol,isClientReloadRequired,createClientProtocolGuard} from '../src/client-protocol.js';
+import {IMAGE_PHYSICAL_SIZE_CAPABILITY,COMPOSITION_FURNITURE_CAPABILITY,clientProtocolHeaders,clientEventsUrl,normalizeClientProtocol,supportsClientProtocol,isClientReloadRequired,createClientProtocolGuard} from '../src/client-protocol.js';
 
 test('every request and stream explicitly declares this tab format',()=>{
- assert.deepEqual(clientProtocolHeaders({'Content-Type':'application/json'}),{'Content-Type':'application/json','X-Universe-Client-Capabilities':IMAGE_PHYSICAL_SIZE_CAPABILITY});
- assert.equal(clientEventsUrl(),'/api/events?capabilities=image-physical-size-v1');
- assert.equal(clientEventsUrl('/api/events?fixture=1'),'/api/events?fixture=1&capabilities=image-physical-size-v1');
+ assert.deepEqual(clientProtocolHeaders({'Content-Type':'application/json'}),{'Content-Type':'application/json','X-Universe-Client-Capabilities':IMAGE_PHYSICAL_SIZE_CAPABILITY+','+COMPOSITION_FURNITURE_CAPABILITY});
+ assert.equal(clientEventsUrl(),'/api/events?capabilities=image-physical-size-v1%2Ccomposition-furniture-v1');
+ assert.equal(clientEventsUrl('/api/events?fixture=1'),'/api/events?fixture=1&capabilities=image-physical-size-v1%2Ccomposition-furniture-v1');
 });
 test('unknown server format cannot be accepted through permissive normalization',()=>{
  assert.deepEqual(normalizeClientProtocol(null),{enabled:false,required:false,capability:IMAGE_PHYSICAL_SIZE_CAPABILITY});

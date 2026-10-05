@@ -10,6 +10,7 @@ import {bindImageDefinitions, imageGeometry} from '../src/image-asset-context.js
 import {makePng} from '../fixtures/png-fixtures.mjs';
 const legacyUrl=new URL('./fixtures/image-asset-schema-bc715.js',import.meta.url);
 const contextSource=(await readFile(new URL('../src/image-asset-context.js',import.meta.url),'utf8'))
+ .replace("'./composition-context.js'",JSON.stringify(new URL('../src/composition-context.js',import.meta.url).href))
  .replace("'./image-asset-schema.js'",JSON.stringify(legacyUrl.href))
  .replace("'./image-asset-geometry.js'",JSON.stringify(new URL('../src/image-asset-geometry.js',import.meta.url).href));
 const legacyContext=await import('data:text/javascript;base64,'+Buffer.from(contextSource).toString('base64'));

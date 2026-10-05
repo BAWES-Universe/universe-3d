@@ -1,6 +1,7 @@
 import {TERRAIN_MATERIALS} from './terrain.js';
 import {objectFootprint} from './personal-area-policy.js';
-import {imageDefinitions} from './image-asset-context.js';
+import {imageDefinitions,inheritImageDefinitions} from './image-asset-context.js';
+import {compositionDefinitions} from './composition-context.js';
 
 export const SCENE_OPERATION_VERSION = 1;
 export const SCENE_OPERATION_VERSION_V2 = 2;
@@ -48,7 +49,7 @@ export const hashSceneContext = (scene,version=1) => hash(sceneOperationContext(
 /** Conservative spatial read set. Order is significant for areas and objects;
  * touching edges count so newly overlapping policy cannot slip past a stale edit.
  * Definitions are resolved projection data, never client-authored scene fields. */
-export function sceneOperationDependencyView(scene,operations,definitions=imageDefinitions(scene)) {
+export function sceneOperationDependencyView(scene,operations,definitions=imageDefinitions(scene),compositions=compositionDefinitions(scene)) {
  const structural=operations.some(operation=>operation.kind!=='scene'||operation.field!=='theme');
  const view={version:1,bounds:structural?scene.bounds:null,spawn:structural?scene.spawn:null,areas:[],objects:[],terrain:[]};
  if(!structural)return view;
@@ -62,7 +63,7 @@ export function sceneOperationDependencyView(scene,operations,definitions=imageD
   if(!value||![value.x,value.z,value.width,value.depth].every(Number.isFinite)||value.width<=0||value.depth<=0)invalid('Resolve valid geometry before building scene dependencies','SCENE_DEPENDENCY_GEOMETRY');
   return {x:value.x,z:value.z,width:value.width,depth:value.depth};
  };
- const footprint=object=>box(objectFootprint(object,definitions));
+ const footprint=object=>box(objectFootprint(object,definitions,compositions));
  const touches=(a,b)=>Math.abs(a.x-b.x)<=(a.width+b.width)/2+1e-8&&Math.abs(a.z-b.z)<=(a.depth+b.depth)/2+1e-8;
  for(const operation of operations){
   if(operation.kind==='area')for(const area of [areas.get(operation.id),operation.after].filter(Boolean)){const region=box(area);regions.push(region);areaRegions.push(region);const group=mediaGroup(area);if(group!==null)mediaGroups.add(group);}
@@ -77,7 +78,7 @@ export function sceneOperationDependencyView(scene,operations,definitions=imageD
  }
  return view;
 }
-export const hashSceneOperationDependencies = (scene,operations,definitions=imageDefinitions(scene)) => hash(sceneOperationDependencyView(scene,operations,definitions));
+export const hashSceneOperationDependencies = (scene,operations,definitions=imageDefinitions(scene),compositions=compositionDefinitions(scene)) => hash(sceneOperationDependencyView(scene,operations,definitions,compositions));
 
 export function sceneOperationTargets(operations) {
  return operations.map(operation=>operation.kind==='object'||operation.kind==='area'?{kind:operation.kind,id:operation.id}:operation.kind==='scene'?{kind:'scene',field:operation.field}:{kind:'terrain',x:operation.x,z:operation.z});
@@ -155,5 +156,5 @@ export function applySceneOperations(scene,operations) {
   for(const operation of terrain){const key=`${operation.x},${operation.z}`;if(operation.after===null)cells.delete(key);else cells.set(key,structuredClone(operation.after));}
   next.terrain={version:1,cells:[...cells.values()].sort((a,b)=>a[1]-b[1]||a[0]-b[0])};
  }
- return next;
+ return inheritImageDefinitions(scene,next);
 }

@@ -4,6 +4,7 @@ import {AVATAR_PRESETS,DEFAULT_APPEARANCE,validateAppearance} from '../src/avata
 import {distance,navigationPolicy,planBotPath,segmentClear} from './bot-navigation.mjs';
 import {unavailableResidentTest} from './resident-turns.mjs';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
+import {bindCompositionDefinitions} from '../src/composition-context.js';
 
 export const MAX_ROOM_BOTS=24;
 const TOOLS=['pause','resume','return'];
@@ -38,7 +39,7 @@ function migrate(store){store.db.exec(`
 const record=row=>({id:row.id,roomId:row.room_id,revision:row.revision,modelPermissions:{pause:false,resume:false,return:false},...JSON.parse(row.config),createdAt:row.created_at,updatedAt:row.updated_at});
 export function createBotService({store,presence,body,send,session,emitRoom=()=>{},now=Date.now,autoTick=true,onChanged=()=>{},residentTest=unavailableResidentTest}={}){
   migrate(store);const runtime=new Map(),lastPublished=new Map(),commandRates=new Map();let closed=false,lastTick=now();
-  function roomScene(room){const scene=JSON.parse(room.scene);return bindImageDefinitions(scene,store.imageDefinitions?.(room.id,scene)??{},room.id);}
+  function roomScene(room){const scene=JSON.parse(room.scene);bindCompositionDefinitions(scene,store.compositionDefinitions?.(room.id,scene)??{},room.id);return bindImageDefinitions(scene,store.imageDefinitions?.(room.id,scene)??{},room.id);}
   function authorize(roomId,userId){
     const {row}=store.authorize(roomId,userId),role=store.worldRole(store.worldRow(row.world_id),userId);
     if(!['owner','admin','editor'].includes(role))v.fail(403,'BOT_FORBIDDEN','Only the universe owner or a world admin/editor can manage residents');

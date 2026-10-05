@@ -143,7 +143,7 @@ lock, observation, backup, deployment or recovery implementations.
    a JSON capability claim is not a substitute for that review. The existing
    GitHub read authority must be able to read both immutable source commits
 
-## Image format admission and the first deployment
+## Persisted format admission and the first deployment
 
 SQLite table shape is not sufficient rollback evidence. The host independently
 reads the image protocol floor and any physical-size fields in stored image rows
@@ -152,6 +152,16 @@ required even with zero image rows: the new process can persist it at startup.
 Sized rows also require the capability if the marker is absent. Unknown, duplicate,
 empty or null floor values and malformed stored JSON fail closed. These reads do
 not repair, lower or create a marker.
+
+The same descriptor now declares `composition-furniture-v1` alongside
+`image-physical-size-v1`. Any row in `room_furniture_protocol_floor` requires the
+furniture reader, even after every placement has been removed. The host also
+checks persisted `rooms.scene` objects: a `type: "composition"` placement requires
+that reader even without a floor table or row. Empty/missing furniture-floor
+tables and legacy scenes add no requirement. Unknown, empty or null furniture
+capabilities and malformed room JSON fail closed. The historical `image-reader`
+interface, error codes and `sqlite-metadata-and-image-rows` evidence tag are
+retained; its read-only snapshot now includes furniture floors and room scenes.
 
 The controller fetches bounded descriptor JSON at each target's exact source SHA,
 checks the commit tree and Git blob hash, and requires the protected policy's
@@ -181,6 +191,14 @@ bootstrap. If compatibility cannot be established, the transition stays blocked.
 A fresh-volume reset is a separate human-approved operation retaining the old
 volume; there is no automatic bypass in this controller.
 
+The same restriction applies when adding composition support to an image-only
+baseline: the candidate may persist furniture, so its declared capability is
+part of the conservative potential floor before any write. An image-only prior
+release is not a safe rollback target, even when the current database contains
+no furniture. A separately approved reviewed-reader bootstrap/recovery plan is
+required. Merely adding the new table, editing a descriptor or turning a feature
+off cannot authorize that transition.
+
 Historical baselines/builds can be approved through `approvedBuildRevisions`.
 The controller reads their exact original attempts. When a reviewed policy update
 approves an already-published digest, the still-selected source/tree and original
@@ -201,6 +219,21 @@ a separately approved fresh volume and retain the old volume and backup; this
 pipeline contains no delete/prune/reset operation. Recovered failures remain frozen
 for operator review. A state-reconciliation-required result must be reconciled
 under the same resource lease before any further host mutation.
+
+## Bounded package verification
+
+Both Dockerfiles copy `modules/asset-workshop` into the build and runtime stages.
+The source `.dockerignore` admits only `model.js`, `geometry.js` and `view.js`
+from that module; unrelated modules, nested data and private files remain
+excluded. Adding a new shared source file requires updating this allowlist.
+
+`npm run verify:container-files` independently builds each Dockerfile's declared
+COPY layout in a temporary directory, applies the repository's supported
+`.dockerignore` syntax, and starts each resulting runtime without `node_modules`.
+Unsupported ignore/COPY syntax fails rather than silently bypassing the check.
+This is CPU-only package evidence. It does not build a Docker image, exercise
+container users/network/TLS, or establish host/deployment readiness. The report
+is written to `evidence/container-files.json`.
 
 ## Verification and reuse provenance
 

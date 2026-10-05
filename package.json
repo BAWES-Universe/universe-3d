@@ -25,7 +25,8 @@
     "test:browser:terrain": "node scripts/test-browser.mjs terrain",
     "test:browser:windows": "node scripts/test-browser.mjs windows",
     "test:browser:groupplay": "node scripts/test-browser.mjs groupplay",
-    "test:browser:arrivals": "node scripts/test-browser.mjs arrivals"
+    "test:browser:arrivals": "node scripts/test-browser.mjs arrivals",
+    "test:browser:workshop": "node scripts/test-browser.mjs workshop"
   },
   "dependencies": {
     "@babylonjs/core": "9.28.0"

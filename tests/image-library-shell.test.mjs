@@ -27,7 +27,7 @@ test('transport uses the mounted authenticated room routes and exact upload enve
  await transport.reconcileCreate({roomId:'room_a',operationId:'op_a',signal});await transport.readImage({roomId:'room_a',assetId:'asset_a',versionId:'version_a',signal});
  assert.deepEqual(calls.map(call=>call.url),['/api/rooms/room_a/assets?query=green%20fern','/api/rooms/room_a/assets','/api/rooms/room_a/assets/operations/op_a','/api/rooms/room_a/assets/asset_a/versions/version_a/image']);
  assert.deepEqual(JSON.parse(calls[1].options.body),{draft,pngBase64:'AP8R',mediaType:'image/png',operationId:'op_a'});
- for(const {options}of calls){assert.equal(options.credentials,'same-origin');assert.equal(options.mode,'same-origin');assert.equal(options.signal,signal);assert.equal(options.cache,'no-store');assert.equal(options.headers['X-Universe-Client-Capabilities'],'image-physical-size-v1');}
+ for(const {options}of calls){assert.equal(options.credentials,'same-origin');assert.equal(options.mode,'same-origin');assert.equal(options.signal,signal);assert.equal(options.cache,'no-store');assert.equal(options.headers['X-Universe-Client-Capabilities'],'image-physical-size-v1,composition-furniture-v1');}
  assert.equal(calls[1].options.headers['Content-Type'],'application/json');
 });
 

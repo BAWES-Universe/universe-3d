@@ -37,7 +37,9 @@ export function createImageClientProtocol({store,enabled=false,onChange=()=>{}})
 /** Pure release-check seam: inspect trusted storage requirements and target JSON,
  * never execute target code or assume an absent descriptor is legacy-safe. */
 export function checkImageReaderCompatibility(storage,target){
- const known=value=>Array.isArray(value)&&value.every(item=>item===IMAGE_PHYSICAL_SIZE_CAPABILITY)&&new Set(value).size===value.length;
+ // Release descriptors cover every persisted format. Image admission and its
+ // storage status above remain scoped to physical image sizing only.
+ const known=value=>Array.isArray(value)&&value.every(item=>[IMAGE_PHYSICAL_SIZE_CAPABILITY,'composition-furniture-v1'].includes(item))&&new Set(value).size===value.length;
  if(!storage||storage.version!==1||!known(storage.requiredReaderCapabilities))return {compatible:false,code:'IMAGE_STORAGE_REQUIREMENT_INVALID'};
  if(target===undefined||target===null)return {compatible:false,code:'IMAGE_READER_DESCRIPTOR_MISSING'};
  if(target.version!==1||!known(target.readerCapabilities)||Object.keys(target).some(key=>!['version','readerCapabilities'].includes(key)))return {compatible:false,code:'IMAGE_READER_DESCRIPTOR_INVALID'};

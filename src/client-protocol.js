@@ -1,10 +1,12 @@
 /** Compatibility declarations are per request/tab, never an authorization grant. */
 export const IMAGE_PHYSICAL_SIZE_CAPABILITY='image-physical-size-v1';
+export const COMPOSITION_FURNITURE_CAPABILITY='composition-furniture-v1';
+const CAPABILITIES=IMAGE_PHYSICAL_SIZE_CAPABILITY+','+COMPOSITION_FURNITURE_CAPABILITY;
 export const CLIENT_CAPABILITIES_HEADER='X-Universe-Client-Capabilities';
-export const clientProtocolHeaders=(initial={})=>({...initial,[CLIENT_CAPABILITIES_HEADER]:IMAGE_PHYSICAL_SIZE_CAPABILITY});
+export const clientProtocolHeaders=(initial={})=>({...initial,[CLIENT_CAPABILITIES_HEADER]:CAPABILITIES});
 export function clientEventsUrl(path='/api/events'){
  const separator=path.includes('?')?'&':'?';
- return path+separator+'capabilities='+encodeURIComponent(IMAGE_PHYSICAL_SIZE_CAPABILITY);
+ return path+separator+'capabilities='+encodeURIComponent(CAPABILITIES);
 }
 export function normalizeClientProtocol(data){
  const value=data?.imagePhysicalSize??data;

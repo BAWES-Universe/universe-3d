@@ -5,7 +5,7 @@ import * as v from './validation.mjs';
 const hash=value=>createHash('sha256').update(canonicalStringify(value)).digest('hex');
 const receipt=row=>({version:row.protocol_version,operationId:row.operation_id,actorId:row.actor_id,roomId:row.room_id,appliedRevision:row.applied_revision,requestHash:row.request_hash});
 
-export function createSceneOperationService({store,session,arrivals,images,body,send,commitScene,afterCommit}) {
+export function createSceneOperationService({store,session,arrivals,images,furniture,furnitureProtocol,body,send,commitScene,afterCommit}) {
  const conflict=(roomId,userId,conflicts,message='The scene changed. Review the conflicting items before saving.')=>v.fail(409,'SCENE_OPERATION_CONFLICT',message,{room:store.room(roomId,userId),conflicts});
  return async function handle(req,res,url,s) {
   const match=url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/scene\/operations$/);
@@ -19,7 +19,7 @@ export function createSceneOperationService({store,session,arrivals,images,body,
    send(res,200,replaySceneOperations(store,roomId,userId,after));return true;
   }
   if(req.method!=='POST')v.fail(405,'METHOD_NOT_ALLOWED','Use GET or POST for scene operations');
-  const fence=arrivals.captureFence(s),imageSessionEpoch=images.sessionEpoch(s.token_hash),batch=await body(req);
+  const fence=arrivals.captureFence(s),imageSessionEpoch=images.sessionEpoch(s.token_hash),furnitureFence=furniture.captureFence(s),batch=await body(req);
   try{validateSceneOperationBatch(batch);}catch(error){v.fail(400,error.code??'INVALID_SCENE_OPERATIONS',error.message);}
   const requestHash=hash(sceneOperationRequestIdentity(roomId,batch));
   const result=store.transaction(()=>{
@@ -51,10 +51,10 @@ export function createSceneOperationService({store,session,arrivals,images,body,
    }
    if(conflicts.length)conflict(roomId,userId,conflicts);
    const next=applySceneOperations(before,batch.operations);
-   const saved=commitScene({row,userId,live,before,next,personalAreaRevisions:batch.personalAreaRevisions,imageSessionEpoch,validateGeometry:true,
-    validateDependencies:batch.version===2?resolvedImages=>{
+   const saved=commitScene({row,userId,live,before,next,personalAreaRevisions:batch.personalAreaRevisions,imageSessionEpoch,furnitureFence,furnitureCapable:furnitureProtocol.accepts(req),validateGeometry:true,
+    validateDependencies:batch.version===2?(resolvedImages,resolvedCompositions)=>{
      let dependencies;
-     try{dependencies=sceneOperationDependencyView(before,batch.operations,{...resolvedImages.before,...resolvedImages.next});}catch(error){v.fail(400,error.code??'INVALID_SCENE_OPERATIONS',error.message);}
+     try{dependencies=sceneOperationDependencyView(before,batch.operations,{...resolvedImages.before,...resolvedImages.next},{...resolvedCompositions.before,...resolvedCompositions.next});}catch(error){v.fail(400,error.code??'INVALID_SCENE_OPERATIONS',error.message);}
      if(hash(dependencies)!==batch.dependenciesHash)conflict(roomId,userId,[{kind:'dependencies'}],'Nearby areas, objects, ground or room geometry changed. Review their combined behavior before saving.');
     }:undefined,
     conflict:targets=>conflict(roomId,userId,targets,'These changes overlap or block the current scene. Review their placement before saving.')});

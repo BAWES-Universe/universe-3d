@@ -1,3 +1,4 @@
+import {inheritCompositionDefinitions} from './composition-context.js';
 import {validateResolvedImageAsset,validateImageInstance,canRenderImageReference} from './image-asset-schema.js';
 import {resolveImagePlacement} from './image-asset-geometry.js';
 
@@ -21,7 +22,7 @@ export function bindImageDefinitions(scene,definitions={},roomId){
  contexts.set(scene,Object.freeze(normalized));return scene;
 }
 export function imageDefinitions(scene){return contexts.get(scene)||EMPTY;}
-export function inheritImageDefinitions(source,target){const value=contexts.get(source);if(value)contexts.set(target,value);return target;}
+export function inheritImageDefinitions(source,target){const value=contexts.get(source);if(value)contexts.set(target,value);inheritCompositionDefinitions(source,target);return target;}
 export function cloneWithImageContext(value){
  const copy=structuredClone(value);
  if(value&&typeof value==='object'){

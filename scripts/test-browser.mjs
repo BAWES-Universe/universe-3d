@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ workshop:['workshop.full.mjs','workshop-touch.full.mjs','workshop-collaboration.full.mjs'],
  friendjourney:['complete-friend-journey.full.mjs'],
  placescreation:['places-creation-focus.browser.mjs','places-foreground.full.mjs','places-creation.full.mjs'],
  compactconversations:['compact-conversations-sheet.browser.mjs','compact-conversations-layout.full.mjs','compact-conversations.full.mjs'],

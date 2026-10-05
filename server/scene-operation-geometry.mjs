@@ -1,5 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
+import {compositionDefinitions} from '../src/composition-context.js';
 import {collisionBoxes,contains} from '../src/worlds.js';
 import {objectFootprint,footprintInside} from '../src/personal-area-policy.js';
 import {overlaps,canLeaveArrival} from '../src/editor-geometry.js';
@@ -9,8 +10,9 @@ import {terrainCollisionBoxes} from '../src/terrain.js';
  * world. Existing overlaps remain editable; final-scene swaps are simultaneous. */
 export function sceneOperationGeometryConflicts({store,presence,residents=[],now,room,before,next,beforeImages,nextImages}) {
  bindImageDefinitions(before,beforeImages,room.id);bindImageDefinitions(next,nextImages,room.id);
+ const beforeCompositions=compositionDefinitions(before),nextCompositions=compositionDefinitions(next);
  const old=new Map(before.objects.map(object=>[object.id,object]));
- const entries=next.objects.map(object=>({object,box:objectFootprint(object,nextImages),cells:collisionBoxes(next,object)}));
+ const entries=next.objects.map(object=>({object,box:objectFootprint(object,nextImages,nextCompositions),cells:collisionBoxes(next,object)}));
  const blocked=terrainCollisionBoxes(next.terrain);
  const previousBlocked=new Set((before.terrain?.cells??[]).filter(cell=>cell[3]).map(([x,z])=>`${x},${z}`));
  const newBlocked=blocked.filter(box=>!previousBlocked.has(`${box.x-.5},${box.z-.5}`));
@@ -22,7 +24,7 @@ export function sceneOperationGeometryConflicts({store,presence,residents=[],now
  if(boundsChanged&&occupants.some(person=>!footprintInside(roomBox,{x:person.x,z:person.z,width:.8,depth:.8})))add(boundsTarget);
  const introduced=[];
  for(const entry of entries){
-  const {object,box,cells}=entry,prior=old.get(object.id),oldBox=prior?objectFootprint(prior,beforeImages):null,oldCells=prior?collisionBoxes(before,prior):[];
+  const {object,box,cells}=entry,prior=old.get(object.id),oldBox=prior?objectFootprint(prior,beforeImages,beforeCompositions):null,oldCells=prior?collisionBoxes(before,prior):[];
   if((boundsChanged||!isDeepStrictEqual(box,oldBox))&&!footprintInside(roomBox,box)){add(objectTarget(object));if(boundsChanged)add(boundsTarget);}
   if(spawnChanged&&cells.some(cell=>contains(cell,next.spawn.x,next.spawn.z,.75))){add(objectTarget(object));add(spawnTarget);}
   if(isDeepStrictEqual(cells,oldCells)||!cells.length)continue;

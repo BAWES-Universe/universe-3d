@@ -9,7 +9,7 @@ export function navigationPolicy(scene, config, {returnFrom = null} = {}) {
   // residents. Explicit restricted areas are an additional deny-only policy.
   const restricted = new Set(config.restrictedAreaIds ?? []);
   const zones = (scene.areas ?? []).filter(a => restricted.has(a.id) || a.personalArea || (a.allowedTags?.length));
-  const colliders=[...(scene.objects??[]).flatMap(o=>o.type==='image'?collisionBoxes(scene,o):CATALOG[o.type]?.solid?[objectFootprint(o)]:[]),...terrainCollisionBoxes(scene.terrain)];
+  const colliders=[...(scene.objects??[]).flatMap(o=>['image','composition'].includes(o.type)?collisionBoxes(scene,o):CATALOG[o.type]?.solid?[objectFootprint(o)]:[]),...terrainCollisionBoxes(scene.terrain)];
   // Coarse broad phase avoids rescanning all furniture for each swept sample.
   const buckets=new Map(),large=[],cell=4,key=(x,z)=>`${x},${z}`;
   for(const box of colliders){

@@ -23,15 +23,15 @@ export function canLeaveArrival(scene){
 }
 export function validatePlacement(scene,item,{excludeId=item.id,position=null}={}){
  if(!scene?.bounds)return {valid:false,reason:'Open a room to start building'};
- let box;try{box=footprint(item,scene);}catch{return {valid:false,reason:'This image version is unavailable. Refresh the Custom library'};}
+ let box;try{box=footprint(item,scene);}catch{return {valid:false,reason:'This custom asset revision is unavailable. Refresh the library'};}
  if(![box.x,box.z,box.width,box.depth].every(Number.isFinite)||box.width<=0||box.depth<=0)return {valid:false,reason:'Use a positive size and valid coordinates'};
  if(Math.abs(box.x)+box.width/2>scene.bounds.width/2+.001||Math.abs(box.z)+box.depth/2>scene.bounds.depth/2+.001)return {valid:false,reason:'Keep the whole item inside the room edge'};
  const isArea=!item.type||item.type==='area';
  if(isArea){if(!excludeId&&scene.areas.length>=100)return {valid:false,reason:'This room already has 100 areas'};return {valid:true,reason:'Areas may overlap furniture and each other'};}
- if(!CATALOG[item.type]&&item.type!=='image')return {valid:false,reason:'Choose an item from the furniture tray'};
+ if(!CATALOG[item.type]&&item.type!=='image'&&item.type!=='composition')return {valid:false,reason:'Choose an item from the furniture tray'};
  if(!excludeId&&scene.objects.length>=2000)return {valid:false,reason:'This room already has 2,000 items'};
- const cells=collisionBoxes(scene,item);if(!cells.length)return {valid:true,reason:item.type==='rug'?'Rugs can go underneath furniture':'Ready to place'};
- let collision;try{collision=scene.objects.find(o=>o.id!==excludeId&&collisionBoxes(scene,o).some(other=>cells.some(cell=>overlaps(cell,other))));}catch{return {valid:false,reason:'Resolve every image version before editing this scene'};}
+ let cells;try{cells=collisionBoxes(scene,item);}catch{return {valid:false,reason:'Resolve this custom asset revision before placing it'};}if(!cells.length)return {valid:true,reason:item.type==='rug'?'Rugs can go underneath furniture':'Ready to place'};
+ let collision;try{collision=scene.objects.find(o=>o.id!==excludeId&&collisionBoxes(scene,o).some(other=>cells.some(cell=>overlaps(cell,other))));}catch{return {valid:false,reason:'Resolve every custom asset revision before editing this scene'};}
  if(collision)return {valid:false,reason:'Overlaps '+(collision.name||CATALOG[collision.type]?.name||'another item')};
  if(terrainCollisionBoxes(scene.terrain).some(other=>cells.some(cell=>overlaps(cell,other))))return {valid:false,reason:'Keep solid items off blocked terrain'};
  if(scene.spawn&&cells.some(cell=>contains(cell,scene.spawn.x,scene.spawn.z,.75)))return {valid:false,reason:'Leave a clear space around the arrival point'};
@@ -54,7 +54,7 @@ export function validateTerrainEdit(scene,rect,options,{position=null}={}){
  if(scene.spawn&&blockers.some(box=>contains(box,scene.spawn.x,scene.spawn.z,.75)))return {valid:false,reason:'Leave a clear space around the arrival point'};
  if(position&&blockers.some(box=>contains(box,position.x,position.z,.4)))return {valid:false,reason:'Move this away from where you’re standing'};
  if(blockers.length){
-  let collision;try{collision=scene.objects.find(object=>collisionBoxes(scene,object).some(cell=>blockers.some(box=>overlaps(cell,box))));}catch{return {valid:false,reason:'Resolve every image version before editing this scene'};}
+  let collision;try{collision=scene.objects.find(object=>collisionBoxes(scene,object).some(cell=>blockers.some(box=>overlaps(cell,box))));}catch{return {valid:false,reason:'Resolve every custom asset revision before editing this scene'};}
   if(collision)return {valid:false,reason:'Overlaps '+(collision.name||CATALOG[collision.type]?.name||'another item')};
  }
  const next=inheritImageDefinitions(scene,{...scene,terrain});

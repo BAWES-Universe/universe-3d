@@ -6,8 +6,11 @@ import { DIGEST, SHA, requireGate } from './contracts.mjs';
 export const IMAGE_READER_PATH = 'server/image-protocol-capabilities.json';
 export const IMAGE_SIZE_CAPABILITY = 'image-physical-size-v1';
 export const IMAGE_FLOOR_KEY = 'image_physical_size_protocol_floor';
+export const FURNITURE_CAPABILITY = 'composition-furniture-v1';
+export const FURNITURE_FLOOR_TABLE = 'room_furniture_protocol_floor';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
-const known = value => Array.isArray(value) && value.every(item => item === IMAGE_SIZE_CAPABILITY) && new Set(value).size === value.length;
+const capabilities = new Set([IMAGE_SIZE_CAPABILITY, FURNITURE_CAPABILITY]);
+const known = value => Array.isArray(value) && value.every(item => capabilities.has(item)) && new Set(value).size === value.length;
 export function assertStorageRequirements(storage) {
   requireGate(object(storage) && storage.version === 1 && known(storage.requiredReaderCapabilities) && Object.keys(storage).every(key => ['version', 'requiredReaderCapabilities'].includes(key)), 'IMAGE_STORAGE_REQUIREMENT_INVALID');
   return storage;
@@ -45,7 +48,8 @@ export function assertReaderTransition(storage, candidate, previous) {
   return resulting;
 }
 // Caller holds one read-only SQLite snapshot, shared with schema observation.
-// An old binary does not become safe merely because this marker is present.
+// An old binary does not become safe merely because a marker is present. The
+// historical image-named interface also covers persisted composition furniture.
 export function observeImageStorage(db) {
   const table = name => db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name);
   const floor = table('metadata') && db.prepare('SELECT value FROM metadata WHERE key=?').all(IMAGE_FLOOR_KEY);
@@ -55,5 +59,20 @@ export function observeImageStorage(db) {
     requireGate(!db.prepare('SELECT 1 FROM room_image_asset_versions WHERE json_valid(version_json)=0 LIMIT 1').get(), 'IMAGE_STORAGE_REQUIREMENT_INVALID');
     sized = !!db.prepare("SELECT 1 FROM room_image_asset_versions WHERE json_type(version_json,'$.widthMetres') IS NOT NULL OR json_type(version_json,'$.heightMetres') IS NOT NULL LIMIT 1").get();
   }
-  return { version: 1, requiredReaderCapabilities: floor?.length || sized ? [IMAGE_SIZE_CAPABILITY] : [] };
+  let furniture = false;
+  if (table(FURNITURE_FLOOR_TABLE)) {
+    requireGate(!db.prepare('SELECT 1 FROM room_furniture_protocol_floor WHERE capability IS NULL OR capability!=? LIMIT 1').get(FURNITURE_CAPABILITY), 'IMAGE_STORAGE_REQUIREMENT_INVALID');
+    furniture = !!db.prepare('SELECT 1 FROM room_furniture_protocol_floor LIMIT 1').get();
+  }
+  if (table('rooms')) {
+    requireGate(!db.prepare('SELECT 1 FROM rooms WHERE scene IS NULL OR json_valid(scene)=0 LIMIT 1').get(), 'IMAGE_STORAGE_REQUIREMENT_INVALID');
+    // Read persisted placements even if an older writer omitted the marker.
+    // CASE avoids applying json_extract to scalar strings from a malformed
+    // object list; malformed JSON itself has already failed closed above.
+    furniture ||= !!db.prepare("SELECT 1 FROM rooms, json_each(rooms.scene, '$.objects') AS object WHERE CASE WHEN object.type='object' THEN json_extract(object.value,'$.type') END=? LIMIT 1").get('composition');
+  }
+  return { version: 1, requiredReaderCapabilities: [
+    ...(floor?.length || sized ? [IMAGE_SIZE_CAPABILITY] : []),
+    ...(furniture ? [FURNITURE_CAPABILITY] : [])
+  ].sort() };
 }

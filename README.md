@@ -89,3 +89,7 @@ Core browser tests run serially through the actual shell for camera, direct buil
 `npm run record:walkthrough` records actual keyboard/pointer flows (requires ffmpeg). `npm run measure:server` makes a bounded local server/asset measurement, not a user-capacity claim. CI runs the same check/unit/build/package/core-browser commands; verify the exact remote commit's status before treating it as green.
 
 Asset provenance and license texts are in `ASSETS.md` and `public/assets/licenses/`. No blanket open-source license or trademark reuse permission is granted by this repository. The original research and prototype remain separate and unchanged.
+
+## Custom furniture
+
+Build original multipart furniture in the integrated [Furniture workshop](WORKSHOP.md), save immutable room-scoped definitions, and place them through the collaborative room editor. Existing placed revisions stay pinned until explicitly updated.

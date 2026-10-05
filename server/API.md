@@ -109,3 +109,12 @@ Meet here uses reciprocal 👋 emotes as a deliberate local alternative; the ori
 Quest history/decline/stamps are saved under the same local user identity as rooms and chat. Registering the guest as a local account preserves them; signing into that account on another browser restores them. Signing into a different existing account does not merge guest progress. There is no offline observation outbox or guest merge workflow. Data persists until the local database is intentionally removed; regulated retention/deletion and operator progress views are not implemented. Private quest titles, stamps and locations are never added to public presence or room chat. Notice claims favor no duplicate payoff; if a response is lost after claim, the stamp still remains visible in the log.
 
 The frontend accepts `mountQuests({root,api,getContext,onGuide,onWalk,onCancelWalk,onOpenEditor,onRegister,onOpenChange})`. Context supplies `{user,room,ready,busy}`. It exports `refresh/open/close/isOpen/handleEvent/setSuppressed/cancelWalk/destroy`. Parent controls movement and markers; Show the way must not move/zoom the camera, and Walk there must use collision-aware cancellable movement. Dialog open must clear held movement. It never synthesizes completion. Invitation/tracker/payoff are suppressed during typing, DND, hidden tab, or parent-marked chat/editor/media/modal occupancy; the log remains deliberately accessible. Deep links with meeting/interview/appointment identifiers skip arrival invitation. Owner authoring/publish workflows, configurable hosts, partner receipts, featured public badges and original-source device/localization acceptance remain outside this local slice.
+
+## Custom furniture compositions
+
+See [FURNITURE.md](FURNITURE.md) for the room-scoped `/api/rooms/:roomId/furniture`
+library, immutable source revisions, CAS/idempotency, archive semantics,
+composition scene instances, trusted definition projection, aggregate budgets,
+and the `composition-furniture-v1` reader floor. The existing scene PUT and
+scene-operation endpoints place exact pinned references under room/personal-area
+permissions; clients cannot submit source definitions as scene geometry.

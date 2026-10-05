@@ -1,3 +1,5 @@
+import {compositionGeometry,resolvedComposition,compositionRoomId} from './composition-context.js';
+import {createCompositionObjectView} from './composition-renderer.js';
 import {createWorldPresentation} from './world-presentation.js';
 import {resizeRenderBuffer,WORLD_RENDER_PIXELS} from './render-resolution.js';
 import {createBabylonImageTexturePool,createBabylonImageObjectView,pickWithImageAlpha} from './babylon-image-object-view.js';
@@ -60,12 +62,14 @@ export async function createRenderer(canvas,labels){
  contactContext.fillStyle=falloff;contactContext.fillRect(0,0,64,64);contactTexture.hasAlpha=true;contactTexture.update(false);
  const contactMaterial=new StandardMaterial('world-contact',scene);contactMaterial.diffuseTexture=contactTexture;contactMaterial.useAlphaFromDiffuseTexture=true;contactMaterial.disableLighting=true;contactMaterial.emissiveColor=Color3.White();contactMaterial.specularColor=Color3.Black();
  function contact(name,x,y,z,width,depth,parent=null){const mesh=CreateGround(name,{width,height:depth},scene);mesh.position.set(x,y,z);mesh.parent=parent;mesh.material=contactMaterial;mesh.isPickable=false;mesh.receiveShadows=false;mesh.metadata={type:'environment'};return mesh;}
- const imagePool=createBabylonImageTexturePool(scene),imageViews=new Map(),missingImages=new Map();let imageContext={roomId:'unjoined',roomEpoch:0,authorityEpoch:0,canRead:false},imageStateListener=null,ghostImage=null;
+ const compositionViews=new Set(),compositionErrors=new Map();
+ const imagePool=createBabylonImageTexturePool(scene),imageViews=new Map(),missingImages=new Map();let ghostComposition=null;let imageContext={roomId:'unjoined',roomEpoch:0,authorityEpoch:0,canRead:false},imageStateListener=null,ghostImage=null;
+ function cleanComposition(value,id=value.id||'composition-preview'){return{id,type:'composition',name:value.name||'Custom furniture',assetRef:value.assetRef,x:value.x,z:value.z,rotation:value.rotation??0};}
  function cleanImage(value,id=value.id||'image-preview'){const out={id,type:'image',assetRef:value.assetRef,x:value.x,z:value.z,rotation:value.rotation||0};if(value.name!==undefined)out.name=value.name;if(value.actions!==undefined)out.actions=value.actions;return out;}
- function getImageStates(){return [...missingImages.values(),...[...imageViews].map(([id,view])=>{const value=view.getState();return{id,status:value.status,name:world?.objects.find(o=>o.id===id)?.name||'Image',message:value.error?.message||value.label};})];}
+ function getImageStates(){return [...compositionErrors.values(),...missingImages.values(),...[...imageViews].map(([id,view])=>{const value=view.getState();return{id,status:value.status,name:world?.objects.find(o=>o.id===id)?.name||'Image',message:value.error?.message||value.label};})];}
  function notifyImageStates(){try{imageStateListener?.(getImageStates());}catch{}}
  function syncImages(){missingImages.clear();if(!imageContext.canRead){for(const view of imageViews.values())view.dispose();imageViews.clear();notifyImageStates();return;}const ids=new Set((world?.objects||[]).filter(o=>o.type==='image').map(o=>o.id));for(const[id,view]of imageViews)if(!ids.has(id)){view.dispose();imageViews.delete(id);}for(const object of world?.objects||[]){if(object.type!=='image')continue;const entry=resolvedImage(world,object);if(!entry){imageViews.get(object.id)?.dispose();imageViews.delete(object.id);missingImages.set(object.id,{id:object.id,status:'error',name:object.name||'Image',message:'Image metadata is unavailable. Refresh Custom or remove this instance.'});continue;}const input={resolved:entry,instance:cleanImage(object),context:imageContext};if(imageViews.has(object.id))imageViews.get(object.id).update(input);else{const view=createBabylonImageObjectView({scene,texturePool:imagePool,...input,onState:notifyImageStates});imageViews.set(object.id,view);view.ready.then(notifyImageStates);} }notifyImageStates();}
- function setImageContext(next){const value={...next},previousRoom=imageContext.roomId,changed=JSON.stringify(value)!==JSON.stringify(imageContext);if(!changed)return;imageContext=value;setGhost(null);missingImages.clear();for(const view of imageViews.values())view.dispose();imageViews.clear();if(world&&value.roomId===previousRoom&&value.canRead)syncImages();else notifyImageStates();}
+ function setImageContext(next){const value={...next},previousRoom=imageContext.roomId,changed=JSON.stringify(value)!==JSON.stringify(imageContext);if(!changed)return;imageContext=value;setGhost(null);for(const view of compositionViews)view.dispose();compositionViews.clear();compositionErrors.clear();missingImages.clear();for(const view of imageViews.values())view.dispose();imageViews.clear();if(world&&value.canRead&&compositionRoomId(world)===value.roomId&&world.objects.some(object=>object.type==='composition'))sync(world);else if(world&&value.roomId===previousRoom&&value.canRead)syncImages();else notifyImageStates();}
 
  let botPreview=null,botPreviewLabel=null;
  let nodes=[],avatars=new Map(),world=null,floor=null,grid=[],selection=null,guide=null,ghost=null,destination=null,build=false,ghostKey=null,tick=0,frameTimes=[],motions=[];
@@ -114,8 +118,13 @@ export async function createRenderer(canvas,labels){
   ctx.fillStyle=dark?'#e2c580':'#9a8879';ctx.font='bold 15px sans-serif';ctx.fillText('UNIVERSE',45,228);tex.update(true);
   const m=new StandardMaterial('room-sign',scene);m.diffuseTexture=tex;m.specularColor=Color3.Black();m.emissiveColor=new Color3(.14,.14,.14);signMaterials.set(key,m);return m;
  }
- function clearWorld(){guide?.dispose();guide=null;nodes.forEach(n=>n.dispose(false));nodes=[];for(const mat of signMaterials.values())mat.dispose(true,true);signMaterials.clear();grid.forEach(n=>n.dispose());grid=[];worldLabels.forEach(n=>n.el.remove());worldLabels.length=0;selection?.dispose();selection=null;motions=[];shadows.getShadowMap().renderList=[];}
+ function clearWorld(){for(const view of compositionViews)view.dispose();compositionViews.clear();compositionErrors.clear();guide?.dispose();guide=null;nodes.forEach(n=>n.dispose(false));nodes=[];for(const mat of signMaterials.values())mat.dispose(true,true);signMaterials.clear();grid.forEach(n=>n.dispose());grid=[];worldLabels.forEach(n=>n.el.remove());worldLabels.length=0;selection?.dispose();selection=null;motions=[];shadows.getShadowMap().renderList=[];}
  function addObject(o,{preview=false}={}){
+  if(o.type==='composition'){
+   const instance=cleanComposition(o),definition=resolvedComposition(world,instance);
+   try{if(!definition)throw new Error('Custom furniture revision is unavailable. Refresh the library.');const view=createCompositionObjectView({scene,definition,instance,preview});if(!preview){compositionViews.add(view);view.node.onDisposeObservable.addOnce(()=>compositionViews.delete(view));nodes.push(view.node);}return view.node;}
+   catch(error){if(!preview)compositionErrors.set(o.id,{id:o.id,status:'error',name:o.name||'Custom furniture',message:error.message});const node=new TransformNode('missing-composition-'+o.id,scene);if(!preview)nodes.push(node);return node;}
+  }
   const t=CATALOG[o.type]||CATALOG.table,n=new TransformNode(o.id||'preview',scene);n.metadata={id:o.id,type:'object'};n.position.set(o.x,0,o.z);n.rotation.y=-(o.rotation||0)*Math.PI/180;if(!preview)nodes.push(n);
   const c=o.color||t.color,{width:w,depth:d}=dimensions(o);
   const b=(x,y,z,bw,bh,bd,col=c,opts={})=>box(o.id,x,y,z,bw,bh,bd,col,n,opts);
@@ -169,7 +178,7 @@ export async function createRenderer(canvas,labels){
   return n;
  }
  function sync(newWorld){
-  if(!newWorld)return;world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
+  if(!newWorld)return;if(ghostComposition&&(compositionRoomId(world)!==compositionRoomId(newWorld)||!resolvedComposition(newWorld,ghostComposition)))setGhost(null);world=newWorld;clearWorld();botPreview?.setWorld(world);rig.setBounds(world.bounds);
   const root=new TransformNode('environment',scene);nodes.push(root);floor=buildEnvironment(world,root,{box,cylinder,sphere,ground,groundPieces,boxPieces,material});floor.metadata={type:'ground'};addTerrain(world.terrain,root);
   for(const o of world.objects)if(o.type!=='image')addObject(o);syncImages();
   if(build)for(const a of world.areas){
@@ -274,9 +283,9 @@ export async function createRenderer(canvas,labels){
   if(metadata?.type==='batch')metadata=metadata.ranges.find(r=>picked.faceId>=r.start&&picked.faceId<r.end)?.metadata;
   const distance=-ray.origin.y/ray.direction.y;
   const point=Number.isFinite(distance)&&distance>=0?{x:ray.origin.x+ray.direction.x*distance,z:ray.origin.z+ray.direction.z*distance}:null;
-  return {id:metadata?.id,type:metadata?.type,point};
+  return {id:metadata?.id,type:metadata?.type,componentId:metadata?.componentId,assetRef:metadata?.assetRef,point};
  }
- function outline(o,color,height=.11,parent=null){if(o.type==='image'){const geometry=imageGeometry(world,cleanImage(o)),points=geometry.editBounds.corners.map(p=>new Vector3(p.x,height,p.z));points.push(points[0].clone());const line=CreateLines('image-footprint',{points},scene);line.color=hex(color);line.isPickable=false;line.parent=parent;return line;}const {width,depth}=o.type==='area'||o.type==='terrain'?o:dimensions(o,world);const angle=-(o.rotation||0)*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);const points=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(([x,z])=>{const padding=o.type==='terrain'?0:.055,px=x*(width/2+padding),pz=z*(depth/2+padding);return new Vector3((parent?0:o.x)+px*cs+pz*sn,height,(parent?0:o.z)-px*sn+pz*cs);});const n=CreateLines('footprint',{points},scene);n.color=hex(color);n.isPickable=false;n.parent=parent;return n;}
+ function outline(o,color,height=.11,parent=null){if(o.type==='composition'){const geometry=compositionGeometry(world,cleanComposition(o)),points=geometry.editBounds.corners.map(p=>new Vector3(p.x,height,p.z));points.push(points[0].clone());const line=CreateLines('composition-footprint',{points},scene);line.color=hex(color);line.isPickable=false;line.parent=parent;return line;}if(o.type==='image'){const geometry=imageGeometry(world,cleanImage(o)),points=geometry.editBounds.corners.map(p=>new Vector3(p.x,height,p.z));points.push(points[0].clone());const line=CreateLines('image-footprint',{points},scene);line.color=hex(color);line.isPickable=false;line.parent=parent;return line;}const {width,depth}=o.type==='area'||o.type==='terrain'?o:dimensions(o,world);const angle=-(o.rotation||0)*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);const points=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(([x,z])=>{const padding=o.type==='terrain'?0:.055,px=x*(width/2+padding),pz=z*(depth/2+padding);return new Vector3((parent?0:o.x)+px*cs+pz*sn,height,(parent?0:o.z)-px*sn+pz*cs);});const n=CreateLines('footprint',{points},scene);n.color=hex(color);n.isPickable=false;n.parent=parent;return n;}
  function select(id){
   selection?.dispose();selection=null;
   const o=world?.objects.find(o=>o.id===id)||world?.areas.find(o=>o.id===id);if(!o)return;
@@ -301,6 +310,7 @@ export async function createRenderer(canvas,labels){
  }
 
  function setGhost(value){
+  ghostComposition=value?.type==='composition'?cleanComposition(value):null;
   if(!value){ghostImage?.dispose();ghostImage=null;ghost?.dispose();ghost=null;ghostKey=null;return;}
   const {x,z,...style}=value,key=JSON.stringify(style);if(ghost&&key===ghostKey){ghost.position.set(x,0,z);if(value.type==='image')updateImageGhost(value);return;}
   ghostImage?.dispose();ghostImage=null;ghost?.dispose();const valid=value.valid!==false,col=!valid?'#ff687c':value.type==='terrain'?(value.erase?'#b7dfef':value.blocked?'#edc77c':'#73d8ac'):'#73edaa';ghost=new TransformNode('build-preview',scene);ghost.position.set(x,0,z);ghostKey=key;
@@ -313,6 +323,7 @@ export async function createRenderer(canvas,labels){
   else if(value.type==='image')updateImageGhost(value);
   else{const object=addObject({...value,id:'ghost-preview',x:0,z:0},{preview:true});object.parent=ghost;for(const mesh of object.getChildMeshes()){mesh.material=mat;mesh.isPickable=false;mesh.receiveShadows=false;}}
   const shape=outline({...value,x:0,z:0},col,.16);shape.parent=ghost;
+  if(value.type==='composition')return;
   const dims=value.type==='area'||value.type==='terrain'?value:dimensions(value,world),frame=new TransformNode('ghost-frame',scene);frame.parent=ghost;frame.rotation.y=-(value.rotation||0)*Math.PI/180;
   for(const side of [-1,1]){box('preview-edge',0,.105,side*dims.depth/2,dims.width+.06,.035,.055,col,frame,{glow:true,pickable:false});box('preview-edge',side*dims.width/2,.105,0,.055,.035,dims.depth+.06,col,frame,{glow:true,pickable:false});}
  }
@@ -327,6 +338,6 @@ export async function createRenderer(canvas,labels){
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},
   focusPoint:act((x,z)=>rig.focusPoint(x,z)),setTarget:(x,z)=>rig.setTarget(x,z),orbit:act((dx,dy)=>rig.orbit(dx,dy)),pan:act((dx,dy)=>rig.pan(dx,dy,canvas.clientHeight)),zoom:act(delta=>rig.zoom(delta)),rotate:act(delta=>rig.rotate(delta)),resetCamera:act(()=>rig.reset()),setFollow:act(v=>rig.setFollow(v)),
   getCameraState:()=>({...rig.getState(),projection:'perspective',viewportWidth:camera.viewport.width,framing:structuredClone({...framing,targetOffset:framingGoal?.offset||null})}),getCameraAngle:()=>rig.getState().yaw,
-  getStats:()=>({presentation:{...presentation.snapshot(),drawnFrames,lastRenderDt,resizePending,avatarCount:avatars.size,actors:[...avatars].map(([id,a])=>({id,x:a.x,z:a.z}))},ambience:{reducedMotion:motionPreference.matches,paused:motionPreference.matches||build,time:ambienceTime},resources:{materials:scene.materials.length,textures:scene.textures.length,geometries:scene.geometries.length,nodes:scene.transformNodes.length},engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState(),hardwareScalingLevel:engine.getHardwareScalingLevel(),renderWidth:engine.getRenderWidth(),renderHeight:engine.getRenderHeight()}),
+  getStats:()=>({presentation:{...presentation.snapshot(),drawnFrames,lastRenderDt,resizePending,avatarCount:avatars.size,actors:[...avatars].map(([id,a])=>({id,x:a.x,z:a.z}))},ambience:{reducedMotion:motionPreference.matches,paused:motionPreference.matches||build,time:ambienceTime},compositions:{instances:compositionViews.size,components:[...compositionViews].reduce((sum,view)=>sum+view.meshes.length,0),errors:[...compositionErrors.values()]},resources:{materials:scene.materials.length,textures:scene.textures.length,geometries:scene.geometries.length,nodes:scene.transformNodes.length},engine:'Babylon WebGL'+engine.webGLVersion,meshes:scene.meshes.length,drawCalls:engine._drawCalls?.current??null,frameMs:frameTimes.slice(),textures:surfaces.textures.size,camera:rig.getState(),hardwareScalingLevel:engine.getHardwareScalingLevel(),renderWidth:engine.getRenderWidth(),renderHeight:engine.getRenderHeight()}),
   dispose(){restoreLabels();setBotPreview(null);setGhost(null);clearWorld();for(const a of avatars.values())a.el.remove();avatars.clear();destination?.dispose();destination=null;ghostImage?.dispose();for(const view of imageViews.values())view.dispose();imageViews.clear();imagePool.dispose();window.removeEventListener('resize',resize);engine.dispose();},ready:scene.whenReadyAsync()};
 }

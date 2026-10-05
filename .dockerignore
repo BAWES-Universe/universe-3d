@@ -6,6 +6,14 @@
 !server/**
 !src/
 !src/**
+# Open only the shared workshop source files, not other module trees or data.
+!modules/
+modules/*
+!modules/asset-workshop/
+modules/asset-workshop/*
+!modules/asset-workshop/model.js
+!modules/asset-workshop/geometry.js
+!modules/asset-workshop/view.js
 !public/
 !public/**
 !scripts/

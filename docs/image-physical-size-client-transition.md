@@ -61,10 +61,12 @@ An unmodified old browser understands the retirement events and offers its exist
 `server/image-protocol-capabilities.json` is an immutable source/package descriptor:
 
 ```json
-{"version":1,"readerCapabilities":["image-physical-size-v1"]}
+{"version":1,"readerCapabilities":["image-physical-size-v1","composition-furniture-v1"]}
 ```
 
 Both existing runtime Docker copy contracts place it at `/app/server/image-protocol-capabilities.json`. The pure `checkImageReaderCompatibility(storageCompatibility,targetDescriptor)` helper returns a machine-readable decision. It rejects missing target JSON (`IMAGE_READER_DESCRIPTOR_MISSING`), unknown/invalid descriptor versions or fields/capabilities (`IMAGE_READER_DESCRIPTOR_INVALID`), insufficient readers (`IMAGE_READER_CAPABILITY_MISSING`), and unrecognized storage requirements (`IMAGE_STORAGE_REQUIREMENT_INVALID`). Success is `IMAGE_READER_COMPATIBLE`. Missing evidence is never interpreted as compatibility, even if the current required-reader list is empty. This helper does not load or execute target code.
+
+The descriptor covers both persisted formats. The physical-image admission policy and its metadata remain unchanged; the deployment observer also requires `composition-furniture-v1` for any persisted room furniture floor or composition scene placement. An image-only reader cannot be used as a rollback target after furniture persistence, or before starting a candidate that may persist furniture. Empty furniture tables and legacy room scenes add no storage requirement.
 
 The preview controller now requires fresh SQLite floor/row observations and descriptor evidence bound to the exact target digest, source SHA, tree and Git blob. A protected review binds that tuple to its possible storage requirements. Both candidate and previous healthy readers must satisfy the conservative resulting requirement before any deployment mutation. The controller observes storage again after all writers stop, before start, and during recovery; an observed floor cannot later disappear. Missing, invalid or incompatible descriptors block replacement or rollback. The trusted controller validates bounded JSON data; it never executes target code to discover compatibility. See `deploy/preview/README.md` for the initial-baseline and review contract. **Direct rollback to unmodified bc715 after enablement/sized data is unsupported:** the old binary ignores this new marker and has no fence. This runtime cannot prevent an operator from directly launching such a binary. Retain a compatible reader with writes off, or restore a verified pre-enablement/pre-sized-data backup under an explicit rollback procedure. Never clear the marker, alter stored dimensions or corrupt data to force an old binary to fail.
 

@@ -27,6 +27,10 @@ import {createBotService} from './bots.mjs';
 import {readRuntimeConfig,createRequestSecurity} from './runtime-config.mjs';
 import {createAccessGate} from './access-gate.mjs';
 import {createRoomImageAssets} from './image-asset-context.mjs';
+import {bindImageDefinitions} from '../src/image-asset-context.js';
+import {createRoomFurniture} from './furniture.mjs';
+import {createFurnitureClientProtocol,FURNITURE_RELOAD_MESSAGE} from './furniture-client-protocol.mjs';
+import {validateCompositionSceneDelta} from './furniture-scene-authority.mjs';
 import {validateImageSceneDelta} from './image-scene-authority.mjs';
 import {createSceneOperationService} from './scene-operations.mjs';
 import {sceneOperationGeometryConflicts} from './scene-operation-geometry.mjs';
@@ -59,8 +63,8 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   try{if(runtimeConfig.registrationMode==='open')assertOpenAccountSchema(store);setup=createSetupMode({store,config:runtimeConfig,accessGate});}catch(error){store.close();throw error;}
   const requestSecurity=createRequestSecurity(runtimeConfig,{listeningPort:()=>server.address()?.port});
   const serveStatic=createStaticAssets({dist});
-  const connections = new Map(),responseRequests=new WeakMap(),streamCapabilities=new WeakMap(),streamScopes=new WeakMap();
-  let imageProtocol=null;
+  const connections = new Map(),responseRequests=new WeakMap(),streamCapabilities=new WeakMap(),furnitureStreamCapabilities=new WeakMap(),streamScopes=new WeakMap();
+  let imageProtocol=null,furnitureProtocol=null;
   const presence = new Map();
   const rates = new Map();
   const sessionRoles=new Map();
@@ -68,6 +72,9 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const now = () => clock();
   try{imageProtocol=createImageClientProtocol({store,enabled:imagePhysicalSizeEnabled,onChange:status=>{
     for(const clients of connections.values())for(const client of clients){if(!streamCapabilities.get(client.res)&&imageProtocol.isRequired())retireIncompatibleStream(client.res);else rawSse(client.res,'client-protocol',status);}
+  }});}catch(error){store.close();throw error;}
+  try{furnitureProtocol=createFurnitureClientProtocol({store,onChange:roomId=>{
+    for(const [token,clients] of connections){const live=store.get('SELECT current_room_id FROM sessions WHERE token_hash=? AND expires_at>?',token,now());if(live?.current_room_id===roomId)for(const client of clients)if(!furnitureStreamCapabilities.get(client.res))retireFurnitureStream(client.res,{token,roomId});}
   }});}catch(error){store.close();throw error;}
   const arrivals=createArrivalService({store,presence,now,residents:(roomId,options)=>bots.arrivalOccupants(roomId,options)});
   function limit(key, max, span = 60000) {
@@ -77,7 +84,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   }
   function send(res, status, data, headers = {}) {
     if (res.destroyed || res.writableEnded) return;
-    if(!setup.active&&status<400&&responseRequests.has(res))imageProtocol?.assertRequest(responseRequests.get(res));
+    if(!setup.active&&status<400&&responseRequests.has(res)){imageProtocol?.assertRequest(responseRequests.get(res));furnitureProtocol?.assertRequest(responseRequests.get(res));}
     res.writeHead(status, { 'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers }); res.end(JSON.stringify(data));
   }
   function rawSse(res,event,data){if(!res.destroyed&&!res.writableEnded)res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);}
@@ -92,7 +99,13 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     for(const roomId of rooms)rawSse(res,'access-revoked',{...retirement,roomId});
     rawSse(res,'access-revoked',{...retirement,roomId:null});res.end();
   }
-  function sse(res,event,data){if(imageProtocol?.isRequired()&&!streamCapabilities.get(res)){retireIncompatibleStream(res);return;}rawSse(res,event,data);}
+  function retireFurnitureStream(res,scope=streamScopes.get(res)){
+    if(res.destroyed||res.writableEnded)return;
+    if(!res.headersSent)res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});
+    const retirement={code:'CLIENT_RELOAD_REQUIRED',reason:FURNITURE_RELOAD_MESSAGE,recoverDraft:true,...furnitureProtocol.status()};
+    if(scope?.roomId)rawSse(res,'access-revoked',{...retirement,roomId:scope.roomId});rawSse(res,'access-revoked',{...retirement,roomId:null});res.end();
+  }
+  function sse(res,event,data){const scope=streamScopes.get(res),live=scope?.token?store.get('SELECT current_room_id FROM sessions WHERE token_hash=? AND expires_at>?',scope.token,now()):null;if(furnitureProtocol?.required(live?.current_room_id)&&!furnitureStreamCapabilities.get(res)){retireFurnitureStream(res,{...scope,roomId:live.current_room_id});return;}if(imageProtocol?.isRequired()&&!streamCapabilities.get(res)){retireIncompatibleStream(res);return;}rawSse(res,event,data);}
 
   function emitUser(userId,event,data) { for (const [token,clients] of connections) { const session=store.get('SELECT user_id FROM sessions WHERE token_hash=? AND expires_at>?',token,now()); if(session?.user_id===userId)for(const client of clients)sse(client.res,event,data); } }
   function emitRoom(roomId,event,data) {
@@ -139,7 +152,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     if(row?.current_room_id){let permitted=false;try{permitted=store.canSeeRoom(store.roomRow(row.current_room_id),row.user_id);}catch{}if(!permitted){const old=row.current_room_id;store.run('UPDATE sessions SET current_room_id=NULL WHERE token_hash=?',row.token_hash);images.sessionChanged(row.token_hash);arrivals.retire(row.token_hash);proximityText?.retire(row.token_hash);proximityControls?.retire(row.token_hash);residentTurns?.sessionChanged(row.token_hash);ice.retire(row.token_hash);row.current_room_id=null;sessionRoles.delete(row.token_hash);presence.delete(`${old}:${row.user_id}`);}}
     return row;
   }
-  function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id,siteAdmission:siteAdmission.publicPolicy(s),...imageProtocol.status() }; }
+  function sessionState(s) { return { user:store.user(s.user_id),worlds:store.worlds(s.user_id),rooms:store.worlds(s.user_id).flatMap(w => w.rooms),currentRoomId:s.current_room_id,siteAdmission:siteAdmission.publicPolicy(s),...imageProtocol.status(),...furnitureProtocol.status() }; }
   function join(roomId,s,input={}) {
     readArrivalInput(input);
     if(input.mode==='resume'&&s.current_room_id!==roomId)v.fail(409,'RESUME_CONTEXT_CHANGED','Your room changed. Choose a destination before travelling again.');
@@ -178,7 +191,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
     if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) v.fail(415,'JSON_REQUIRED','Use Content-Type: application/json');
     const chunks=[]; let n=0;
     for await (const chunk of req) { n+=chunk.length; if (n>600000) v.fail(413,'TOO_LARGE','Request is too large'); chunks.push(chunk); }
-    imageProtocol?.assertRequest(req);
+    imageProtocol?.assertRequest(req);furnitureProtocol?.assertRequest(req);
     try { const result=v.record(JSON.parse(Buffer.concat(chunks).toString('utf8')));const path=new URL(req.url,'http://127.0.0.1').pathname;if(!(req.method==='POST'&&['/api/session','/api/login'].includes(path)))session(req);return result; } catch(e) { if(e.status) throw e; v.fail(400,'INVALID_JSON','The request body is not valid JSON'); }
   }
   function originCheck(req) {
@@ -212,7 +225,10 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const files=createRoomFileService({store,now,send,session});
   const images=createRoomImageAssets({store,session,now,emitRoom,isPhysicalSizeEnabled:()=>imageProtocol?.isEnabled()===true,assertCompatible:req=>imageProtocol?.assertRequest(req)});
 
+  const furniture=createRoomFurniture({store,session,arrivals,presence,now,body,send,emitRoom});
+
   function policyChanged(reason,force={}) {
+    furniture.policyChanged();
     residentTurns?.policyChanged();
     const affected=new Set(),revoked=new Set();
     for(const s of store.all('SELECT * FROM sessions WHERE current_room_id IS NOT NULL AND expires_at>?',now())){
@@ -237,13 +253,19 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
   const actionAuthority=createActionAuthority({store,presence,body,send,now,captureFence:arrivals.captureFence,checkFence:arrivals.checkFence});
   // Both write protocols use this complete synchronous validation/provenance
   // chain while holding the same SQLite write lock.
-  function commitScene({row,userId,live,before,next,personalAreaRevisions,imageSessionEpoch,validateGeometry=false,validateDependencies,conflict}) {
+  function commitScene({row,userId,live,before,next,personalAreaRevisions,imageSessionEpoch,furnitureFence,furnitureCapable=false,validateGeometry=false,validateDependencies,conflict}) {
     const roomId=row.id;
+    v.record(next,'scene');
+    const hasComposition=Array.isArray(next?.objects)&&next.objects.some(object=>object?.type==='composition');
+    if(hasComposition||furnitureProtocol.required(roomId))furnitureProtocol.requireCapable(furnitureCapable);
     if(!store.roomCapabilities(row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');
     const resolvedImages=images.resolveScenePair({roomId,userId,token:live.token_hash,before,next,expectedEpoch:imageSessionEpoch});
-    const encoded=v.scene(next,resolvedImages.next);validatePersonalScene(next);
-    store.validatePersonalObjectDelta(row,userId,before,next,personalAreaRevisions,resolvedImages.before,resolvedImages.next);
-    validateDependencies?.(resolvedImages);
+    bindImageDefinitions(before,resolvedImages.before,roomId);bindImageDefinitions(next,resolvedImages.next,roomId);
+    const resolvedCompositions=furniture.resolveScenePair({roomId,live,before,next,fence:furnitureFence});
+    const encoded=v.scene(next,resolvedImages.next,resolvedCompositions.next);validatePersonalScene(next);
+    store.validatePersonalObjectDelta(row,userId,before,next,personalAreaRevisions,resolvedImages.before,resolvedImages.next,resolvedCompositions.before,resolvedCompositions.next);
+    validateDependencies?.(resolvedImages,resolvedCompositions);
+    validateCompositionSceneDelta({store,presence,residents:bots.snapshot(roomId),now,room:row,before,next,beforeCompositions:resolvedCompositions.before,nextCompositions:resolvedCompositions.next});
     validateImageSceneDelta({store,presence,now,room:row,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
     validateTerrainSceneDelta({store,presence,residents:bots.snapshot(roomId),now,room:row,userId,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
     arrivals.validateScene(next,resolvedImages.next,roomId);
@@ -251,17 +273,19 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       const conflicts=sceneOperationGeometryConflicts({store,presence,residents:bots.snapshot(roomId),now,room:row,before,next,beforeImages:resolvedImages.before,nextImages:resolvedImages.next});
       if(conflicts.length)conflict(conflicts);
     }
+    if(hasComposition)furnitureProtocol.requireRoom(roomId);
     store.syncPersonalAreas(roomId,before,next);
     store.run('UPDATE rooms SET scene=?,revision=revision+1 WHERE id=? AND revision=?',encoded,roomId,row.revision);
-    store.recordPersonalObjects(roomId,userId,before,next,resolvedImages.next);
+    store.recordPersonalObjects(roomId,userId,before,next,resolvedImages.next,resolvedCompositions.next);
     const room=store.room(roomId,userId),questChanges=EDIT.includes(room.role)?quests.observeBuild(userId,roomId,before,room.scene,room.revision):[];
     return {room,questChanges};
   }
   function afterSceneCommit(roomId,userId,room,questChanges) {
+    furnitureProtocol.notifyRoom(roomId);
     quests.notify(questChanges);
     emitRoom(roomId,'scene',{roomId,room,actorId:userId});bots.reconcileRoom(roomId);media.refresh(roomId,batch=>proximityControls?.refresh(roomId,batch));proximityText?.refresh(roomId);quests.reconcileRoom(roomId);
   }
-  const sceneOperations=createSceneOperationService({store,session,arrivals,images,body,send,commitScene,afterCommit:afterSceneCommit});
+  const sceneOperations=createSceneOperationService({store,session,arrivals,images,furniture,furnitureProtocol,body,send,commitScene,afterCommit:afterSceneCommit});
   const siteAdmission=createSiteAdmission({store,config:siteAdmissionConfig,now,session,send});
   const openSignup=createOpenSignup({store,config:siteAdmissionConfig,setup,session,send,limitSignup:siteAdmission.limitSignup});
   const server=http.createServer(async(req,res) => {
@@ -272,8 +296,8 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       originCheck(req);
       setup.assertRequest(req,path,url);
       if (!path.startsWith('/api/')) return await serveStatic(req,res,path);
-      if(!setup.active)imageProtocol.assertRequest(req);
-      if(path==='/api/client-protocol'&&method==='GET')return send(res,200,imageProtocol.status());
+      if(!setup.active){imageProtocol.assertRequest(req);furnitureProtocol.assertRequest(req);}
+      if(path==='/api/client-protocol'&&method==='GET')return send(res,200,{...imageProtocol.status(),...furnitureProtocol.status()});
       if(path==='/api/health'&&method==='GET') return send(res,200,{ok:true,persistence:'sqlite',identity:'httpOnly-session',scope:runtimeConfig.mode==='public'?'standalone-private-preview':'standalone-local'});
       if(path==='/api/access'&&method==='GET')return send(res,200,{...accessGate.publicPolicy(),openSignup:runtimeConfig.registrationMode==='open',openRegistration:runtimeConfig.registrationMode==='open',setupOnly:setup.active,inviteRegistration:siteAdmissionConfig.enabled,siteAdmission:siteAdmission.publicPolicy(session(req,false))});
       if(await openSignup.handle({req,res,path,method,url}))return;
@@ -303,8 +327,10 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       }
       const s=session(req); const userId=s.user_id;
       if(path==='/api/events'&&method==='GET'&&imageProtocol.isRequired()&&!imageProtocol.accepts(req))return retireIncompatibleStream(res,{token:s.token_hash,roomId:s.current_room_id});
+      if(path==='/api/events'&&method==='GET'&&furnitureProtocol.required(s.current_room_id)&&!furnitureProtocol.accepts(req))return retireFurnitureStream(res,{token:s.token_hash,roomId:s.current_room_id});
       limit(`requests:${s.token_hash}`,1200);
       if(await images.handle(req,res))return;
+      if(await furniture.handle(req,res,url,s))return;
       imageProtocol.assertRequest(req);
       if(await personalAreas.handle({req,res,path,method,userId,url}))return;
       imageProtocol.assertRequest(req);
@@ -368,7 +394,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         if(action==='expression'&&method==='POST'){const b=await body(req),active=session(req);const result=expressions.post(roomId,userId,active.current_room_id,b);return send(res,result.duplicate?200:201,result);}
         if(action==='expressions'&&method==='GET')return send(res,200,expressions.list(roomId,userId,session(req).current_room_id));
         if(action==='scene'&&method==='PUT') {
-          const imageSessionEpoch=images.sessionEpoch(s.token_hash);
+          const imageSessionEpoch=images.sessionEpoch(s.token_hash),furnitureFence=furniture.captureFence(s);
           const b=await body(req);if(!store.roomCapabilities(store.authorize(roomId,userId).row,userId).canBuild)v.fail(403,'ROOM_FORBIDDEN','You do not have permission to build in this room');for(const key of Object.keys(b))if(!['revision','scene','personalAreaRevisions'].includes(key))v.fail(400,'IMMUTABLE_FIELD',`${key} cannot be set here`);v.integer(b.revision,'revision');
           // Re-check room and scoped ownership after body streaming, under the same
           // SQLite write lock as CAS, geometry validation and provenance writes.
@@ -376,7 +402,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
             const live=session(req);if(live.user_id!==userId)v.fail(401,'AUTH_REQUIRED');
             const {row}=store.authorize(roomId,userId),before=JSON.parse(row.scene);
             if(row.revision!==b.revision)v.fail(409,'REVISION_CONFLICT','The room changed. Review the latest scene before saving.',{room:store.room(roomId,userId)});
-            return commitScene({row,userId,live,before,next:b.scene,personalAreaRevisions:b.personalAreaRevisions,imageSessionEpoch});
+            return commitScene({row,userId,live,before,next:b.scene,personalAreaRevisions:b.personalAreaRevisions,imageSessionEpoch,furnitureFence,furnitureCapable:furnitureProtocol.accepts(req)});
           });
           afterSceneCommit(roomId,userId,result.room,result.questChanges);return send(res,200,{room:result.room});
         }
@@ -454,8 +480,8 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         const live=session(req);let reconnectArrival=null;const previous=presence.get(`${live.current_room_id}:${userId}`);if(live.current_room_id&&(!previous?.admissionId||now()-previous.lastSeen>=60000)){media.assertAdmission(live,live.current_room_id);reconnectArrival=arrivals.prepare(live.current_room_id,userId,{resume:true});}
         let clients=connections.get(s.token_hash);if(!clients){clients=new Set();connections.set(s.token_hash,clients);}if(clients.size>=4)v.fail(429,'TOO_MANY_CONNECTIONS');
         res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');
-        streamCapabilities.set(res,imageProtocol.accepts(req));streamScopes.set(res,{token:live.token_hash,roomId:live.current_room_id});
-        const client={res,userId};clients.add(client);quests.disconnected(userId,s.current_room_id);sse(res,'hello',{user:store.user(userId),currentRoomId:s.current_room_id,serverTime:now(),arrivalEpoch:arrivals.epoch,...imageProtocol.status()});if(live.current_room_id){const fields=reconnectArrival?arrivals.commit(live.current_room_id,userId,reconnectArrival):null;sessionRoles.set(live.token_hash,store.role(store.roomRow(live.current_room_id),userId));putPresence(userId,live.current_room_id,fields?{x:fields.x,z:fields.z,admissionId:fields.admissionId,admissionEpoch:fields.admissionEpoch,admissionRevision:fields.admissionRevision,...(!fields.resumed?{moving:false,running:false,velocity:{x:0,z:0},emote:null}:{})}:{});sse(res,'bots',{roomId:live.current_room_id,bots:bots.snapshot(live.current_room_id)});}
+        streamCapabilities.set(res,imageProtocol.accepts(req));furnitureStreamCapabilities.set(res,furnitureProtocol.accepts(req));streamScopes.set(res,{token:live.token_hash,roomId:live.current_room_id});
+        const client={res,userId};clients.add(client);quests.disconnected(userId,s.current_room_id);sse(res,'hello',{user:store.user(userId),currentRoomId:s.current_room_id,serverTime:now(),arrivalEpoch:arrivals.epoch,...imageProtocol.status(),...furnitureProtocol.status()});if(live.current_room_id){const fields=reconnectArrival?arrivals.commit(live.current_room_id,userId,reconnectArrival):null;sessionRoles.set(live.token_hash,store.role(store.roomRow(live.current_room_id),userId));putPresence(userId,live.current_room_id,fields?{x:fields.x,z:fields.z,admissionId:fields.admissionId,admissionEpoch:fields.admissionEpoch,admissionRevision:fields.admissionRevision,...(!fields.resumed?{moving:false,running:false,velocity:{x:0,z:0},emote:null}:{})}:{});sse(res,'bots',{roomId:live.current_room_id,bots:bots.snapshot(live.current_room_id)});}
         proximityText?.register(s.token_hash,client);proximityControls?.register(s.token_hash,client);
         req.on('close',()=>{proximityControls?.disconnect(client);proximityText?.disconnect(client);quests.disconnected(userId,s.current_room_id);clients.delete(client);if(!clients.size)connections.delete(s.token_hash);});return;
       }

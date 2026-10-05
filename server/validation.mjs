@@ -4,6 +4,8 @@ import {safeActionUrl,validateActions} from '../src/action-schema.js';
 import {validateImageInstance,canRenderImageReference} from '../src/image-asset-schema.js';
 import {imagePlacementInside} from '../src/image-asset-geometry.js';
 import {validateTerrain,terrainBlocks} from '../src/terrain.js';
+import {validateCompositionObject,compositionPlacementInside} from '../src/composition-geometry.js';
+import {canRenderCompositionReference} from '../src/composition-context.js';
 export class HttpError extends Error {
   constructor(status, code, message = code, details = {}) { super(message); this.status = status; this.code = code; this.details = details; }
 }
@@ -54,9 +56,9 @@ export function safeJson(value, { maxBytes = 512000, maxDepth = 14 } = {}) {
 }
 function actions(value,scope='area'){try{validateActions(value,{scope});}catch(error){fail(400,'INVALID_SCENE',error.message);}}
 function interactionUrl(value){if(value!==undefined&&value!==''&&!safeActionUrl(value))fail(400,'INVALID_URL','Use a safe HTTP(S), local asset, or protected room document URL without credentials');}
-export function scene(value,imageDefinitions={}) {
+export function scene(value,imageDefinitions={},compositionDefinitions={}) {
   record(value, 'scene');
-  for(const key of ['imageDefinitions','imageAssets','assetDefinitions','imageLibrary'])if(Object.hasOwn(value,key))fail(400,'SERVER_OWNED_FIELD','Image definitions are a server-resolved room projection, not scene data');
+  for(const key of ['imageDefinitions','imageAssets','assetDefinitions','imageLibrary','compositionDefinitions','furnitureDefinitions','furnitureLibrary'])if(Object.hasOwn(value,key))fail(400,'SERVER_OWNED_FIELD','Image definitions are a server-resolved room projection, not scene data');
   for(const key of ['arrival','entries','admissionId','admissionEpoch','admissionRevision'])if(Object.hasOwn(value,key))fail(400,'SERVER_OWNED_FIELD',`${key} is server-owned arrival metadata, not scene data`);
   if (!Array.isArray(value.objects) || value.objects.length > 2000) fail(400, 'INVALID_SCENE', 'scene.objects must contain at most 2000 objects');
   record(value.bounds, 'scene.bounds');
@@ -65,7 +67,7 @@ export function scene(value,imageDefinitions={}) {
   try{validateTerrain(value.terrain,value.bounds);}catch(error){fail(400,error.code??'INVALID_TERRAIN',error.message);}
   if(terrainBlocks(value,value.spawn.x,value.spawn.z,.75))fail(400,'TERRAIN_BLOCKS_ARRIVAL','Leave clear space around the arrival point');
   if (value.theme !== undefined) text(value.theme, 'theme', 40);
-  const types = ['table','chair','sofa','plant','tree','wall','lamp','screen','podium','portal','rug','board','bench','rock','image'];
+  const types = ['table','chair','sofa','plant','tree','wall','lamp','screen','podium','portal','rug','board','bench','rock','image','composition'];
   const seen = new Set();
   for (const object of value.objects) {
     record(object, 'object'); id(object.id, 'object id'); oneOf(object.type, types, 'object type');
@@ -76,6 +78,13 @@ export function scene(value,imageDefinitions={}) {
         if(!canRenderImageReference(image.assetRef,definition))fail(400,'IMAGE_REFERENCE_UNAVAILABLE','Use an existing image version from this room');
         if(!imagePlacementInside({x:0,z:0,...value.bounds},definition,image))fail(400,'IMAGE_OUTSIDE_ROOM','Keep the entire image footprint inside the room');
       }catch(error){if(error.status)throw error;fail(400,error.code??'INVALID_SCENE',error.message);}
+    }
+    if(object.type==='composition'){
+      try{
+        const instance=validateCompositionObject(object),key=`${instance.assetRef.assetId}:${instance.assetRef.revision}`,definition=Object.hasOwn(compositionDefinitions,key)?compositionDefinitions[key]:null;
+        if(!canRenderCompositionReference(instance.assetRef,definition))fail(400,'COMPOSITION_REFERENCE_UNAVAILABLE','Use an existing furniture revision from this room');
+        if(!compositionPlacementInside({x:0,z:0,...value.bounds},definition,instance))fail(400,'COMPOSITION_OUTSIDE_ROOM','Keep the entire furniture footprint inside the room');
+      }catch(error){if(error.status)throw error;fail(400,error.code??'INVALID_COMPOSITION',error.message);}
     }
     finite(object.x, 'object.x', -value.bounds.width/2, value.bounds.width/2); finite(object.z, 'object.z', -value.bounds.depth/2, value.bounds.depth/2);
     if(object.name !== undefined) text(object.name, 'object name', 120);

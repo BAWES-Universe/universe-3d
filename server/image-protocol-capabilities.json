@@ -1,4 +1,4 @@
 {
   "version": 1,
-  "readerCapabilities": ["image-physical-size-v1"]
+  "readerCapabilities": ["image-physical-size-v1", "composition-furniture-v1"]
 }

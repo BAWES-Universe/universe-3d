@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
+import {bindCompositionDefinitions} from '../src/composition-context.js';
 import {entryCatalog,resolveArrival,validateEntryKey,validateArrivalGeometry} from '../src/arrivals.js';
 import * as v from './validation.mjs';
 const translate=(error,status=409)=>{if(error.status)throw error;v.fail(status,error.code??'ARRIVAL_BLOCKED',error.message,{...(error.entry!==undefined?{entry:error.entry}:{}),...(error.attempted!==undefined?{attempted:error.attempted}:{})});};
@@ -53,7 +54,7 @@ export function createArrivalService({store,presence,now,residents=()=>[]}){
    const admissionId=old.admissionId??randomUUID(),admissionRevision=old.admissionEpoch===epoch&&Number.isSafeInteger(old.admissionRevision)?old.admissionRevision:++sequence;
    return{...prior?.arrival,x:old.x,z:old.z,requestedEntry:null,entry:prior?.arrival.entry??null,areaId:prior?.arrival.areaId??null,source:'resume',fallback:null,resumed:true,admissionId,admissionEpoch:epoch,admissionRevision,strict:strict||!!prior?.strict};
   }
-  const scene=JSON.parse(row.scene);bindImageDefinitions(scene,store.imageDefinitions?.(roomId,scene)??{},roomId);
+  const scene=JSON.parse(row.scene);bindImageDefinitions(scene,store.imageDefinitions?.(roomId,scene)??{},roomId);bindCompositionDefinitions(scene,store.compositionDefinitions?.(roomId,scene)??{},roomId);
   const occupants=[...presence.values()].filter(p=>p.roomId===roomId&&p.userId!==userId&&now()-p.lastSeen<60000
     &&store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND expires_at>?',p.userId,roomId,now())&&store.canSeeRoom(row,p.userId));
   occupants.push(...residents(roomId,{retiringAccountId}).filter(p=>p.kind==='bot'&&Number.isFinite(p.x)&&Number.isFinite(p.z)));

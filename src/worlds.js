@@ -1,3 +1,4 @@
+import {compositionGeometry} from './composition-context.js';
 import {SILENT_MEDIA_MESSAGE} from './media-policy-copy.js';
 import {imagePhysicalSize} from './image-asset-schema.js';
 import {cloneWithImageContext,imageGeometry,resolvedImage} from './image-asset-context.js';
@@ -44,10 +45,10 @@ const assembly={...emptyScene('assembly'),objects:[
  ],areas:[area('stage','Assembly stage',0,-7,12,5,'stage',{meetingName:'assembly'}),area('audience','Assembly audience',0,0,17,9,'audience',{meetingName:'assembly'})]};
 export const seedWorlds=[{id:'universe',name:'Our Universe',rooms:[{id:'commons',name:'The Commons',scene:commons},{id:'studio',name:'The Studio',scene:studio},{id:'assembly',name:'Assembly',scene:assembly}]}];
 export const clone = cloneWithImageContext;
-export function dimensions(o,scene){if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');const size=imagePhysicalSize(entry.version);return{width:size.widthMetres,depth:size.heightMetres};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
-export function collisionBox(o,scene){if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);if(Math.round((o.rotation||0)/90)%2)[width,depth]=[depth,width];return {x:o.x,z:o.z,width,depth};}
+export function dimensions(o,scene){if(o.type==='composition'){const {width,depth}=compositionGeometry(scene,o).localBounds;return {width,depth};}if(o.type==='image'){const entry=resolvedImage(scene,o);if(!entry)throw Error('Image version is unavailable');const size=imagePhysicalSize(entry.version);return{width:size.widthMetres,depth:size.heightMetres};}const t=CATALOG[o.type]||CATALOG.table;return {width:o.width||t.width,depth:o.depth||t.depth};}
+export function collisionBox(o,scene){if(o.type==='composition')return compositionGeometry(scene,o).editBounds;if(o.type==='image')return imageGeometry(scene,o).editBounds;let {width,depth}=dimensions(o,scene);if(Math.round((o.rotation||0)/90)%2)[width,depth]=[depth,width];return {x:o.x,z:o.z,width,depth};}
 export function contains(area,x,z,padding=0){return Math.abs(x-area.x)<=area.width/2+padding&&Math.abs(z-area.z)<=area.depth/2+padding;}
-export function collisionBoxes(scene,object){if(object.type==='image')return imageGeometry(scene,object).collisionCells;return CATALOG[object.type]?.solid?[collisionBox(object,scene)]:[];}
+export function collisionBoxes(scene,object){if(object.type==='composition')return compositionGeometry(scene,object).collisionCells;if(object.type==='image')return imageGeometry(scene,object).collisionCells;return CATALOG[object.type]?.solid?[collisionBox(object,scene)]:[];}
 export function canStand(scene,x,z,r=.3){if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(r)||r<0||Math.abs(x)>scene.bounds.width/2-r||Math.abs(z)>scene.bounds.depth/2-r)return false;try{if(terrainBlocks(scene,x,z,r))return false;}catch{return false;}for(const object of scene.objects){try{if(object.type==='image'&&!contains(imageGeometry(scene,object).editBounds,x,z,r))continue;if(collisionBoxes(scene,object).some(box=>contains(box,x,z,r)))return false;}catch{return false;}}return true;}
 export function movePlayer(scene,p,dx,dz){let {x,z}=p;const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.15));for(let i=0;i<steps;i++){if(canStand(scene,x+dx/steps,z))x+=dx/steps;if(canStand(scene,x,z+dz/steps))z+=dz/steps;}return {x,z};}
 export function nearestWalkable(scene,p){if(canStand(scene,p.x,p.z))return p;for(let r=.5;r<20;r+=.5)for(let a=0;a<Math.PI*2;a+=Math.PI/8){let q={x:p.x+Math.cos(a)*r,z:p.z+Math.sin(a)*r};if(canStand(scene,q.x,q.z))return q;}return scene.spawn;}
