@@ -159,3 +159,7 @@
     inside its auto-sized inner panel, especially with enlarged text. */
  #app #social .social-panel:not([data-chat-mode=nearby]) { overflow: auto; overscroll-behavior: contain; }
 }
+
+/* More is a foreground Build sheet. Ambient area actions keep their position,
+   but cannot intercept its expanded rows when text is enlarged. */
+#app:has(#editor.editor-workbench:not([hidden])[data-sheet=more]) #area-sounds { z-index: 11; }
