@@ -868,7 +868,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       el('div', { class: 'social-notice' }, 'Use WASD or arrow keys to move. Use the camera controls to zoom and rotate. Your room conversations and profile are saved on this server.'));
     if (!self.account) {
       const username = input({ minlength: '3', maxlength: '32', autocomplete: 'username', 'aria-label': 'Account username', placeholder: 'Choose a username' });
-      const password = input({ type: 'password', minlength: String(PASSWORD_MIN_LENGTH), maxlength: String(PASSWORD_MAX_LENGTH), autocomplete: 'new-password', 'aria-label': 'Account password', placeholder: `At least ${PASSWORD_MIN_LENGTH} characters` });
+      const password = input({ type: 'password', minlength: String(PASSWORD_MIN_LENGTH), maxlength: String(PASSWORD_MAX_LENGTH), autocomplete: 'new-password', 'aria-label': 'Account password', placeholder: `${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters` });
       const accountNotice = el('div');
       const register = button('Keep this profile', async () => {
         if (!username.value.trim() || !validAccountPassword(password.value)) { accountNotice.replaceChildren(notice('Choose a username. '+PASSWORD_HELP+'.', true)); return; }

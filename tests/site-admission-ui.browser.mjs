@@ -9,7 +9,7 @@ import {readRuntimeConfig} from '../server/runtime-config.mjs';
 import {seedWorlds} from '../src/worlds.js';
 import {CLIENT_CAPABILITIES_HEADER,IMAGE_PHYSICAL_SIZE_CAPABILITY} from '../src/client-protocol.js';
 
-const token='A'.repeat(43),password='synthetic memorable words only',now=Date.now();
+const token='A'.repeat(43),password='tenletters',now=Date.now();
 const ownerPolicy={enabled:true,canManage:true,inviteTtlMs:86400000,maxActiveInvites:25,maxAccounts:50};
 const friendPolicy={...ownerPolicy,canManage:false};
 const initialInvite=()=>({id:'invite_original',label:'',createdAt:now,expiresAt:now+86400000,status:'active',revokedAt:null,redeemedAt:null});
@@ -100,6 +100,7 @@ try{
     assert.match(await page.locator('h2').first().evaluate(el=>getComputedStyle(el).fontFamily),/^Space/);
     const fonts=await page.evaluate(()=>[...document.fonts].filter(f=>f.family==='Space').map(f=>({weight:f.weight,status:f.status})));assert.deepEqual(fonts,[{weight:'700',status:'loaded'}]);
     assert.equal(await page.locator('#signup-password').getAttribute('autocomplete'),'new-password');
+    for(const id of ['signup-password','signup-confirm']){assert.equal(await page.locator('#'+id).getAttribute('minlength'),'10');assert.equal(await page.locator('#'+id).getAttribute('maxlength'),'256');}
     await page.screenshot({path:new URL('signup-desktop.png',out).pathname,fullPage:true});await context.close();
   });
   await check('Native Tab/Enter account creation leads to separate login; confirmation and validation remain accessible',async()=>{

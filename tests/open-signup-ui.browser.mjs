@@ -38,6 +38,31 @@ try{
   await enter(bob.page);await signup(bob.page,'Synthetic Friend','friend@example.test');friendId=await login(bob.page,'FRIEND@example.test');assert.notEqual(ownerId,friendId);
   assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,2);assert.match(ownerId,/^[a-f0-9-]{36}$/);await alice.page.screenshot({path:out+'/setup-account-desktop.png',fullPage:true});
  });
+ await check('Signup validation and HTTP errors stay visible, retryable, and do not create accounts',async()=>{
+  const trial=await pageFor();try{
+   await enter(trial.page);const page=trial.page,before=app.store.get('SELECT COUNT(*) AS n FROM accounts').n;
+   for(const id of ['signup-password','signup-confirm']){assert.equal(await page.locator('#'+id).getAttribute('minlength'),'10');assert.equal(await page.locator('#'+id).getAttribute('maxlength'),'256');}
+   await page.getByLabel('What should we call you?').fill('Synthetic Validation');await page.getByLabel('Email',{exact:true}).fill('validation@example.test');
+   for(const id of ['signup-password','signup-confirm']){await page.locator('#'+id).fill('ninechars');}
+   await page.locator('#signup-confirm').press('Enter');assert(await page.locator('#signup-view').isVisible());assert.equal(await page.locator('#signup-password').evaluate(node=>node.validity.tooShort),true);
+   for(const id of ['signup-password','signup-confirm'])await page.locator('#'+id).fill(password);
+   const failures=[
+    {status:429,contentType:'application/json',body:JSON.stringify({code:'RATE_LIMITED',message:'Synthetic rate limit'}),expected:/Too many attempts/},
+    {status:429,contentType:'text/html',body:'<h1>Synthetic rate limit</h1>',expected:/Too many attempts/},
+    {status:503,contentType:'text/html',body:'<h1>Synthetic unavailable</h1>',expected:/could not finish/},
+    {status:503,contentType:'application/json',body:JSON.stringify({message:'Synthetic service unavailable'}),expected:/Synthetic service unavailable/},
+    {status:400,contentType:'application/json',body:JSON.stringify({code:'INVALID_PASSWORD',message:'Use a unique 10–256 character password'}),expected:/10–256/},
+    {status:201,contentType:'text/html',body:'<h1>Synthetic unreadable success</h1>',expected:/couldn’t confirm account creation/},
+    ...['null','[]','{}','\"Synthetic invalid success\"'].map(body=>({status:201,contentType:'application/json',body,expected:/couldn’t confirm account creation/})),
+   ];
+   for(const failure of failures){
+    const handler=route=>route.fulfill({status:failure.status,contentType:failure.contentType,body:failure.body});await page.route('**/api/signup',handler);
+    await page.locator('#signup-confirm').press('Enter');await page.waitForFunction(()=>!document.querySelector('#signup-error').hidden&&!document.querySelector('#signup-submit').disabled);
+    assert.match(await page.locator('#signup-error').textContent(),failure.expected);assert(await page.locator('#signup-view').isVisible());assert.equal(await page.locator('#signup-password').inputValue(),password);await page.unroute('**/api/signup',handler);
+   }
+   assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,before);
+  }finally{await trial.context.close();}
+ });
  await check('2. Private email storage never enters identity payloads or browser storage',async()=>{
   const me=await (await alice.context.request.get(base+'/api/setup/me')).json();assert.equal(me.accountId,ownerId);assert.equal(me.user.email,undefined);assert(!JSON.stringify(me).includes('@'));assert.match(me.user.username,/^u_[a-f0-9]+$/);
   for(const{page}of[alice,bob]){assert.deepEqual(await page.evaluate(()=>({local:Object.entries(localStorage),session:Object.entries(sessionStorage)})),{local:[],session:[]});assert.equal(new URL(page.url()).search,'');}
