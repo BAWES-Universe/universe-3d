@@ -14,7 +14,7 @@ import {seedWorlds} from '../src/worlds.js';
 
 const folder=await mkdtemp(join(tmpdir(),'universe-open-signup-ui-')),database=join(folder,'site.sqlite'),out='evidence/open-signup';
 await mkdir(out,{recursive:true});
-const password='synthetic account password only',checks=[],errors=[],requests=[],wireRequests=[];
+const password='tenletters',checks=[],errors=[],requests=[],wireRequests=[];
 let app,browser,base,alice,bob,phone,game,ownerId,friendId;
 const config=setup=>readRuntimeConfig({UNIVERSE_REGISTRATION_MODE:'open',UNIVERSE_SETUP_ONLY:setup?'1':'0'});
 async function start(setup){app=createGameServer({database,seeds:seedWorlds,dist:new URL('../dist',import.meta.url).pathname,runtimeConfig:config(setup)});base='http://127.0.0.1:'+(await app.listen(0)).port;app.server.on('request',req=>wireRequests.push({path:req.url,referer:req.headers.referer}));}
@@ -31,6 +31,29 @@ try{
   await signup(alice.page,'Synthetic Owner Candidate','Creator+dev@Example.test');assert.equal((await alice.context.cookies()).length,0,'Signup does not create a session');ownerId=await login(alice.page,'  CREATOR+DEV@example.test  ');
   await enter(bob.page);await signup(bob.page,'Synthetic Friend','friend@example.test');friendId=await login(bob.page,'FRIEND@example.test');assert.notEqual(ownerId,friendId);
   assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,2);assert.match(ownerId,/^[a-f0-9-]{36}$/);await alice.page.screenshot({path:out+'/setup-account-desktop.png',fullPage:true});
+ });
+ await check('Signup validation and HTTP errors stay visible, retryable, and do not create accounts',async()=>{
+  const trial=await pageFor();try{
+   await enter(trial.page);const page=trial.page,before=app.store.get('SELECT COUNT(*) AS n FROM accounts').n;
+   for(const id of ['signup-password','signup-confirm']){assert.equal(await page.locator('#'+id).getAttribute('minlength'),'10');assert.equal(await page.locator('#'+id).getAttribute('maxlength'),'256');}
+   await page.getByLabel('What should we call you?').fill('Synthetic Validation');await page.getByLabel('Email',{exact:true}).fill('validation@example.test');
+   for(const id of ['signup-password','signup-confirm']){await page.locator('#'+id).fill('ninechars');}
+   await page.locator('#signup-confirm').press('Enter');assert(await page.locator('#signup-view').isVisible());assert.equal(await page.locator('#signup-password').evaluate(node=>node.validity.tooShort),true);
+   for(const id of ['signup-password','signup-confirm'])await page.locator('#'+id).fill(password);
+   const failures=[
+    {status:429,contentType:'application/json',body:JSON.stringify({code:'RATE_LIMITED',message:'Synthetic rate limit'}),expected:/Too many attempts/},
+    {status:429,contentType:'text/html',body:'<h1>Synthetic rate limit</h1>',expected:/Too many attempts/},
+    {status:503,contentType:'text/html',body:'<h1>Synthetic unavailable</h1>',expected:/could not finish/},
+    {status:400,contentType:'application/json',body:JSON.stringify({code:'INVALID_PASSWORD',message:'Use a unique 10–256 character password'}),expected:/10–256/},
+    {status:201,contentType:'text/html',body:'<h1>Synthetic unreadable success</h1>',expected:/couldn’t confirm account creation/},
+   ];
+   for(const failure of failures){
+    const handler=route=>route.fulfill({status:failure.status,contentType:failure.contentType,body:failure.body});await page.route('**/api/signup',handler);
+    await page.locator('#signup-confirm').press('Enter');await page.waitForFunction(()=>!document.querySelector('#signup-error').hidden&&!document.querySelector('#signup-submit').disabled);
+    assert.match(await page.locator('#signup-error').textContent(),failure.expected);assert(await page.locator('#signup-view').isVisible());assert.equal(await page.locator('#signup-password').inputValue(),password);await page.unroute('**/api/signup',handler);
+   }
+   assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,before);
+  }finally{await trial.context.close();}
  });
  await check('2. Private email storage never enters identity payloads or browser storage',async()=>{
   const me=await (await alice.context.request.get(base+'/api/setup/me')).json();assert.equal(me.accountId,ownerId);assert.equal(me.user.email,undefined);assert(!JSON.stringify(me).includes('@'));assert.match(me.user.username,/^u_[a-f0-9]+$/);

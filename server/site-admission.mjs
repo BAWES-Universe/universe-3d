@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { BOOTSTRAP_KEY } from './access-gate.mjs';
 import { validateSiteAdmissionConfig } from './site-admission-config.mjs';
 import * as v from './validation.mjs';
+import { validateAccountPassword } from './account-identity.mjs';
 
 const passwordHash = promisify(scrypt);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -31,7 +32,7 @@ function accountInput(input) {
   const { name, username, password } = input;
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 40 || /[\u0000-\u001f\u007f]/.test(name)) v.fail(400, 'INVALID_NAME', 'Display name must be 1–40 characters with no control characters');
   if (typeof username !== 'string' || !/^[a-z0-9_]{3,32}$/.test(username)) v.fail(400, 'INVALID_USERNAME', 'Use 3–32 lowercase letters, numbers or underscores');
-  if (typeof password !== 'string' || password.length < 16 || password.length > 256 || password !== password.trim() || /[\u0000-\u001f\u007f]/.test(password)) v.fail(400, 'INVALID_PASSWORD', 'Use a unique 16–256 character password without outer whitespace or control characters');
+  validateAccountPassword(password);
   // Signup starts with an ordinary catalog avatar. Rich appearance edits happen
   // after authentication and cannot smuggle authority into account creation.
   const woka = v.integer(input.woka ?? 0, 'woka', 0, 31);

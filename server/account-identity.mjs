@@ -19,8 +19,8 @@ export function normalizeEmail(value) {
 }
 
 export function validateAccountPassword(password) {
-  if (typeof password !== 'string' || password.length < 16 || password.length > 256 || password !== password.trim() || /[\u0000-\u001f\u007f]/.test(password)) {
-    fail(400, 'INVALID_PASSWORD', 'Use a unique 16–256 character password without outer whitespace or control characters');
+  if (typeof password !== 'string' || password.length < 10 || password.length > 256 || password !== password.trim() || /[\u0000-\u001f\u007f]/.test(password)) {
+    fail(400, 'INVALID_PASSWORD', 'Use a unique 10–256 character password without outer whitespace or control characters');
   }
   return password;
 }
