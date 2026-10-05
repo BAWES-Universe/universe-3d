@@ -32,7 +32,7 @@ import {createSceneOperationService} from './scene-operations.mjs';
 import {sceneOperationGeometryConflicts} from './scene-operation-geometry.mjs';
 import {createSiteAdmission,readSiteAdmissionBody} from './site-admission.mjs';
 import {createOpenSignup,assertOpenAccountSchema} from './open-signup.mjs';
-import {normalizeEmail} from './account-identity.mjs';
+import {normalizeEmail,validateAccountPassword} from './account-identity.mjs';
 import {createSetupMode} from './setup-mode.mjs';
 import {readSiteAdmissionConfig,validateSiteAdmissionConfig} from './site-admission-config.mjs';
 
@@ -337,7 +337,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
         limit(`register:${req.socket.remoteAddress}`,12);
         const b=await body(req); const username=v.text(b.username,'username',32).toLowerCase();
         if(!/^[a-z0-9_]{3,32}$/.test(username)) v.fail(400,'INVALID_USERNAME','Use 3–32 lowercase letters, numbers or underscores');
-        const password=v.text(b.password,'password',256); if(password.length<10) v.fail(400,'WEAK_PASSWORD','Use at least 10 characters');
+        const password=validateAccountPassword(b.password);
         if(store.user(userId).account) v.fail(409,'ALREADY_REGISTERED','This profile already has an account');
         if(store.get('SELECT 1 FROM accounts WHERE username=?',username)) v.fail(409,'USERNAME_TAKEN','That username is already used');
         const salt=randomBytes(16).toString('hex'), hash=await passwordHash(password,salt,64);

@@ -10,8 +10,9 @@
   function notice(id,text='') { $(id).textContent=text; $(id).hidden=!text; }
   async function request(path,body) {
     const response = await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',cache:'no-store',referrerPolicy:'no-referrer',headers:{'X-Universe-Client-Capabilities':'image-physical-size-v1',...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
-    const data = await response.json();
-    if (!response.ok) throw Object.assign(new Error(data.message||'That request could not finish. Please try again.'),{status:response.status,code:data.error});
+    let data;try{data=await response.json();}catch{data=null;}
+    if (!response.ok) throw Object.assign(new Error(response.status===429?'Too many attempts. Wait a minute, then try again.':data?.message||'That request could not finish. Please try again.'),{status:response.status,code:data?.code||data?.error});
+    if(!data||typeof data!=='object'||Array.isArray(data)||!Object.keys(data).length)throw new Error('The server returned an unreadable response.');
     return data;
   }
   function signin(note='Sign in with your email or existing username.') {
