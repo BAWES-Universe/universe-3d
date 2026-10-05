@@ -314,13 +314,13 @@
 
 /* Area information remains until exit or dismissal. No timed disappearance,
    focus steal, backdrop, or animation; the world can keep moving underneath. */
-#app #area-banner#area-banner { top: calc(116px + env(safe-area-inset-top)); left: calc(var(--hud-left,0px) + 160px); width: min(440px,calc(var(--hud-width,100vw) - 184px)); max-width: none; box-sizing: border-box; padding: 14px 58px 14px 16px; border-radius: 14px; background: var(--u-ink,#14121e); color: #fff; z-index: 12; max-height: min(32vh,260px); overflow: auto; pointer-events: auto; }
+#app #area-banner#area-banner { top: calc(116px + env(safe-area-inset-top)); left: calc(var(--hud-left,0px) + 160px); width: min(440px,calc(var(--hud-width,100vw) - 184px)); max-width: none; box-sizing: border-box; padding: 14px 58px 14px 16px; border-radius: 14px; background: var(--u-ink,#14121e); color: #fff; z-index: 4; max-height: min(32vh,260px); overflow: auto; pointer-events: auto; }
 #app #area-banner[data-dismissed=true] { display:none!important; }
 #app #area-banner strong { font-size:16px!important; line-height:1.4; }
 #app #area-banner #area-message { display:block!important; font-size:15px; line-height:1.55; color: #eee8fa; white-space:pre-line; overflow-wrap:anywhere; }
 .area-banner-dismiss,.area-entry-message button { position:absolute; top:4px; right:4px; width:44px; height:44px; min-width:44px; border:0; background:transparent; color:#fff; border-radius:12px; font-size:24px; cursor:pointer; touch-action:manipulation; }
 .area-banner-dismiss:focus-visible,.area-entry-message button:focus-visible { outline:2px solid #fff; outline-offset:-3px; }
-.area-entry-messages { position:absolute; top:calc(220px + env(safe-area-inset-top)); left:calc(var(--hud-left,0px) + 160px); width:min(440px,calc(var(--hud-width,100vw) - 184px)); max-height: min(45vh,380px); overflow:auto; overscroll-behavior:contain; z-index:13; }
+.area-entry-messages { position:absolute; top:calc(220px + env(safe-area-inset-top)); left:calc(var(--hud-left,0px) + 160px); width:min(440px,calc(var(--hud-width,100vw) - 184px)); max-height: min(45vh,380px); overflow:auto; overscroll-behavior:contain; z-index:4; }
 .area-entry-message { position:relative; background:var(--u-ink,#14121e); color:#fff; border:1px solid #8b69d6; border-radius:14px; padding:16px 56px 16px 16px; margin:0 0 8px; }
 .area-entry-message strong { font-size:16px; line-height:1.4; }
 .area-entry-message p { margin:8px 0 0; font-size:15px; line-height:1.6; white-space:pre-line; overflow-wrap:anywhere; }
@@ -343,4 +343,16 @@
 }
 @media(max-height:540px) and (max-width:649px) {
  #app #area-banner#area-banner,.area-entry-messages { top:calc(136px + env(safe-area-inset-top)); left:max(12px,env(safe-area-inset-left)); width:calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height:max(60px,calc(100dvh - 390px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+}
+/* Authored area actions keep a distinct lane beside compact notices. Both stay
+   readable and clickable; foreground panels still own the higher layers. */
+@media(max-width:700px),(max-height:540px) {
+ #app:has(#area-sounds .area-action-control) #area-sounds { width:128px; max-width:128px; z-index:5; }
+}
+@media(max-width:700px) {
+ #app:has(#area-sounds .area-action-control) #area-banner#area-banner,
+ #app:has(#area-sounds .area-action-control) .area-entry-messages {
+  left:calc(164px + env(safe-area-inset-left));
+  width:calc(100vw - 176px - env(safe-area-inset-left) - env(safe-area-inset-right));
+ }
 }

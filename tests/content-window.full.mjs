@@ -35,6 +35,7 @@ const historyState=()=>p.evaluate(()=>({length:history.length,state:history.stat
 const position=()=>p.evaluate(()=>{const state=window.__universe.getState(),camera=window.__universe.getCamera();return {position:state.position,direction:state.direction,motion:window.__universe.getMotion(),path:window.__universe.getPath(),camera:{yaw:camera.yaw,tilt:camera.tilt,distance:camera.distance,follow:camera.follow,framingMode:camera.framingMode}};});
 const expectStill=async before=>assert.deepEqual(await position(),before,'Native content input must not change player or camera controls');
 const snapshot=async name=>{const path=`evidence/${evidencePrefix}-${name}.png`;await p.screenshot({path});artifacts.push(path);};
+async function clickCamera(id,label){const control=p.locator('#'+id);if(await control.isVisible())await control.click();else{await p.locator('#dock-more').click();await p.locator('#shell-more').getByRole('button',{name:label,exact:true}).click();}}
 async function openForm(){await p.locator('#interact').click();await p.locator('#dialog-actions').getByRole('button',{name:'Open window form',exact:true}).click();await input().waitFor();await surface('content');}
 async function rememberForm(){heldFrame=await p.locator('iframe.embedded-frame').elementHandle();expectedLoads=loads;expectedResolves=resolves;await input().pressSequentially('wasd [] +- Home: unsubmitted draft');}
 async function retained(){assert(await heldFrame.evaluate(node=>node.isConnected&&node===document.querySelector('iframe.embedded-frame')),'Exact original iframe node remains connected');assert.equal(await input().inputValue(),'wasd [] +- Home: unsubmitted draft');assert.equal(loads,expectedLoads,'Geometry/foreground changes must not reload the iframe');assert.equal(resolves,expectedResolves,'Retained content must not reauthorize');}
@@ -64,8 +65,8 @@ try{
    await expanded(id,false);if(close!=='media')await surface(null);
   }
   await p.locator('#dock-build').click();await surface('build');await p.mouse.move(5,5);assert.match(await p.locator('#dock-build').evaluate(node=>getComputedStyle(node).backgroundImage),/linear-gradient/);assert.equal(await p.locator('#dock-build').getAttribute('data-window-control'),null);await p.getByRole('button',{name:'Close editor',exact:true}).click();await surface(null);
-  for(const id of ['camera-follow','camera-pan']){const button=p.locator('#'+id);if(await button.getAttribute('aria-pressed')!=='true')await button.click();await p.mouse.move(5,5);assert.match(await button.evaluate(node=>getComputedStyle(node).backgroundImage),/linear-gradient/);assert.equal(await button.getAttribute('data-window-control'),null);}
-  await p.locator('#camera-pan').click();await p.locator('#home-camera').click();
+  for(const id of ['camera-follow','camera-pan']){const button=p.locator('#'+id);if(await button.getAttribute('aria-pressed')!=='true')await clickCamera(id,id==='camera-pan'?'Pan camera':'Follow me');await p.mouse.move(5,5);assert.match(await button.evaluate(node=>getComputedStyle(node).backgroundImage),/linear-gradient/);assert.equal(await button.getAttribute('data-window-control'),null);}
+  await clickCamera('camera-pan','Pan camera');await clickCamera('home-camera','Reset camera');
  });
  await check('real nearby item opens one authorized iframe; native form typing and buttons leave player and camera still',async()=>{
   await openForm();const before=await position();await rememberForm();await input().press('ArrowLeft');await input().press('Home');await p.frameLocator('iframe.embedded-frame').getByRole('button',{name:'Keep draft',exact:true}).click();await expectStill(before);await retained();assert.equal(loads,1);assert.equal(resolves,1);

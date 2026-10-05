@@ -11,7 +11,7 @@ import {launch} from '../scripts/browser.mjs';
 const out='evidence/wall-building-native';await mkdir(out,{recursive:true});
 const dist=process.env.UNIVERSE_WALL_TEST_DIST||new URL('../dist',import.meta.url).pathname;
 const app=createGameServer({database:':memory:',seeds:[{id:'universe',name:'Wall testing',rooms:[{id:'commons',name:'Make a corner',scene:emptyScene()}]}],dist});
-const {port}=await app.listen(0),base=`http://127.0.0.1:${port}`,browser=await launch(),contexts=[],checks=[],errors=[];
+const {port}=await app.listen(0),base=`http://127.0.0.1:${port}`,browser=await launch(),contexts=[],checks=[],errors=[],collisionSamples=[];
 let page,phase='startup';
 const scene=p=>p.evaluate(()=>__universe.getState().scene),editor=p=>p.evaluate(()=>__universe.getEditor());
 const touching=(a,b)=>{
@@ -25,6 +25,27 @@ async function enter(options={}){
  await p.waitForFunction(()=>window.__universe?.getState().ready,null,{timeout:60000});return p;
 }
 async function frames(p,n=3){const before=await p.evaluate(()=>__universe.getStats().presentation.drawnFrames);await p.waitForFunction(count=>__universe.getStats().presentation.drawnFrames>=count,before+n);}
+// A rejected collision substep can zero velocity before the next smaller step
+// closes the remaining gap. Measure sustained contact, not that first zero.
+async function wallContact(p,edge){
+ return p.evaluate(edge=>new Promise((resolve,reject)=>{
+  let previousFrame=-1,previousX=null,stable=0,frame,done=false;const samples=[];
+  const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);cancelAnimationFrame(frame);error?reject(error):resolve(value);};
+  const timer=setTimeout(()=>finish(Error('No sustained wall contact: '+JSON.stringify(samples))),30000);
+  const tick=()=>{
+   const drawnFrame=__universe.getStats().presentation.drawnFrames;
+   if(drawnFrame!==previousFrame){
+    previousFrame=drawnFrame;const position={...__universe.getState().position},speed=__universe.getMotion().speed;
+    samples.push({drawnFrame,position,speed});if(samples.length>24)samples.shift();
+    if(position.x<edge-.00001)return finish(Error('Walking crossed the wall face: '+JSON.stringify(samples)));
+    const contact=position.x<edge+.01&&speed<.01&&position.y===0;
+    stable=contact?(previousX!==null&&Math.abs(position.x-previousX)<.001?stable+1:1):0;previousX=position.x;
+    if(stable>=3)return finish(null,{edge,position,samples});
+   }
+   frame=requestAnimationFrame(tick);
+  };frame=requestAnimationFrame(tick);
+ }),edge);
+}
 async function project(p,x,z,y=0){
  await p.waitForFunction(()=>{const f=__universe.getCamera().framing;return f.status==='manual'||!f.targetOffset||Math.hypot(f.offset.x-f.targetOffset.x,f.offset.y-f.targetOffset.y)<1;});
  const q=await p.evaluate(({x,z,y})=>__universe.getScreenPoint(x,z,y),{x,z,y});assert(q.visible,'Point visible: '+JSON.stringify({x,z,q}));assert.equal(await p.evaluate(q=>document.elementFromPoint(q.x,q.y)?.id,q),'game','World input must reach the real canvas');return q;
@@ -66,7 +87,7 @@ try{
  phase='native collision';let target=await project(page,0,3);await page.mouse.click(target.x,target.y);await page.waitForFunction(()=>{const s=__universe.getState();return Math.hypot(s.position.x,s.position.z-3)<.35&&!__universe.getPath().length;});
  await page.locator('#game').focus();await page.keyboard.press('Home');await page.waitForFunction(()=>Math.abs(__universe.getCamera().yaw-Math.PI/4)<.001);const origin=await project(page,0,3);await page.mouse.move(origin.x,origin.y);await page.mouse.down({button:'right'});await page.mouse.move(origin.x+(Math.PI/4)/.006,origin.y,{steps:12});await page.mouse.up({button:'right'});await page.locator('#game').focus();
  const vertical=joined.objects.find(o=>o.rotation===90),edge=vertical.x+.15+.3;
- try{await page.keyboard.down('w');await page.waitForFunction(edge=>{const p=__universe.getState().position;return p.x<edge+.12&&p.x>=edge-.02&&__universe.getMotion().speed<.01;},edge);const before=await page.evaluate(()=>__universe.getState().position);await frames(page,12);const after=await page.evaluate(()=>__universe.getState().position);assert(Math.abs(before.x-after.x)<.01);assert(canStand(joined,after.x,after.z));}finally{await page.keyboard.up('w');}
+ try{await page.keyboard.down('w');const contact=await wallContact(page,edge),before=contact.position;await frames(page,12);const after=await page.evaluate(()=>__universe.getState().position),sample={...contact,before,after};collisionSamples.push(sample);assert(Math.abs(before.x-after.x)<.01,JSON.stringify(sample));assert(after.x>=edge-.00001,JSON.stringify(sample));assert(canStand(joined,after.x,after.z));}finally{await page.keyboard.up('w');}
  await pass('Native held walking stops at the same joined wall geometry for 12 further rendered frames');
 
  phase='narrow touch corner';const storageState=await page.context().storageState();await page.context().close();page=await enter({storageState,viewport:{width:390,height:844},isMobile:true,hasTouch:true});await drawTool(page);
@@ -77,6 +98,6 @@ try{
 }catch(error){checks.push({name:phase,status:'failed',error:error.stack});process.exitCode=1;console.error(error);if(page&&!page.isClosed()){console.error(await page.evaluate(()=>({camera:__universe.getCamera(),editor:__universe.getEditor(),state:__universe.getState()})).catch(e=>e.message));await page.screenshot({path:out+'/failure.png'}).catch(()=>{});}}
 finally{
  const hash=createHash('sha256').update(await readFile(dist+'/main.js')).digest('hex');
- await writeFile(out+'/results.json',JSON.stringify({checks,errors,bundleSha256:hash,limits:['Disposable loopback app and local synthetic account; no production changes','Native mouse, keyboard and CDP touch; evaluation only reads diagnostics','Chromium SwiftShader and 390px touch emulation do not certify physical phones']},null,2));
+ await writeFile(out+'/results.json',JSON.stringify({checks,errors,collisionSamples,bundleSha256:hash,limits:['Disposable loopback app and local synthetic account; no production changes','Native mouse, keyboard and CDP touch; evaluation only reads diagnostics','Chromium SwiftShader and 390px touch emulation do not certify physical phones']},null,2));
  for(const context of contexts)await context.close().catch(()=>{});await browser.close();await app.close();
 }
