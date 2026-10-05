@@ -1277,3 +1277,13 @@ body:has(#editor.editor-workbench:not([hidden])) #toast { pointer-events: none; 
 
 .editor-polish-feedback[hidden] { display: none !important; }
 #editor.editor-workbench[data-compact=true] .editor-polish-selection-summary { display: none; }
+
+/* The workshop adds one tool. Keep the complete non-compact row reachable
+   when native text or image placement labels need a second line. */
+@media (min-width: 760px) and (max-width: 1150px) {
+ .editor-workbench[data-compact=false] .builder-toolbelt { flex-wrap: wrap; justify-content: center; width: max-content; border-radius: 20px; }
+ .editor-workbench[data-compact=false] :is(.builder-tray,.builder-terrain) { bottom: 238px; }
+ .editor-workbench[data-compact=false] .builder-hint { bottom: 234px; }
+ .editor-workbench[data-compact=false] .builder-tray:not([hidden]) ~ .builder-hint { bottom: 468px; }
+ .editor-workbench[data-compact=false] .builder-terrain:not([hidden]) ~ .builder-hint { bottom: 458px; }
+}

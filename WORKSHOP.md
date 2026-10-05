@@ -27,7 +27,7 @@ A lost save response keeps the exact operation for Retry save, preventing duplic
 
 The room stores a distinct `composition` instance, never an embedded definition or a disguised image. Its fields are exactly `id`, `type`, `name`, `x`, `z`, quarter-turn `rotation`, and `assetRef: {assetId, revision}`. Server-generated IDs and immutable revisions determine identity. Resolved definitions are authenticated room projections outside scene JSON.
 
-Placement is ground-anchored using the complete composition’s minimum Y. The same pure transforms drive native meshes, previews, room boundaries, authorization and walking. Box collision conservatively encloses each solid primitive; elevated solids still block walking in X/Z. Decorative parts count toward edit bounds even when their collision is off. There is no pass-under or exact mesh physics. Materials render base colors; bounded inert texture IDs survive round trips but are never fetched.
+Placement is ground-anchored using the complete composition’s minimum Y. The same pure transforms drive native meshes, previews, room boundaries, authorization and walking. Box collision conservatively encloses each solid primitive; elevated solids still block walking in X/Z. Decorative parts count toward edit bounds even when their collision is off. There is no pass-under or exact mesh physics. Custom assemblies have no authored seat or interaction markers in this version. Materials render base colors; bounded inert texture IDs survive round trips but are never fetched.
 
 Server libraries/instances have additional room-wide byte, triangle, mesh and revision budgets. See [server/FURNITURE.md](server/FURNITURE.md) for exact routes, quotas, receipts, authority fences and storage contracts.
 

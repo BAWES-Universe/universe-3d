@@ -52,7 +52,7 @@ export function mountEditor({root,getState,onScene,onSelect,api,toast,onClose,on
  const addBtn=button('＋ Furniture',()=>{cancelGesture();terrainOpen=false;roomSettings=false;selected=null;onSelect(null);moreOpen=false;trayOpen=!trayOpen;update({inspect:false});},'Open the furniture tray');
  const terrainBtn=button('Terrain',()=>{if(terrainOpen){terrainOpen=false;update({inspect:false});}else setTool('terrain');},'Paint floors and water, or draw walls');terrainBtn.ariaLabel='Terrain';
  const customBtn=button('Custom images',()=>{cancelGesture();moreOpen=false;update({inspect:false});onOpenImageLibrary();},'Open the room’s custom image library');customBtn.classList.add('builder-custom-images');
- const workshopBtn=button('Furniture workshop',()=>{cancelGesture();moreOpen=false;update({inspect:false});onOpenWorkshop();},'Make and place your own multipart furniture');
+ const workshopBtn=button('Workshop',()=>{cancelGesture();moreOpen=false;update({inspect:false});onOpenWorkshop();},'Make and place your own multipart furniture');workshopBtn.ariaLabel='Furniture workshop';
  const areaBtn=button('▱ Area',()=>setTool('area'),'Place an interactive area');
  const rotateBtn=button('↻ Rotate',()=>rotate(),'Rotate 90° (R)');
  const duplicateBtn=button('⧉',()=>duplicate(),'Duplicate selected item (D)');duplicateBtn.ariaLabel='Duplicate selected item';
