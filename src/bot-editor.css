@@ -1131,7 +1131,7 @@
 .resident-fold > .resident-row,
 .resident-fold > .resident-plan-wrap { margin: 10px; }
 .resident-map-toolbar { padding: 18px; display: flex; flex-direction: column; min-height: 0; }
-.resident-map-toolbar > strong { display: block; flex: none; font-size: 17px; margin-bottom: 7px; overflow-wrap: anywhere; }
+.resident-map-body > strong { display: block; flex: none; font-size: 17px; margin-bottom: 7px; overflow-wrap: anywhere; }
 .resident-map-toolbar .resident-hint { font-size: 12px; }
 .resident-map-toolbar .resident-row { margin-top: 10px; }
 .resident-map-toolbar [aria-pressed=true] { border-color: var(--u-selected-border, #c6a6ff); background: var(--u-selected, #4d3665); }
@@ -1155,7 +1155,7 @@
   .resident-panel { width: auto; }
   .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel { inset: auto 8px calc(10px + env(safe-area-inset-bottom)); width: auto; max-height: 43vh; }
   .resident-map-toolbar { padding: 12px; }
-  .resident-map-toolbar > strong { font-size: 15px; }
+  .resident-map-body > strong { font-size: 15px; }
   .resident-map-toolbar .resident-hint { margin-bottom: 4px; }
   .resident-map-toolbar button { font-size: 12px; }
 }

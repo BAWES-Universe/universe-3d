@@ -361,6 +361,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     const s = session; mapToolbar.hidden = !s?.mapMode; mapToolbar.replaceChildren(); if (!s?.mapMode) return;
     const moving = s.mapMode === 'spawn', adding = s.mapMode === 'add';
     const body = el('div', { class: 'resident-map-body' },
+      el('strong', { text: moving ? `Move ${s.draft.name}` : adding ? 'Add route waypoints' : `Move waypoint ${Number(s.mapMode.slice(9)) + 1}` }),
       hint(moving ? 'Click clear ground to set a home, or drag the resident. This is a preview until you save.' : adding ? 'Click the floor to add numbered stops in order. Drag a point to adjust it. This is a preview until you save.' : 'Click clear ground to move this point, or drag it. This is a preview until you save.'),
       row(button('Move resident', () => beginMapMode('spawn'), { 'aria-pressed': String(moving) }), button('Add waypoints', () => beginMapMode('add'), { 'aria-pressed': String(adding), disabled: s.draft.waypoints.length >= 64 })),
       el('div', { class: 'resident-map-points' }, s.draft.waypoints.map((_, index) => button(String(index + 1), () => beginMapMode(`waypoint:${index}`), { 'aria-label': `Select waypoint ${index + 1}`, 'aria-pressed': String(s.mapMode === `waypoint:${index}`) }))),
@@ -372,7 +373,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
       button('Cancel', cancelMapMode, { class: 'resident-secondary', 'data-testid': 'bot-map-cancel' }),
       button('Undo', () => { const previous = s.mapSession.history.pop(); if (!previous) return; Object.assign(s.draft, previous); s.error = ''; renderDetail(); renderStatus(); preview(s); }, { disabled: !s.mapSession.history.length, 'data-testid': 'bot-map-undo' }),
       button('Done', finishMapMode, { class: 'resident-primary', title: 'Return to resident details. Save separately to keep changes.', 'data-testid': 'bot-map-done' }));
-    mapToolbar.append(el('strong', { text: moving ? `Move ${s.draft.name}` : adding ? 'Add route waypoints' : `Move waypoint ${Number(s.mapMode.slice(9)) + 1}` }), body, actions);
+    mapToolbar.append(body, actions);
     if (focused) [...mapToolbar.querySelectorAll('button')].find(node => !node.disabled && (focused.testid ? node.dataset.testid === focused.testid : focused.label ? node.getAttribute('aria-label') === focused.label : node.textContent === focused.text))?.focus({ preventScroll: true });
   }
   function handleEscape() {

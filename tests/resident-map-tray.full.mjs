@@ -21,7 +21,7 @@ page.on('request',r=>{if(/\/bots(?:\/[^/]+)?$/.test(new URL(r.url()).pathname)&&
 const field=name=>page.locator(`[data-bot-field="${name}"]`);
 const point=async()=>({x:Number(await field('waypoints.0.x').inputValue()),z:Number(await field('waypoints.0.z').inputValue())});
 async function measure(label){
- const result=await page.evaluate(()=>{const rect=e=>e.getBoundingClientRect().toJSON(),panel=document.querySelector('.resident-panel');return {panel:rect(panel),scroll:[...document.querySelectorAll('.resident-map-toolbar,.resident-map-body')].map(n=>({class:n.className,top:n.scrollTop})),actions:['cancel','undo','done'].map(name=>{const n=document.querySelector(`[data-testid="bot-map-${name}"]`),r=n.getBoundingClientRect();return {name,rect:rect(n),hit:n.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),inside:r.x>=0&&r.right<=innerWidth&&r.y>=0&&r.bottom<=innerHeight&&r.y>=panel.getBoundingClientRect().top&&r.bottom<=panel.getBoundingClientRect().bottom,minTarget:r.width>=44&&r.height>=48};})};});
+ const result=await page.evaluate(()=>{const rect=e=>e.getBoundingClientRect().toJSON(),panel=document.querySelector('.resident-panel');return {panel:rect(panel),ambientVisible:[...document.querySelectorAll('#area-banner,.quest-invitation,.quest-tracker')].some(n=>n.getBoundingClientRect().height>0&&getComputedStyle(n).visibility!=='hidden'),scroll:[...document.querySelectorAll('.resident-map-toolbar,.resident-map-body')].map(n=>({class:n.className,top:n.scrollTop})),actions:['cancel','undo','done'].map(name=>{const n=document.querySelector(`[data-testid="bot-map-${name}"]`),r=n.getBoundingClientRect();return {name,rect:rect(n),hit:n.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),inside:r.x>=0&&r.right<=innerWidth&&r.y>=0&&r.bottom<=innerHeight&&r.y>=panel.getBoundingClientRect().top&&r.bottom<=panel.getBoundingClientRect().bottom,minTarget:r.width>=44&&r.height>=48};})};});
  checks.push({label,viewport:page.viewportSize(),...result});await page.screenshot({path:out+'/'+label+'.png'});return result;
 }
 async function tapAction(name){const b=await page.getByTestId('bot-map-'+name).boundingBox();await page.touchscreen.tap(b.x+b.width/2,b.y+b.height/2);}
@@ -42,13 +42,20 @@ try{
    await page.keyboard.press('Escape');
   }
  }
- const failed=checks.filter(c=>c.actions.some(a=>!a.hit||!a.inside||!a.minTarget));
+ const failed=checks.filter(c=>c.ambientVisible||c.actions.some(a=>!a.hit||!a.inside||!a.minTarget));
  assert.deepEqual(failed,[],'Cancel, Undo and Done must be visible and hit-testable on entry, without scrolling');
  // The same footer must survive genuine enlarged text and repeated entry.
- await page.setViewportSize({width:320,height:568});await page.getByRole('button',{name:'Move waypoint 1 in room',exact:true}).click();
- await page.evaluate(()=>{const nodes=[...document.querySelectorAll('.resident-map-toolbar,.resident-map-toolbar *')].filter(n=>n instanceof HTMLElement).map(n=>[n,parseFloat(getComputedStyle(n).fontSize)]);for(const[n,size]of nodes)n.style.fontSize=size*2+'px';});
- const large=await measure('320x568-waypoint-text-2x');assert(large.actions.every(a=>a.hit&&a.inside&&a.minTarget));
- await tapAction('cancel');
+ for(const [width,height] of [[320,568],[667,375]]){
+  await page.setViewportSize({width,height});
+  await page.getByLabel('Resident name',{exact:true}).fill('A resident with a long name that still leaves actions visible');
+  await page.getByTestId('bot-move-resident').click();
+  await page.evaluate(()=>{const nodes=[...document.querySelectorAll('.resident-map-toolbar,.resident-map-toolbar *')].filter(n=>n instanceof HTMLElement).map(n=>[n,parseFloat(getComputedStyle(n).fontSize)]);for(const[n,size]of nodes)n.style.fontSize=size*2+'px';});
+  const large=await measure(`${width}x${height}-long-name-text-2x`);assert(large.actions.every(a=>a.hit&&a.inside&&a.minTarget));
+  await page.locator('.resident-map-toolbar,.resident-map-toolbar *').evaluateAll(nodes=>nodes.forEach(n=>n.style.removeProperty('font-size')));
+  await tapAction('cancel');
+ }
+ await page.getByLabel('Resident name',{exact:true}).fill('Tray route');
+ await page.setViewportSize({width:320,height:568});
  const initial=await point();
  await page.getByRole('button',{name:'Move waypoint 1 in room',exact:true}).click();await page.locator('#game').focus();await page.keyboard.press('ArrowRight');assert.notDeepEqual(await point(),initial);
  await tapAction('undo');assert.deepEqual(await point(),initial);assert.equal(writes.length,0);
