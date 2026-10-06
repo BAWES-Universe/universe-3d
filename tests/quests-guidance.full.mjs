@@ -15,8 +15,24 @@ const snapshot=()=>page.evaluate(async()=>{const response=await fetch('/api/ques
 const until=async(check,label)=>{const end=Date.now()+25000;while(Date.now()<end){if(await check())return;await page.waitForTimeout(150);}assert.fail('Timed out: '+label);};
 const overlaps=(a,b)=>a&&b&&a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
 async function checkControls(){
- const tracker=await page.locator('.quest-tracker').boundingBox();assert.ok(tracker&&tracker.x>=0&&tracker.y>=0&&tracker.x+tracker.width<=page.viewportSize().width);
- for(const selector of ['#joystick','#jump-button','#movement-side-toggle','#dock']){const control=page.locator(selector);if(await control.isVisible())assert.equal(overlaps(tracker,await control.boundingBox()),false,`Quest card must not cover ${selector}`);}
+ // The shared context lane clips a naturally-sized tracker. Compare its painted
+ // region, not offscreen scroll content, and independently hit-test the controls.
+ const tracker=await page.locator('.quest-tracker').evaluate(node=>{
+  const r=node.getBoundingClientRect();let left=Math.max(0,r.left),top=Math.max(0,r.top),right=Math.min(innerWidth,r.right),bottom=Math.min(innerHeight,r.bottom);
+  for(let p=node.parentElement;p;p=p.parentElement){
+   if(p===document.body||p===document.documentElement)continue;
+   const css=getComputedStyle(p),box=p.getBoundingClientRect();
+   if(/auto|scroll|hidden|clip/.test(css.overflowX)){left=Math.max(left,box.left);right=Math.min(right,box.right);}
+   if(/auto|scroll|hidden|clip/.test(css.overflowY)){top=Math.max(top,box.top);bottom=Math.min(bottom,box.bottom);}
+  }
+  return{x:left,y:top,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};
+ });
+ assert.ok(tracker.width>0&&tracker.height>0&&tracker.x>=0&&tracker.y>=0&&tracker.x+tracker.width<=page.viewportSize().width);
+ for(const selector of ['#joystick','#jump-button','#movement-side-toggle','#dock']){
+  const control=page.locator(selector);if(!await control.isVisible())continue;
+  assert.equal(overlaps(tracker,await control.boundingBox()),false,`Quest card must not cover ${selector}`);
+  assert(await control.evaluate(n=>{const r=n.getBoundingClientRect();return n.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),`${selector} remains hit-testable`);
+ }
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),page.viewportSize().width);
 }
 try{
