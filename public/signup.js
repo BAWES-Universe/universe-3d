@@ -3,7 +3,7 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  let policy = {enabled:false,setupOnly:false}, busy = false, generation = 0, action = null, interruptedSignup = false;
+  let policy = {enabled:false,setupOnly:false}, busy = false, generation = 0, action = null, interruptedSignup = false, canContinue = false;
   const requests = new Set(), views = ['loading','unavailable','signup','signin','account','entering'];
   function show(name) {
     for (const view of views) $(view+'-view').hidden = view !== name;
@@ -11,7 +11,7 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
   }
   function notice(id,text='') { $(id).textContent=text; $(id).hidden=!text; }
   function setBusy(value) {
-    busy=value;
+    busy=value;$('signin-continue').hidden=value||!canContinue;
     for(const control of document.querySelectorAll('form input,form button,#signup-signin,#signin-create,#change-account,#retry-access,#check-status'))control.disabled=value;
     $('signup-form').setAttribute('aria-busy',String(value));$('signin-form').setAttribute('aria-busy',String(value));
   }
@@ -28,8 +28,8 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
   }
   function signin(note='Sign in with your email or existing username.',current=null) {
     history.replaceState(null,'',signupViewLink(location.href,true));
-    $('signin-note').textContent=note; $('signin-create').hidden=!policy.enabled;
-    $('signin-continue').hidden=!current;$('signin-continue').href=signupDestination(location.href);
+    $('signin-note').textContent=note; $('signin-create').hidden=!policy.enabled||!!current;
+    canContinue=!!current;$('signin-continue').hidden=busy||!canContinue;$('signin-continue').href=signupDestination(location.href);
     $('signin-password').value=''; notice('signin-error'); show('signin');
   }
   function validateIdentity(identity) {
