@@ -35,13 +35,14 @@ async function noEscalation(email){const id=app.store.get('SELECT user_id FROM a
 async function screenshot(name){await page.screenshot({path:out+'/'+name+'.png',fullPage:true});}
 try{
  await fixture();
+ await fresh();let loadScript;const scriptHeld=new Promise(resolve=>loadScript=resolve);await page.route('**/signup.js',route=>{loadScript(route);});await page.goto(base+'/signup.html#room=studio&entry=welcome',{waitUntil:'commit'});const deferredScript=await scriptHeld;const earlySkip=page.getByRole('button',{name:'Skip to your account',exact:true});await earlySkip.focus();await earlySkip.press('Enter');assert.equal(new URL(page.url()).hash,'#room=studio&entry=welcome');await deferredScript.continue();await page.unroute('**/signup.js');await page.locator('#signup-view').waitFor();await earlySkip.focus();await earlySkip.press('Enter');assert.equal(await page.evaluate(()=>document.activeElement.id),'content');assert.equal(new URL(page.url()).hash,'#room=studio&entry=welcome');pass('The native skip control cannot overwrite the destination before the deferred script loads, and focuses the account content once ready');
  for(const mobile of [false,true]){
   await fresh(mobile);const email=(mobile?'touch':'keyboard')+'@example.test',requests=[];page.on('request',request=>requests.push({path:new URL(request.url()).pathname,url:request.url(),method:request.method()}));
   await page.goto(base+'/?room=studio&entry=welcome');await page.locator('#open-signup').waitFor();
   const link=await page.locator('#open-signup').getAttribute('href');assert.equal(link,'/signup.html#room=studio&entry=welcome','Create account must preserve the original destination');
   if(mobile)await page.locator('#open-signup').tap();else await page.locator('#open-signup').press('Enter');await form(email);
   assert.equal(await page.locator('#signup-submit').textContent(),'Create account & enter');
-  const destinationHash=new URL(page.url()).hash;const skip=page.getByRole('link',{name:'Skip to your account',exact:true});await skip.focus();if(mobile)await skip.tap();else await skip.press('Enter');assert.equal(new URL(page.url()).hash,destinationHash);assert.equal(await page.evaluate(()=>document.activeElement.id),'content');
+  const destinationHash=new URL(page.url()).hash;const skip=page.getByRole('button',{name:'Skip to your account',exact:true});await skip.focus();if(mobile)await skip.tap();else await skip.press('Enter');assert.equal(new URL(page.url()).hash,destinationHash);assert.equal(await page.evaluate(()=>document.activeElement.id),'content');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),mobile?320:1280);
   if(mobile)for(const height of await page.locator('#signup-view input,#signup-view button').evaluateAll(nodes=>nodes.filter(n=>n.getClientRects().length).map(n=>n.getBoundingClientRect().height)))assert(height>=44);
   await screenshot(mobile?'01-touch-signup':'01-keyboard-signup');
@@ -57,7 +58,7 @@ try{
   const identity=state.user.id;await page.reload();await ready();assert.equal(await page.evaluate(()=>__universe.getState().user.id),identity);
   await page.goBack();await ready();assert.equal(new URL(page.url()).searchParams.get('room'),'studio');await page.goForward();await ready();
   await page.goto(base+'/signup.html#room=studio&entry=welcome');await ready();assert.equal(new URL(page.url()).pathname,'/');
-  await page.goto(base+'/signup.html#room=studio&entry=welcome&view=signin');await page.locator('#signin-view').waitFor();await page.reload();await page.locator('#signin-view').waitFor();await page.locator('#signin-identifier').fill(email);await page.locator('#signin-password').fill(password);await page.locator('#signin-password').press('Enter');await ready();assert.equal(await page.evaluate(()=>__universe.getState().user.id),identity);
+  await page.goto(base+'/signup.html#room=studio&entry=welcome&view=signin');await page.locator('#signin-view').waitFor();await page.reload();await page.locator('#signin-view').waitFor();assert(await page.locator('#signin-continue').isVisible());assert.equal(await page.locator('#signin-continue').getAttribute('href'),'/?room=studio&entry=welcome');await page.locator('#signin-continue').click();await ready();await page.goto(base+'/signup.html#room=studio&entry=welcome&view=signin');await page.locator('#signin-view').waitFor();await page.locator('#signin-identifier').fill(email);await page.locator('#signin-password').fill(password);await page.locator('#signin-password').press('Enter');await ready();assert.equal(await page.evaluate(()=>__universe.getState().user.id),identity);
   pass((mobile?'Touch 320px':'Keyboard desktop')+': one explicit create-and-enter action reaches the selected named arrival, survives reload/back/forward, rejects duplicate submits and grants no owner/private roles');
  }
  await context.close();context=null;await fixture();await fresh(true);

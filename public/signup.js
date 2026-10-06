@@ -26,13 +26,17 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
       return data;
     } finally {clearTimeout(timer);requests.delete(controller);}
   }
-  function signin(note='Sign in with your email or existing username.') {
+  function signin(note='Sign in with your email or existing username.',current=null) {
     history.replaceState(null,'',signupViewLink(location.href,true));
     $('signin-note').textContent=note; $('signin-create').hidden=!policy.enabled;
+    $('signin-continue').hidden=!current;$('signin-continue').href=signupDestination(location.href);
     $('signin-password').value=''; notice('signin-error'); show('signin');
   }
-  function account(identity) {
+  function validateIdentity(identity) {
     if(typeof identity.setupOnly!=='boolean'||typeof identity.accountId!=='string'||!(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/).test(identity.accountId)||identity.user?.id!==identity.accountId)throw new Error('We couldn’t confirm your sign-in. Please try again.');
+  }
+  function account(identity) {
+    validateIdentity(identity);
     // The authenticated response is authoritative if setup changed while this
     // form was open. An ordinary visitor never needs an operator/account ID.
     if(!identity.setupOnly){
@@ -52,7 +56,8 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
       if(typeof next.enabled!=='boolean'||typeof next.setupOnly!=='boolean')throw new Error('We couldn’t check account access. Please try again.');
       policy=next;$('signup-submit').textContent=policy.setupOnly?'Create my account':'Create account & enter';
       try {const identity=await request('/api/setup/me');if(operation!==generation)return;
-        if(identity.setupOnly===false&&signupStartsWithSignin(location.href))signin();else account(identity);
+        validateIdentity(identity);
+        if(identity.setupOnly===false&&signupStartsWithSignin(location.href))signin('You’re already signed in. Continue, or sign in to another account.',identity);else account(identity);
       }
       catch(error) {
         if(operation!==generation)return;if(error.status!==401)throw error;

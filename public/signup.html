@@ -12,7 +12,7 @@
   <script src="/signup.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#content">Skip to your account</a>
+  <button class="skip-link" type="button">Skip to your account</button>
   <div class="admission-shell">
     <header class="site-header"><img class="signup-brand" src="/assets/bawes-universe-logo.png" alt="BAWES Universe" width="184" height="92"><span class="header-note">Make room for possibility.</span></header>
     <main id="content" class="admission-layout" tabindex="-1">
@@ -34,6 +34,7 @@
         </div>
         <div id="signin-view" class="view" hidden>
           <p class="eyebrow">WELCOME BACK</p><h2 id="signin-heading" tabindex="-1">Your people await.</h2><p id="signin-note" class="muted">Sign in with your email or existing username.</p>
+          <a id="signin-continue" class="button secondary wide" href="/" hidden>Continue with current account</a>
           <form id="signin-form"><label for="signin-identifier">Email or username</label><input id="signin-identifier" name="identifier" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required>
             <label for="signin-password">Password</label><div class="password-field"><input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="256" required><button class="password-toggle" type="button" data-password="signin-password" aria-label="Show sign-in password" aria-pressed="false">Show</button></div>
             <p id="signin-error" class="form-notice error" role="alert" hidden></p><button id="signin-submit" class="button primary wide" type="submit">Sign in</button>
