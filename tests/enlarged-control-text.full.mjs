@@ -45,8 +45,32 @@ async function resizeText(mode){
  if(mode==='root200')await page.evaluate(()=>document.documentElement.style.fontSize='200%');
  if(mode==='computed2x')await page.evaluate(()=>{const snapshot=[...document.querySelectorAll('#app *')].filter(n=>[...n.childNodes].some(t=>t.nodeType===Node.TEXT_NODE&&t.textContent.trim())).map(n=>[n,parseFloat(getComputedStyle(n).fontSize)]);for(const[n,size]of snapshot)n.style.setProperty('font-size',`${size*2}px`,'important');});
 }
+// Reload resumes this avatar's authoritative pose. Native gestures must begin
+// independently: slower CDP round trips otherwise walk successive cases into
+// the room corner while the joystick stays held through camera and Jump checks.
+async function resetMotionFixture(){
+ const previousAdmission=await page.evaluate(()=>__universe.getState().admissionId);
+ await page.locator('#dock-explore').click();
+ const enter=page.getByRole('button',{name:'Enter The Commons',exact:true});
+ if(!await enter.isVisible())await page.getByRole('button',{name:'View room The Commons',exact:true}).click();
+ await enter.click();
+ await page.waitForFunction(previous=>{const s=__universe.getState();return s.ready&&s.admissionId!==previous&&s.room.id==='commons';},previousAdmission);
+ await page.locator('#places').waitFor({state:'hidden'});
+ const fixture=await page.evaluate(()=>{const s=__universe.getState();return{position:s.position,spawn:s.scene.spawn,motion:__universe.getMotion()};});
+ assert(Math.hypot(fixture.position.x-fixture.spawn.x,fixture.position.z-fixture.spawn.z)<.01,'Every native gesture starts at the clear seeded arrival');
+ assert(fixture.motion.grounded&&fixture.motion.speed===0,'Every native gesture starts at rest');
+}
+async function waitForMotion(step,predicate,arg){
+ try{await page.waitForFunction(predicate,arg);}
+ catch(error){
+  // Capture the failed phase before the gesture's finally releases its fingers.
+  const state=await page.evaluate(()=>({position:__universe.getState().position,motion:__universe.getMotion(),camera:__universe.getCamera(),ready:__universe.getState().ready,online:__universe.getState().online,focus:document.activeElement?.id,joystick:document.querySelector('#joystick-thumb').style.transform}));
+  throw Error(`${step}: ${error.message}; state=${JSON.stringify(state)}`);
+ }
+}
 async function checkNativeMotion(width,height,mode,side){
  await check(`${width}x${height}-${mode} ${side} native movement + camera + Jump and recovery`,async()=>{
+   await resetMotionFixture();
    if(await page.locator('#app').getAttribute('data-movement-side')!==side)await page.locator('#movement-side-toggle').click();
    // Dismiss only through real actions, making a patch of world available for
    // the camera gesture. The earlier screenshots retain the first-use cards.
@@ -55,8 +79,8 @@ async function checkNativeMotion(width,height,mode,side){
    const stick=await page.locator('#joystick').boundingBox(),jump=await page.locator('#jump-button').boundingBox();
    const world=await page.evaluate(()=>{for(let y=innerHeight*.45;y<innerHeight-100;y+=12)for(let x=40;x<innerWidth-90;x+=12)if(document.elementFromPoint(x,y)?.id==='game'&&document.elementFromPoint(x+32,y)?.id==='game')return{x,y};return null;});assert(world,'A real unobscured canvas patch is available');
    const beforeMotion=await page.evaluate(()=>({position:__universe.getState().position,yaw:__universe.getCamera().yaw}));const cdp=await context.newCDPSession(page),finger={id:1,x:stick.x+stick.width/2+24,y:stick.y+stick.height/2},camera={id:2,...world},jumpFinger={id:3,x:jump.x+jump.width/2,y:jump.y+jump.height/2};
-   try{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger]});await page.waitForFunction(p=>Math.hypot(__universe.getState().position.x-p.x,__universe.getState().position.z-p.z)>.03,beforeMotion.position);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,camera]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[finger,{...camera,x:camera.x+32}]});await page.waitForFunction(yaw=>Math.abs(__universe.getCamera().yaw-yaw)>.01,beforeMotion.yaw);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,{...camera,x:camera.x+32},jumpFinger]});await page.waitForFunction(()=>__universe.getState().position.y>0&&__universe.getMotion().speed>0);}finally{await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();}
-   await page.waitForFunction(()=>__universe.getMotion().grounded);await page.locator('#dock-more').click();const reset=page.locator('#shell-more').getByRole('button',{name:'Reset camera',exact:true});await reset.scrollIntoViewIfNeeded();await reset.click();await page.waitForFunction(()=>Math.abs(__universe.getCamera().yaw-Math.PI/4)<.001);assert.equal(await page.locator('#shell-more').isVisible(),false);
+   try{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger]});await waitForMotion('first movement',p=>Math.hypot(__universe.getState().position.x-p.x,__universe.getState().position.z-p.z)>.03,beforeMotion.position);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,camera]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[finger,{...camera,x:camera.x+32}]});await waitForMotion('camera yaw',yaw=>Math.abs(__universe.getCamera().yaw-yaw)>.01,beforeMotion.yaw);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,{...camera,x:camera.x+32},jumpFinger]});await waitForMotion('Jump while moving',()=>__universe.getState().position.y>0&&__universe.getMotion().speed>0);}finally{await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();}
+   await waitForMotion('grounded after Jump',()=>__universe.getMotion().grounded);await page.locator('#dock-more').click();const reset=page.locator('#shell-more').getByRole('button',{name:'Reset camera',exact:true});await reset.scrollIntoViewIfNeeded();await reset.click();await waitForMotion('camera reset',()=>Math.abs(__universe.getCamera().yaw-Math.PI/4)<.001);assert.equal(await page.locator('#shell-more').isVisible(),false);
  });
 }
 
