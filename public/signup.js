@@ -32,7 +32,7 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
     $('signin-password').value=''; notice('signin-error'); show('signin');
   }
   function account(identity) {
-    if(typeof identity.setupOnly!=='boolean'||typeof identity.accountId!=='string'||!identity.accountId||identity.user?.id!==identity.accountId)throw new Error('We couldn’t confirm your sign-in. Please try again.');
+    if(typeof identity.setupOnly!=='boolean'||typeof identity.accountId!=='string'||!(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/).test(identity.accountId)||identity.user?.id!==identity.accountId)throw new Error('We couldn’t confirm your sign-in. Please try again.');
     // The authenticated response is authoritative if setup changed while this
     // form was open. An ordinary visitor never needs an operator/account ID.
     if(!identity.setupOnly){
@@ -51,7 +51,9 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
       const next=await request('/api/signup');if(operation!==generation)return;
       if(typeof next.enabled!=='boolean'||typeof next.setupOnly!=='boolean')throw new Error('We couldn’t check account access. Please try again.');
       policy=next;$('signup-submit').textContent=policy.setupOnly?'Create my account':'Create account & enter';
-      try {const identity=await request('/api/setup/me');if(operation!==generation)return;account(identity);}
+      try {const identity=await request('/api/setup/me');if(operation!==generation)return;
+        if(identity.setupOnly===false&&signupStartsWithSignin(location.href))signin();else account(identity);
+      }
       catch(error) {
         if(operation!==generation)return;if(error.status!==401)throw error;
         if(interruptedSignup){interruptedSignup=false;signin('Account creation was interrupted. Try signing in with the details you chose.');}
@@ -64,6 +66,7 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
   for(const button of document.querySelectorAll('[data-password]'))button.addEventListener('click',()=>{
     const input=$(button.dataset.password),shown=input.type==='password';input.type=shown?'text':'password';button.textContent=shown?'Hide':'Show';button.setAttribute('aria-pressed',String(shown));button.setAttribute('aria-label',(shown?'Hide ':'Show ')+(input.id==='signup-confirm'?'confirmation password':input.id==='signin-password'?'sign-in password':'password'));
   });
+  document.querySelector('.skip-link').addEventListener('click',event=>{event.preventDefault();$('content').focus();$('content').scrollIntoView({block:'start'});});
   $('signup-signin').onclick=()=>{if(busy)return;$('signin-identifier').value=$('signup-email').value;signin();};
   $('signin-create').onclick=()=>{if(busy)return;history.replaceState(null,'',signupViewLink(location.href,false));notice('signup-error');show('signup');};
   $('change-account').onclick=()=>{if(busy)return;$('signin-identifier').value='';signin();};
@@ -74,6 +77,9 @@ import {signupDestination,signupStartsWithSignin,signupViewLink} from '../src/si
     if(password!==$('signup-confirm').value){notice('signup-error','Your passwords don’t match. Try them again.');$('signup-confirm').focus();return;}
     if(password!==password.trim()||/[\u0000-\u001f\u007f]/.test(password)){notice('signup-error','Use a password without spaces at either end or control characters.');$('signup-password').focus();return;}
     const operation=++generation;action='signup';setBusy(true);$('signin-identifier').value=email;
+    // If creation commits but its acknowledgement is lost, reload must offer
+    // sign-in instead of encouraging a second account. Never store credentials.
+    history.replaceState(null,'',signupViewLink(location.href,true));
     try {
       const created=await request('/api/signup',{name,email,password});if(operation!==generation)return;
       if(created.created!==true||created.loginRequired!==true)throw new Error('Account creation could not be confirmed.');
