@@ -13,7 +13,9 @@ export class Store {
     this.claimUnownedOnCreate=!!claimUnownedOnCreate;
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true });
     this.db = new DatabaseSync(filename);
-    this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+    // WAL selection/recovery can contend with another opening process too.
+    // Install the existing bounded wait policy before selecting the journal mode.
+    this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,name TEXT NOT NULL,woka TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'online',created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY COLLATE NOCASE,email TEXT COLLATE NOCASE UNIQUE,user_id TEXT NOT NULL UNIQUE REFERENCES users(id),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT REFERENCES users(id),public INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);

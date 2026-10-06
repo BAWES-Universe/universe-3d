@@ -8,6 +8,7 @@ let store, journal, adapter;
 process.on('message', async message => {
   try {
     if (message.command === 'open') {
+      if (message.notifyOpening) process.send({event:'opening'});
       store = new Store(message.filename);
       initializeHostTurnJournal({database:store.db, ...message.options});
       journal = createHostTurnJournal({database:store.db, ...message.options});
