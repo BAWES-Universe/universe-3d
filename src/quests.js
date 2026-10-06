@@ -19,13 +19,21 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
   const areaHome=areaBanner?.parentNode,areaNext=areaBanner?.nextSibling;
   const areaToggle=element('button','quest-area-toggle');areaToggle.type='button';areaToggle.hidden=true;areaToggle.setAttribute('aria-controls','area-message');areaBanner?.prepend(areaToggle);
   const compact=matchMedia('(max-width: 700px), (max-height: 540px), (pointer: coarse)');
-  let areaExpanded=false,areaKey='';
+  let areaExpanded=false,areaKey='',regionSyncing=false;
   function syncMessageRegion(quiet=false){
+    // Moving a focused node emits focusout synchronously. Its render must not
+    // reenter the same DOM move, and focus returns to a visible area control.
+    if(regionSyncing)return;regionSyncing=true;
+    let movedFocus=null;
+    try {
     const small=compact.matches,hasQuest=!invitation.hidden||!tracker.hidden;
     messageRegion.hidden=small&&quiet;
     if(areaBanner){
-      if(small&&areaBanner.parentNode!==messageRegion)messageRegion.append(areaBanner);
-      else if(!small&&areaBanner.parentNode===messageRegion)areaHome?.insertBefore(areaBanner,areaNext?.parentNode===areaHome?areaNext:null);
+      if((small&&areaBanner.parentNode!==messageRegion)||(!small&&areaBanner.parentNode===messageRegion)){
+        if(areaBanner.contains(document.activeElement))movedFocus=document.activeElement;
+        if(small)messageRegion.append(areaBanner);
+        else areaHome?.insertBefore(areaBanner,areaNext?.parentNode===areaHome?areaNext:null);
+      }
       const name=document.getElementById('area-name')?.textContent||'Area',key=(context().room?.id||'')+':'+name+':'+document.getElementById('area-message')?.textContent;
       if(key!==areaKey){areaKey=key;areaExpanded=false;}
       areaToggle.hidden=!small||!hasQuest;
@@ -42,9 +50,14 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
     const dockClearance=innerHeight-(rect('dock')?.top??innerHeight)+8;
     const receipt=document.getElementById('toast'),receiptHeight=hasQuest&&!quiet?(rect('toast')?.height||0):0;
     receipt?.style.setProperty('--quest-receipt-bottom',dockClearance+'px');
-    const bottom=Math.max(96,dockClearance+(receiptHeight?receiptHeight+8:0));
+    const bottom=dockClearance+(receiptHeight?receiptHeight+8:0),height=Math.max(0,innerHeight-bottom-top);
+    messageRegion.dataset.tight=String(height<96);
     messageRegion.style.setProperty('--quest-context-bottom',bottom+'px');
-    messageRegion.style.setProperty('--quest-context-height',Math.max(0,innerHeight-bottom-top)+'px');
+    messageRegion.style.setProperty('--quest-context-height',height+'px');
+    } finally {
+      if(movedFocus){const target=movedFocus.getClientRects().length?movedFocus:areaBanner?.querySelector('.area-banner-dismiss');if(target?.getClientRects().length)target.focus({preventScroll:true});}
+      regionSyncing=false;
+    }
   }
   areaToggle.onclick=()=>{areaExpanded=!areaExpanded;syncMessageRegion(isQuiet()||opened);};
   const onLayout=()=>syncMessageRegion(isQuiet()||opened);

@@ -435,7 +435,7 @@
     gap: 8px;
     left: max(12px, env(safe-area-inset-left, 0px));
     right: auto;
-    bottom: var(--quest-context-bottom, 96px);
+    bottom: var(--quest-context-bottom, 76px);
     width: min(330px, calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
     max-height: var(--quest-context-height, 44dvh);
     overflow: auto;
@@ -453,30 +453,26 @@
     max-width: none;
     min-height: 0;
     max-height: none;
-    flex: 0 1 auto;
-    overflow: auto;
+    flex: 0 0 auto;
+    overflow: visible;
     box-sizing: border-box;
   }
   #app .quest-context > :is(.quest-invitation,.quest-tracker) {
-    min-height: min(128px, var(--quest-context-height, 44dvh));
     pointer-events: auto;
-    overscroll-behavior: contain;
   }
   #app .quest-context #area-banner#area-banner {
     position: relative;
     inset: auto;
     width: 100%;
     max-width: none;
-    max-height: var(--quest-context-height, 44dvh);
+    max-height: none;
     min-height: 0;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     padding: 8px 48px 8px 8px;
-    overflow: auto;
-    overscroll-behavior: contain;
+    overflow: visible;
   }
   #app .quest-context[data-has-quest=true] #area-banner#area-banner {
     flex: 0 0 auto;
-    max-height: max(64px, calc(var(--quest-context-height, 44dvh) * .45));
     display: block;
   }
   #app .quest-context #area-banner[data-quest-collapsed=true] > :not(.quest-area-toggle):not(.area-banner-dismiss) {
@@ -492,7 +488,14 @@
     overflow-wrap: anywhere;
     width: 100%;
   }
-  #app .quest-context #area-banner .area-banner-dismiss { font-size: 24px; }
+  /* Keep one native scroll owner, even when only one action fits in the lane. */
+  .quest-context :is(.quest-button,.quest-area-toggle,.area-banner-dismiss) { scroll-snap-align: center; }
+  .quest-context[data-tight=true] { scroll-snap-type: y proximity; }
+  .quest-context[data-tight=true] :is(.quest-tracker-actions,.quest-invitation-actions) .quest-button {
+    flex-basis: 100%;
+    padding-block: 4px;
+  }
+  #app .quest-context #area-banner .area-banner-dismiss { top: 8px; font-size: 24px; }
 }
 
 @media (max-width: 700px), (max-height: 540px), (pointer: coarse) {
