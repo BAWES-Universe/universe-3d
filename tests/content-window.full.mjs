@@ -7,6 +7,7 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createGameServer} from '../server/app.mjs';
 import {launch} from '../scripts/browser.mjs';
+import {observeNativeTouchResize} from './native-touch-resize.mjs';
 const dist=new URL('../dist',import.meta.url).pathname;
 const keyboardOnly=process.env.CONTENT_WINDOW_KEYBOARD_ONLY==='1',evidencePrefix=keyboardOnly?'content-window-keyboard-only':'content-window-full';
 const scene={version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:0},objects:[{id:'window-board',type:'board',name:'Local window board',x:0,z:-2,rotation:0,actions:[{id:'window-form',type:'link',name:'Open window form',label:'Window form',url:'https://content-window-full.invalid/form',mode:'embed',width:30,closable:true}]}],areas:[]};
@@ -16,7 +17,7 @@ const browser=await launch(),context=await browser.newContext({viewport:{width:1
 p.setDefaultTimeout(30000);p.setDefaultNavigationTimeout(60000);
 const actor=await browser.newContext();
 const checks=[],errors=[],consoleErrors=[],artifacts=[],boundaryMeasurements=[],dockMeasurements=[],focusTrace=[],coveredMessages=[],coveredPresentation=[],keyboardDismissals=[];let loads=0,resolves=0,heldFrame,expectedLoads,expectedResolves,deny=false,phase='initialization';
-const sourceFiles=['tests/content-window.full.mjs','src/main.js','src/embedded-panels.js','src/window-layout.js','src/content-window-modality.js','src/window-control-states.js','src/action-runtime.js','src/action-runtime.css','src/social.js','src/surface-history.js','server/app.mjs','public/style.css','public/universe-tokens.css'];
+const sourceFiles=['tests/content-window.full.mjs','tests/native-touch-resize.mjs','src/main.js','src/embedded-panels.js','src/window-layout.js','src/content-window-modality.js','src/window-control-states.js','src/action-runtime.js','src/action-runtime.css','src/social.js','src/surface-history.js','server/app.mjs','public/style.css','public/universe-tokens.css'];
 const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
 const hashes=async()=>Object.fromEntries(await Promise.all([...sourceFiles,'dist/main.js','dist/main.css','dist/style.css'].map(async path=>[path,await hash(path)])));
 const initialHashes=await hashes();
@@ -100,9 +101,9 @@ try{
   boundaryMeasurements.push({viewport:1023,canvas:await p.locator('#game').evaluate(node=>node.getBoundingClientRect().width),content:await width(),maximized:(await geometry()).maximized});await viewport(1024,768);await max().waitFor();boundaryMeasurements.push({viewport:1024,canvas:await p.locator('#game').evaluate(node=>node.getBoundingClientRect().width),content:await width(),maximized:(await geometry()).maximized});await retained();assert.deepEqual(await historyState(),beforeHistory);
  });
  await check('native touch resizing and touchcancel preserve document; portrait320 and landscape controls remain reachable',async()=>{
-  await viewport(844,700);const before=await width(),box=await handle().boundingBox(),cdp=await context.newCDPSession(p);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+80,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+64,y:box.y+80,id:1}]});assert.equal((await geometry()).resizing,true);assert.equal(await width(),before-40);await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});assert.equal((await geometry()).resizing,false);assert.equal(await width(),before);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+80,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+56,y:box.y+80,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});assert.equal((await geometry()).resizing,false);assert.equal(await width(),before-32);await cdp.detach();
+  await viewport(844,700);const before=await width(),box=await handle().boundingBox(),cdp=await context.newCDPSession(p),cancelled=await observeNativeTouchResize(handle());
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+80,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+64,y:box.y+80,id:1}]});assert.equal((await geometry()).resizing,true);assert.equal(await width(),before-40);await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await cancelled('pointercancel');assert.equal((await geometry()).resizing,false);assert.equal(await width(),before);
+  const committed=await observeNativeTouchResize(handle());await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+80,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+56,y:box.y+80,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await committed('pointerup');assert.equal((await geometry()).resizing,false);assert.equal(await width(),before-32);await cdp.detach();
   for(const [w,h]of[[320,568],[844,390]]){await viewport(w,h);assert.equal(await width(),w);await assertCoveredPresentation(w===320?'320 portrait full sheet':'844 landscape full sheet');assert.equal(await handle().count(),0);assert.equal(await max().count(),0);const controls=[];for(const name of ['Return to world','Open in new tab ↗','Reload frame','Close this panel'])controls.push({name,box:await reachable(p.getByRole('button',{name,exact:true}),w,h)});boundaryMeasurements.push({viewport:w,height:h,canvas:await p.locator('#game').evaluate(node=>node.getBoundingClientRect().width),controls});await snapshot(w===320?'320-portrait':'844-landscape');await retained();}
  });
  await check('native touch Return disposes; Forward reauthorizes a fresh frame and denied Forward never resurrects content',async()=>{
