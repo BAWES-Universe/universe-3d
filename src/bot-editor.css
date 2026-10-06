@@ -1130,8 +1130,8 @@
 .resident-edit-label { font-size: 11px; color: var(--resident-purple); }
 .resident-fold > .resident-row,
 .resident-fold > .resident-plan-wrap { margin: 10px; }
-.resident-map-toolbar { padding: 18px; }
-.resident-map-toolbar > strong { display: block; font-size: 17px; margin-bottom: 7px; }
+.resident-map-toolbar { padding: 18px; display: flex; flex-direction: column; min-height: 0; }
+.resident-map-toolbar > strong { display: block; flex: none; font-size: 17px; margin-bottom: 7px; overflow-wrap: anywhere; }
 .resident-map-toolbar .resident-hint { font-size: 12px; }
 .resident-map-toolbar .resident-row { margin-top: 10px; }
 .resident-map-toolbar [aria-pressed=true] { border-color: var(--u-selected-border, #c6a6ff); background: var(--u-selected, #4d3665); }
@@ -1143,7 +1143,14 @@
 .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-back,
 .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-content,
 .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-footer { display: none; }
-.resident-map-toolbar { overflow: auto; }
+/* Only the settings scroll. Always leave the three completion targets in view. */
+.resident-map-toolbar { overflow: hidden; }
+.resident-map-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.resident-map-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: none; padding-top: 10px; border-top: 1px solid var(--resident-line); }
+.resident-map-actions button { min-width: 0; padding-inline: 4px; overflow-wrap: anywhere; }
+.resident-map-remove { margin-block: 8px; }
+.resident-map-points { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.resident-map-points button { flex: 0 0 auto; }
 @media (max-width: 600px) {
   .resident-panel { width: auto; }
   .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel { inset: auto 8px calc(10px + env(safe-area-inset-bottom)); width: auto; max-height: 43vh; }
