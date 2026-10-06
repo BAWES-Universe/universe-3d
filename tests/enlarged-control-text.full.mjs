@@ -17,8 +17,12 @@ if(!dist){temporary=await mkdtemp(join(tmpdir(),'universe-enlarged-text-'));dist
 const bundle=Object.fromEntries(await Promise.all(['style.css','main.css','main.js'].map(async name=>[name,createHash('sha256').update(await readFile(join(dist,name))).digest('hex')])));
 const app=createGameServer({seeds:structuredClone(seedWorlds),dist}),{port}=await app.listen(0),browser=await launch();
 const context=await browser.newContext({viewport:{width:320,height:568},hasTouch:true,reducedMotion:'reduce'}),page=await context.newPage(),checks=[],errors=[];
-page.setDefaultTimeout(30000);page.on('pageerror',error=>errors.push(error.message));
-await page.addInitScript(()=>{window.captureAttempts=0;for(const method of ['getUserMedia','getDisplayMedia'])if(navigator.mediaDevices)Object.defineProperty(navigator.mediaDevices,method,{value:()=>{window.captureAttempts++;throw Error('Capture is forbidden in the enlarged-text test');}});});
+let layoutContextOpen=true;
+await preparePage(page);
+async function preparePage(page){
+ page.setDefaultTimeout(30000);page.on('pageerror',error=>errors.push(error.message));
+ await page.addInitScript(()=>{window.captureAttempts=0;for(const method of ['getUserMedia','getDisplayMedia'])if(navigator.mediaDevices)Object.defineProperty(navigator.mediaDevices,method,{value:()=>{window.captureAttempts++;throw Error('Capture is forbidden in the enlarged-text test');}});});
+}
 const modes=['normal','root200','computed2x'];
 const viewports=JSON.parse(process.env.ENLARGED_VIEWPORTS||'[[320,568],[390,844],[667,375],[550,375]]');
 const textSelectors=['#room-name','#movement-side-toggle','#jump-button','#dock-explore label','#dock-more label'];
@@ -41,19 +45,19 @@ async function checkLayout(label,before,mode){const after=await metrics();await 
  });
  return after;
 }
-async function resizeText(mode){
- if(mode==='root200')await page.evaluate(()=>document.documentElement.style.fontSize='200%');
- if(mode==='computed2x')await page.evaluate(()=>{const snapshot=[...document.querySelectorAll('#app *')].filter(n=>[...n.childNodes].some(t=>t.nodeType===Node.TEXT_NODE&&t.textContent.trim())).map(n=>[n,parseFloat(getComputedStyle(n).fontSize)]);for(const[n,size]of snapshot)n.style.setProperty('font-size',`${size*2}px`,'important');});
+async function resizeText(mode,target=page){
+ if(mode==='root200')await target.evaluate(()=>document.documentElement.style.fontSize='200%');
+ if(mode==='computed2x')await target.evaluate(()=>{const snapshot=[...document.querySelectorAll('#app *')].filter(n=>[...n.childNodes].some(t=>t.nodeType===Node.TEXT_NODE&&t.textContent.trim())).map(n=>[n,parseFloat(getComputedStyle(n).fontSize)]);for(const[n,size]of snapshot)n.style.setProperty('font-size',`${size*2}px`,'important');});
 }
 // Reload resumes this avatar's authoritative pose. Native gestures must begin
 // independently: slower CDP round trips otherwise walk successive cases into
 // the room corner while the joystick stays held through camera and Jump checks.
-async function resetMotionFixture(){
+async function resetMotionFixture(page){
  const previousAdmission=await page.evaluate(()=>__universe.getState().admissionId);
  await page.locator('#dock-explore').click();
- const enter=page.getByRole('button',{name:'Enter The Commons',exact:true});
- if(!await enter.isVisible())await page.getByRole('button',{name:'View room The Commons',exact:true}).click();
- await enter.click();
+ // The selected world/room detail supplies Enter after the catalog loads.
+ // Its compact catalog list stays hidden, so never branch into that list.
+ await page.getByRole('button',{name:'Enter The Commons',exact:true}).click();
  await page.waitForFunction(previous=>{const s=__universe.getState();return s.ready&&s.admissionId!==previous&&s.room.id==='commons';},previousAdmission);
  await page.locator('#places').waitFor({state:'hidden'});
  const fixture=await page.evaluate(()=>{const s=__universe.getState();return{position:s.position,spawn:s.scene.spawn,motion:__universe.getMotion()};});
@@ -63,7 +67,7 @@ async function resetMotionFixture(){
  // movement controls. Wait for their actual visibility before reading the UI.
  await Promise.all(['#joystick','#jump-button'].map(selector=>page.locator(selector).waitFor({state:'visible'})));
 }
-async function waitForMotion(step,predicate,arg){
+async function waitForMotion(page,step,predicate,arg){
  try{await page.waitForFunction(predicate,arg);}
  catch(error){
   // Capture the failed phase before the gesture's finally releases its fingers.
@@ -71,21 +75,37 @@ async function waitForMotion(step,predicate,arg){
   throw Error(`${step}: ${error.message}; state=${JSON.stringify(state)}`);
  }
 }
+// Own the whole native case, including setup and recovery. Failed navigation,
+// dialogs, pending requests or pointer capture cannot reach another case.
+async function withMotionFixture(width,height,run){
+ const local=createGameServer({seeds:structuredClone(seedWorlds),dist});let context;
+ try{
+  const {port}=await local.listen(0);
+  context=await browser.newContext({viewport:{width,height},hasTouch:true,reducedMotion:'reduce'});
+  const page=await context.newPage();await preparePage(page);
+  await page.goto(`http://127.0.0.1:${port}`,{waitUntil:'domcontentloaded'});
+  await page.getByPlaceholder('Your name').fill('Enlarged text motion reviewer');await page.locator('#join-button').click();
+  await page.waitForFunction(()=>window.__universe?.getState().ready);await page.evaluate(()=>document.fonts.ready);
+  await page.locator('.quest-invitation').waitFor({state:'visible'});
+  await run(page,context);
+  assert.equal(await page.evaluate(()=>captureAttempts),0);
+ }finally{try{await context?.close();}finally{await local.close();}}
+}
 async function checkNativeMotion(width,height,mode,side){
- await check(`${width}x${height}-${mode} ${side} native movement + camera + Jump and recovery`,async()=>{
-   await resetMotionFixture();
+ await check(`${width}x${height}-${mode} ${side} native movement + camera + Jump and recovery`,()=>withMotionFixture(width,height,async(page,context)=>{
+   await resizeText(mode,page);await resetMotionFixture(page);
    if(await page.locator('#app').getAttribute('data-movement-side')!==side)await page.locator('#movement-side-toggle').click();
    // Dismiss only through real actions, making a patch of world available for
    // the camera gesture. The earlier screenshots retain the first-use cards.
-   const later=page.getByRole('button',{name:'Not now',exact:true});if(await later.isVisible()){await later.scrollIntoViewIfNeeded();await later.click();}
+   const later=page.getByRole('button',{name:'Not now',exact:true});await later.waitFor({state:'visible'});await later.scrollIntoViewIfNeeded();await later.click();await later.waitFor({state:'hidden'});
    const dismiss=page.locator('.area-banner-dismiss');if(await dismiss.isVisible()){await dismiss.scrollIntoViewIfNeeded();await dismiss.click();}
    const stick=await page.locator('#joystick').boundingBox(),jump=await page.locator('#jump-button').boundingBox();
    assert(stick&&jump,'Movement and Jump must have visible native touch bounds');
    const world=await page.evaluate(()=>{for(let y=innerHeight*.45;y<innerHeight-100;y+=12)for(let x=40;x<innerWidth-90;x+=12)if(document.elementFromPoint(x,y)?.id==='game'&&document.elementFromPoint(x+32,y)?.id==='game')return{x,y};return null;});assert(world,'A real unobscured canvas patch is available');
    const beforeMotion=await page.evaluate(()=>({position:__universe.getState().position,yaw:__universe.getCamera().yaw}));const cdp=await context.newCDPSession(page),finger={id:1,x:stick.x+stick.width/2+24,y:stick.y+stick.height/2},camera={id:2,...world},jumpFinger={id:3,x:jump.x+jump.width/2,y:jump.y+jump.height/2};
-   try{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger]});await waitForMotion('first movement',p=>Math.hypot(__universe.getState().position.x-p.x,__universe.getState().position.z-p.z)>.03,beforeMotion.position);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,camera]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[finger,{...camera,x:camera.x+32}]});await waitForMotion('camera yaw',yaw=>Math.abs(__universe.getCamera().yaw-yaw)>.01,beforeMotion.yaw);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,{...camera,x:camera.x+32},jumpFinger]});await waitForMotion('Jump while moving',()=>__universe.getState().position.y>0&&__universe.getMotion().speed>0);}finally{await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();}
-   await waitForMotion('grounded after Jump',()=>__universe.getMotion().grounded);await page.locator('#dock-more').click();const reset=page.locator('#shell-more').getByRole('button',{name:'Reset camera',exact:true});await reset.scrollIntoViewIfNeeded();await reset.click();await waitForMotion('camera reset',()=>Math.abs(__universe.getCamera().yaw-Math.PI/4)<.001);assert.equal(await page.locator('#shell-more').isVisible(),false);
- });
+   try{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger]});await waitForMotion(page,'first movement',p=>Math.hypot(__universe.getState().position.x-p.x,__universe.getState().position.z-p.z)>.03,beforeMotion.position);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,camera]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[finger,{...camera,x:camera.x+32}]});await waitForMotion(page,'camera yaw',yaw=>Math.abs(__universe.getCamera().yaw-yaw)>.01,beforeMotion.yaw);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,{...camera,x:camera.x+32},jumpFinger]});await waitForMotion(page,'Jump while moving',()=>__universe.getState().position.y>0&&__universe.getMotion().speed>0);}finally{try{await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}finally{await cdp.detach();}}
+   await waitForMotion(page,'grounded after Jump',()=>__universe.getMotion().grounded);await page.locator('#dock-more').click();const reset=page.locator('#shell-more').getByRole('button',{name:'Reset camera',exact:true});await reset.scrollIntoViewIfNeeded();await reset.click();await waitForMotion(page,'camera reset',()=>Math.abs(__universe.getCamera().yaw-Math.PI/4)<.001);assert.equal(await page.locator('#shell-more').isVisible(),false);
+ }));
 }
 
 try{
@@ -102,12 +122,14 @@ try{
 
   if(await page.locator('#app').getAttribute('data-movement-side')==='left')await page.locator('#movement-side-toggle').click();
  }
+ assert.equal(await page.evaluate(()=>captureAttempts),0);
+ // The completed layout must not keep another WebGL renderer alive.
+ await context.close();layoutContextOpen=false;
  // Test interaction only after every first-use layout has been recorded, so
  // dismissing the invitation never weakens the enlarged first-arrival cases.
  if(!process.env.ENLARGED_LAYOUT_ONLY)for(const[width,height]of[[320,568],[667,375]])for(const mode of ['normal','computed2x']){
-  await page.setViewportSize({width,height});await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>window.__universe?.getState().ready);await page.evaluate(()=>document.fonts.ready);await resizeText(mode);
   for(const side of ['right','left'])await checkNativeMotion(width,height,mode,side);
  }
- assert.equal(await page.evaluate(()=>captureAttempts),0);assert.deepEqual(errors,[]);
+ assert.deepEqual(errors,[]);
 } catch(error){checks.push({name:'test flow',status:'failed',error:error.stack});process.exitCode=1;console.error(error);await page.screenshot({path:output+'/failure.png'}).catch(()=>{});}
-finally{await writeFile(output+'/results.json',JSON.stringify({checks,errors,bundle,scope:'Actual app, ephemeral local authority, seeded synthetic data, Chromium touch and computed-font stress. No account creation, hosted writes, physical capture or physical-device certification.'},null,2));await context.close();await browser.close();await app.close();if(temporary)await rm(temporary,{recursive:true,force:true});}
+finally{await writeFile(output+'/results.json',JSON.stringify({checks,errors,bundle,scope:'Actual app, ephemeral local authority, seeded synthetic data, Chromium touch and computed-font stress. No account creation, hosted writes, physical capture or physical-device certification.'},null,2));if(layoutContextOpen)await context.close();await browser.close();await app.close();if(temporary)await rm(temporary,{recursive:true,force:true});}
