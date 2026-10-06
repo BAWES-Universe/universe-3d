@@ -59,6 +59,9 @@ async function resetMotionFixture(){
  const fixture=await page.evaluate(()=>{const s=__universe.getState();return{position:s.position,spawn:s.scene.spawn,motion:__universe.getMotion()};});
  assert(Math.hypot(fixture.position.x-fixture.spawn.x,fixture.position.z-fixture.spawn.z)<.01,'Every native gesture starts at the clear seeded arrival');
  assert(fixture.motion.grounded&&fixture.motion.speed===0,'Every native gesture starts at rest');
+ // Admission and Places closure can finish before the next render restores
+ // movement controls. Wait for their actual visibility before reading the UI.
+ await Promise.all(['#joystick','#jump-button'].map(selector=>page.locator(selector).waitFor({state:'visible'})));
 }
 async function waitForMotion(step,predicate,arg){
  try{await page.waitForFunction(predicate,arg);}
@@ -77,6 +80,7 @@ async function checkNativeMotion(width,height,mode,side){
    const later=page.getByRole('button',{name:'Not now',exact:true});if(await later.isVisible()){await later.scrollIntoViewIfNeeded();await later.click();}
    const dismiss=page.locator('.area-banner-dismiss');if(await dismiss.isVisible()){await dismiss.scrollIntoViewIfNeeded();await dismiss.click();}
    const stick=await page.locator('#joystick').boundingBox(),jump=await page.locator('#jump-button').boundingBox();
+   assert(stick&&jump,'Movement and Jump must have visible native touch bounds');
    const world=await page.evaluate(()=>{for(let y=innerHeight*.45;y<innerHeight-100;y+=12)for(let x=40;x<innerWidth-90;x+=12)if(document.elementFromPoint(x,y)?.id==='game'&&document.elementFromPoint(x+32,y)?.id==='game')return{x,y};return null;});assert(world,'A real unobscured canvas patch is available');
    const beforeMotion=await page.evaluate(()=>({position:__universe.getState().position,yaw:__universe.getCamera().yaw}));const cdp=await context.newCDPSession(page),finger={id:1,x:stick.x+stick.width/2+24,y:stick.y+stick.height/2},camera={id:2,...world},jumpFinger={id:3,x:jump.x+jump.width/2,y:jump.y+jump.height/2};
    try{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger]});await waitForMotion('first movement',p=>Math.hypot(__universe.getState().position.x-p.x,__universe.getState().position.z-p.z)>.03,beforeMotion.position);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,camera]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[finger,{...camera,x:camera.x+32}]});await waitForMotion('camera yaw',yaw=>Math.abs(__universe.getCamera().yaw-yaw)>.01,beforeMotion.yaw);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[finger,{...camera,x:camera.x+32},jumpFinger]});await waitForMotion('Jump while moving',()=>__universe.getState().position.y>0&&__universe.getMotion().speed>0);}finally{await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await cdp.detach();}
