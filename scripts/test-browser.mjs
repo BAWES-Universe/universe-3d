@@ -2,7 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
- livefeedback:['world-input-multipointer.browser.mjs','live-media-layout.browser.mjs','live-layout.full.mjs','quests-guidance.full.mjs','live-feedback-motion.full.mjs','wall-building.full.mjs'],
+ livefeedback:['world-input-multipointer.browser.mjs','live-media-layout.browser.mjs','live-layout.full.mjs','quests-guidance.full.mjs','quest-area-layout.full.mjs','resident-map-tray.full.mjs','enlarged-control-text.full.mjs','live-feedback-motion.full.mjs','wall-building.full.mjs'],
  friendjourney:['complete-friend-journey.full.mjs'],
  placescreation:['places-creation-focus.browser.mjs','places-foreground.full.mjs','places-creation.full.mjs'],
  compactconversations:['compact-conversations-sheet.browser.mjs','compact-conversations-layout.full.mjs','compact-conversations.full.mjs'],

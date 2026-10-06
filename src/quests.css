@@ -422,3 +422,90 @@
     min-width: 48px;
   }
 }
+
+/* Area information and quest guidance share a scrollable lane on compact
+   screens. Neither card can paint over the other or the movement controls. */
+.quest-context { display: contents; }
+.quest-area-toggle[hidden] { display: none !important; }
+@media (max-width: 700px), (max-height: 540px), (pointer: coarse) {
+  .quest-root .quest-context {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    bottom: var(--quest-context-bottom, 96px);
+    width: min(330px, calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    max-height: var(--quest-context-height, 44dvh);
+    overflow: auto;
+    overscroll-behavior: contain;
+    pointer-events: auto;
+  }
+  #app[data-movement-side=left] .quest-context {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right, 0px));
+  }
+  #app .quest-context > :is(.quest-invitation,.quest-tracker,.quest-payoff) {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    max-height: none;
+    flex: 0 1 auto;
+    overflow: auto;
+    box-sizing: border-box;
+  }
+  #app .quest-context > :is(.quest-invitation,.quest-tracker) {
+    min-height: min(128px, var(--quest-context-height, 44dvh));
+    pointer-events: auto;
+    overscroll-behavior: contain;
+  }
+  #app .quest-context #area-banner#area-banner {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    max-height: var(--quest-context-height, 44dvh);
+    min-height: 0;
+    flex: 0 1 auto;
+    padding: 8px 48px 8px 8px;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  #app .quest-context[data-has-quest=true] #area-banner#area-banner {
+    flex: 0 0 auto;
+    max-height: max(64px, calc(var(--quest-context-height, 44dvh) * .45));
+    display: block;
+  }
+  #app .quest-context #area-banner[data-quest-collapsed=true] > :not(.quest-area-toggle):not(.area-banner-dismiss) {
+    display: none !important;
+  }
+  .quest-area-toggle {
+    border: 0;
+    border-radius: 10px;
+    padding: 4px;
+    background: transparent;
+    color: inherit;
+    text-align: start;
+    overflow-wrap: anywhere;
+    width: 100%;
+  }
+  #app .quest-context #area-banner .area-banner-dismiss { font-size: 24px; }
+}
+
+@media (max-width: 700px), (max-height: 540px), (pointer: coarse) {
+  #app:has(.quest-context[data-has-quest=true]:not([hidden])) #toast {
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    bottom: var(--quest-receipt-bottom, 76px);
+    transform: none;
+    width: min(330px, calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    box-sizing: border-box;
+  }
+  #app[data-movement-side=left]:has(.quest-context[data-has-quest=true]:not([hidden])) #toast {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right, 0px));
+  }
+}

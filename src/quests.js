@@ -13,9 +13,47 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
   root.classList.add('quest-root');
   const invitation=element('aside','quest-invitation'),tracker=element('aside','quest-tracker'),payoff=element('div','quest-payoff'),buildHint=element('p','quest-build-hint');
   const shade=element('div','quest-shade'),sheet=element('section','quest-sheet');
+  // Compact screens share one bounded lane. Keep the live area node (and its
+  // dismissal state) rather than duplicating information owned by the shell.
+  const messageRegion=element('div','quest-context'),areaBanner=document.getElementById('area-banner');
+  const areaHome=areaBanner?.parentNode,areaNext=areaBanner?.nextSibling;
+  const areaToggle=element('button','quest-area-toggle');areaToggle.type='button';areaToggle.hidden=true;areaToggle.setAttribute('aria-controls','area-message');areaBanner?.prepend(areaToggle);
+  const compact=matchMedia('(max-width: 700px), (max-height: 540px), (pointer: coarse)');
+  let areaExpanded=false,areaKey='';
+  function syncMessageRegion(quiet=false){
+    const small=compact.matches,hasQuest=!invitation.hidden||!tracker.hidden;
+    messageRegion.hidden=small&&quiet;
+    if(areaBanner){
+      if(small&&areaBanner.parentNode!==messageRegion)messageRegion.append(areaBanner);
+      else if(!small&&areaBanner.parentNode===messageRegion)areaHome?.insertBefore(areaBanner,areaNext?.parentNode===areaHome?areaNext:null);
+      const name=document.getElementById('area-name')?.textContent||'Area',key=(context().room?.id||'')+':'+name+':'+document.getElementById('area-message')?.textContent;
+      if(key!==areaKey){areaKey=key;areaExpanded=false;}
+      areaToggle.hidden=!small||!hasQuest;
+      const toggleCopy=areaExpanded?'Hide info':'Area info';
+      if(areaToggle.textContent!==toggleCopy)areaToggle.textContent=toggleCopy;
+      areaToggle.setAttribute('aria-label',(areaExpanded?'Hide':'Show')+' area message: '+name);
+      areaToggle.setAttribute('aria-expanded',String(areaExpanded));
+      areaBanner.dataset.questCollapsed=String(small&&hasQuest&&!areaExpanded);
+    }
+    messageRegion.dataset.hasQuest=String(hasQuest);
+    if(!small)return;
+    const rect=id=>{const n=document.getElementById(id);return n&&n.getClientRects().length&&getComputedStyle(n).visibility!=='hidden'?n.getBoundingClientRect():null;};
+    const top=Math.max(0,...['hud','view-controls','movement-side-toggle'].map(id=>rect(id)?.bottom||0))+8;
+    const dockClearance=innerHeight-(rect('dock')?.top??innerHeight)+8;
+    const receipt=document.getElementById('toast'),receiptHeight=hasQuest&&!quiet?(rect('toast')?.height||0):0;
+    receipt?.style.setProperty('--quest-receipt-bottom',dockClearance+'px');
+    const bottom=Math.max(96,dockClearance+(receiptHeight?receiptHeight+8:0));
+    messageRegion.style.setProperty('--quest-context-bottom',bottom+'px');
+    messageRegion.style.setProperty('--quest-context-height',Math.max(0,innerHeight-bottom-top)+'px');
+  }
+  areaToggle.onclick=()=>{areaExpanded=!areaExpanded;syncMessageRegion(isQuiet()||opened);};
+  const onLayout=()=>syncMessageRegion(isQuiet()||opened);
+  const layoutObserver=new ResizeObserver(onLayout);
+  for(const id of ['hud','view-controls','movement-side-toggle','dock','toast']){const node=document.getElementById(id);if(node)layoutObserver.observe(node);}
+  compact.addEventListener('change',onLayout);window.addEventListener('resize',onLayout);
   invitation.setAttribute('aria-label','Optional welcome');payoff.setAttribute('role','status');payoff.setAttribute('aria-live','polite');
   tracker.setAttribute('aria-label','Current quest');buildHint.setAttribute('role','status');buildHint.hidden=true;
-  sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');sheet.setAttribute('aria-label','Quests');shade.append(sheet);root.append(invitation,tracker,payoff,shade);
+  sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');sheet.setAttribute('aria-label','Quests');shade.append(sheet);messageRegion.append(invitation,tracker,payoff);root.append(messageRegion,shade);
   let data=null,opened=false,destroyed=false,suppressed=false,previousFocus=null,error='',busy=false,walkTarget=null,walkingAttemptId=null,walkingPhase=null,guideAttemptId=null,guideSignature='',payoffTimer=null,payoffQueue=[],claiming=false,invitationKey='',trackerKey='',refreshTimer=null,requestEpoch=0,identity='',lastRefresh=0;
   const initialParams=new URLSearchParams(location.search);
   const skipArrival=['meeting','meetingId','interview','interviewId','appointment','appointmentId'].some(key=>initialParams.has(key));
@@ -118,7 +156,7 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
       if(host&&!host.contains(buildHint)){if(activeSheet)host.prepend(buildHint);else host.append(buildHint);}
       const copy=`Quest: ${nextStep(buildQuest)} Moving an existing object does not count.`;if(buildHint.textContent!==copy)buildHint.textContent=copy;
     }
-    if(!data?.enabled||!context().user)return;
+    if(!data?.enabled||!context().user){syncMessageRegion(quiet);return;}
     if(!quiet&&!skipArrival&&!data.preferences?.declined&&!data.preferences?.invitationSeen&&data.available?.length&&!data.attempts?.length){
       invitation.hidden=false;if(invitationKey!==String(busy)){invitationKey=String(busy);invitation.replaceChildren(element('p','','Welcome. Want a quick look around?'));
       const actions=element('div','quest-invitation-actions');actions.append(button('Show me the options',()=>{setPreferences({invitationSeen:true});open();},'options',true),button('Not now',()=>{cancelWalk();setPreferences({declined:true});},'decline'));invitation.append(actions);}
@@ -146,6 +184,7 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
       }
     }
     if(!quiet&&payoffQueue.length&&!payoff.textContent){const notice=payoffQueue.shift();payoff.textContent='✓ '+notice.title+' · private stamp added';payoff.hidden=false;clearTimeout(payoffTimer);payoffTimer=setTimeout(()=>{payoff.textContent='';renderQuiet();},5500);}
+    syncMessageRegion(quiet);
     if(!quiet&&data.pendingNotices&&!claiming)claimNotices();
   }
   async function claimNotices(){
@@ -177,5 +216,5 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
   window.addEventListener('keydown',onKey,true);document.addEventListener('focusin',onFocus);document.addEventListener('focusout',onFocus);document.addEventListener('visibilitychange',onFocus);
   const timer=setInterval(()=>{if(destroyed)return;const c=context(),key=(c.user?.id||'')+':'+(c.room?.id||'');if(key!==identity||(c.ready&&Date.now()-lastRefresh>15000))refresh();else renderQuiet();},500);
   render();
-  return {refresh,open,close,handleEvent,onEvent:e=>handleEvent(e.type,e.data),setSuppressed,isOpen:()=>opened,isWalking:()=>!!walkTarget,cancelWalk,getState:()=>data,destroy(){destroyed=true;clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(payoffTimer);window.removeEventListener('keydown',onKey,true);document.removeEventListener('focusin',onFocus);document.removeEventListener('focusout',onFocus);document.removeEventListener('visibilitychange',onFocus);onGuide(null);onCancelWalk();buildHint.remove();root.replaceChildren();}};
+  return {refresh,open,close,handleEvent,onEvent:e=>handleEvent(e.type,e.data),setSuppressed,isOpen:()=>opened,isWalking:()=>!!walkTarget,cancelWalk,getState:()=>data,destroy(){destroyed=true;layoutObserver.disconnect();compact.removeEventListener('change',onLayout);window.removeEventListener('resize',onLayout);areaToggle.remove();document.getElementById('toast')?.style.removeProperty('--quest-receipt-bottom');if(areaBanner){delete areaBanner.dataset.questCollapsed;if(areaBanner.parentNode===messageRegion)areaHome?.insertBefore(areaBanner,areaNext?.parentNode===areaHome?areaNext:null);}clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(payoffTimer);window.removeEventListener('keydown',onKey,true);document.removeEventListener('focusin',onFocus);document.removeEventListener('focusout',onFocus);document.removeEventListener('visibilitychange',onFocus);onGuide(null);onCancelWalk();buildHint.remove();root.replaceChildren();}};
 }
