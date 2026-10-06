@@ -15,6 +15,15 @@ const snapshot=()=>page.evaluate(async()=>{const response=await fetch('/api/ques
 const until=async(check,label)=>{const end=Date.now()+25000;while(Date.now()<end){if(await check())return;await page.waitForTimeout(150);}assert.fail('Timed out: '+label);};
 const overlaps=(a,b)=>a&&b&&a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
 async function checkControls(){
+ // Font/viewport changes are observed after layout. Wait for the measured lane
+ // to clear the newly-sized chrome before sampling rectangles from that state.
+ await page.waitForFunction(()=>{
+  const region=document.querySelector('.quest-context');if(!region||getComputedStyle(region).display==='contents')return true;
+  const box=region.getBoundingClientRect(),dock=document.querySelector('#dock').getBoundingClientRect();
+  const chrome=['hud','view-controls','movement-side-toggle'].map(id=>document.getElementById(id)).filter(n=>n?.getClientRects().length&&getComputedStyle(n).visibility!=='hidden');
+  const top=Math.max(0,...chrome.map(n=>n.getBoundingClientRect().bottom))+8;
+  return box.height>0&&box.top>=top-1&&box.bottom<=dock.top-7;
+ });
  // The shared context lane clips a naturally-sized tracker. Compare its painted
  // region, not offscreen scroll content, and independently hit-test the controls.
  const tracker=await page.locator('.quest-tracker').evaluate(node=>{
