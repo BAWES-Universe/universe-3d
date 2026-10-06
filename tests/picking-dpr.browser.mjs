@@ -8,7 +8,9 @@ import {seedWorlds,emptyScene} from '../src/worlds.js';
 import {makePng} from '../fixtures/png-fixtures.mjs';
 const out=process.env.DPR_EVIDENCE||new URL('../evidence/dpr-picking',import.meta.url).pathname;await mkdir(out,{recursive:true});
 const dist=process.env.DPR_DIST||new URL('../dist',import.meta.url).pathname;
-const seeds=structuredClone(seedWorlds);seeds[0].rooms[0].scene={...emptyScene(),bounds:{width:16,depth:16},spawn:{x:0,z:5},objects:[{id:'dpr-chair',name:'DPR chair',type:'chair',x:0,z:-2,rotation:0}]};
+// Keep the fixture chair off compact camera controls while preserving its
+// off-center world projection and the strict native hit-test below.
+const seeds=structuredClone(seedWorlds);seeds[0].rooms[0].scene={...emptyScene(),bounds:{width:16,depth:16},spawn:{x:0,z:0},objects:[{id:'dpr-chair',name:'DPR chair',type:'chair',x:0,z:-2,rotation:0}]};
 const app=createGameServer({seeds,dist}),address=await app.listen(0),base=`http://127.0.0.1:${address.port}`,browser=await launch();
 const checks=[],errors=[],contexts=[];let page,ownerStorage;
 const results={startedAt:new Date().toISOString(),bundleSha256:createHash('sha256').update(await readFile(dist+'/main.js')).digest('hex'),checks,errors,scope:'Actual local game, native Playwright mouse and CDP touch, read-only state/projection diagnostics. Generated PNG fixture uses authenticated local API; no upload-flow claim, physical phone or external service.'};
