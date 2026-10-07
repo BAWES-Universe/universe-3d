@@ -1182,4 +1182,6 @@
   }
   .resident-map-points { display:none; }
   .resident-map-controls .resident-map-remove:disabled { display:none; }
+  .resident-map-actions { grid-template-columns:1.25fr 1fr 1fr; gap:4px; }
+  .resident-map-actions button { white-space:nowrap; }
 }
