@@ -4,9 +4,10 @@ export async function guestTouchMotion({page,context,out,label}) {
  const records=[];
  const state=()=>page.evaluate(()=>({position:__universe.getState().position,camera:__universe.getCamera(),motion:__universe.getMotion()}));
  const pose=async seat=>{
-  await page.waitForFunction(seat=>{const s=__universe.getState(),m=__universe.getMotion();return (seat?!!m.seatId:m.seatId===null)&&s.people.some(p=>p.id===s.user.id&&(p.seatId??null)===m.seatId);},seat);
+  await page.waitForFunction(seat=>{const s=__universe.getState(),m=__universe.getMotion(),b=document.querySelector('#interact');return (seat?!!m.seatId:m.seatId===null)&&s.people.some(p=>p.id===s.user.id&&(p.seatId??null)===m.seatId)&&b?.getClientRects().length&&getComputedStyle(b).visibility==='visible'&&(seat?/Stand up/.test(b.textContent):/\bSit\b/.test(b.textContent));},seat);
  };
  for(const side of ['right','left']) {
+  await pose(false);
   await page.waitForFunction(()=>{const b=document.querySelector('#interact'),r=b.getBoundingClientRect();return !b.hidden&&r.width>=48&&r.height>=48&&b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});
   await page.locator('#interact').tap();await pose(true);
   assert.match(await page.locator('#interact').innerText(),/Stand up/);

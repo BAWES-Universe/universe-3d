@@ -32,10 +32,12 @@ export function createImageObjectView({resolved, instance, context, port, loadTe
     if (!ctx.canRead || ctx.roomId !== asset.definition.roomId) { ready = Promise.resolve(emit('revoked')); return ready; }
     const epoch = generation, controller = new AbortController(), startedAsset = asset, startedContext = ctx;
     request = controller; emit('loading');
-    ready = Promise.resolve().then(() => {
+    // Acquire shared ownership before a replaced preview can release its lease.
+    // The pool still defers network/decode work; ready/error delivery stays async.
+    ready = (async () => {
       if (controller.signal.aborted) throw abortError();
       return loadTexture({resolved: startedAsset, placement, context: startedContext, signal: controller.signal});
-    }).then(loaded => {
+    })().then(loaded => {
       if (disposed || epoch !== generation || controller.signal.aborted) { loaded?.dispose?.(); return state; }
       if (!loaded || typeof loaded.dispose !== 'function' || !loaded.texture || typeof loaded.isReady !== 'function' || !loaded.isReady() || (typeof loaded.hitTest !== 'function' && !loaded.alphaMask)) {
         loaded?.dispose?.(); throw Object.assign(new Error('Texture loader did not return a ready image with alpha picking'), {code: 'INVALID_IMAGE_RESOURCE'});
