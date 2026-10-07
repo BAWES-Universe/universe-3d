@@ -103,7 +103,8 @@ test('Ordinary isolation: no implicit ownership or membership, separate private 
   assert.equal((await post(b, `/api/invitations/${invitation.data.invitation.id}/accept`, {})).status, 200);
   assert.equal((await f.call(`/api/rooms/${room.id}`, { cookie: b.cookie })).data.room.role, 'editor');
   assert.equal((await post(b, '/api/account', { username: 'no_upgrade', password: 'synthetic password only' })).data.code, 'REGISTRATION_DISABLED');
-  assert.equal((await f.call('/api/session', { method: 'POST', body: { name: 'No guest' } })).data.code, 'GUEST_CREATION_DISABLED');
+  const guest = await f.call('/api/session', { method: 'POST', body: {} }); assert.equal(guest.status, 201); assert.equal(guest.data.user.ephemeralGuest, true);
+  assert.equal((await f.call(`/api/rooms/${room.id}`, { cookie: guest.headers['set-cookie'][0].split(';')[0] })).status, 404);
   assert.equal((await post(a, '/api/site-invites', {})).data.code, 'SITE_ADMISSION_DISABLED');
   await f.restart(); assert.equal((await f.call(`/api/rooms/${room.id}`, { cookie: b.cookie })).data.room.role, 'editor');
 });

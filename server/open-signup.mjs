@@ -37,7 +37,7 @@ export function createOpenSignup({ store, config, setup, session, send, limitSig
     setup.assertPending();
     limitSignup(req);
     const previous = session(req, false);
-    if (previous) v.fail(409, 'SIGNUP_SIGN_OUT_REQUIRED', 'Sign out before creating an account');
+    if (previous&&!store.isPublicGuest(previous.user_id)) v.fail(409, 'SIGNUP_SIGN_OUT_REQUIRED', 'Sign out before creating an account');
     const input = await readSiteAdmissionBody(req);
     if (Object.keys(input).some(key => !['email', 'password', 'name', 'appearance', 'woka'].includes(key))) v.fail(400, 'INVALID_INPUT', 'Unexpected request fields');
     const email = normalizeEmail(input.email), password = validateAccountPassword(input.password);
@@ -48,7 +48,9 @@ export function createOpenSignup({ store, config, setup, session, send, limitSig
     const hash = await derivePassword(password, salt, 64);
     store.transaction(() => {
       setup.assertPending();
-      if (session(req, false)) v.fail(409, 'SIGNUP_SESSION_CHANGED', 'Your session changed. Open signup again.');
+      const live=session(req,false);
+      if ((live?.token_hash??null)!==(previous?.token_hash??null)||(live?.user_id??null)!==(previous?.user_id??null)) v.fail(409, 'SIGNUP_SESSION_CHANGED', 'Your session changed. Open signup again.');
+      if(live&&!store.isPublicGuest(live.user_id))v.fail(409,'SIGNUP_SIGN_OUT_REQUIRED','Sign out before creating an account');
       assertCapacity();
       if (store.get('SELECT 1 FROM accounts WHERE email=?', email)) v.fail(409, 'EMAIL_TAKEN', 'That email already has an account. Sign in instead.');
       const id = randomUUID(), username = `u_${randomBytes(12).toString('hex')}`;

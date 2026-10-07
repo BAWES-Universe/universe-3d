@@ -1,3 +1,4 @@
+import {publicGuestsEnabled} from './public-guests.mjs';
 export const BOOTSTRAP_KEY = 'operator-bootstrap-v1';
 
 function denied(code, message, status = 403) {
@@ -7,6 +8,7 @@ function denied(code, message, status = 403) {
 /** Offline owner bootstrap remains mandatory; link admission is a separate capability. */
 export function createAccessGate({ store, config }) {
   const disabled = config.registrationMode !== 'local-open' || config.mode === 'public';
+  const publicGuests=publicGuestsEnabled(config);
   return Object.freeze({
     assertReady() {
       if (config.mode !== 'public') return;
@@ -21,13 +23,13 @@ export function createAccessGate({ store, config }) {
       if (store.get('SELECT 1 FROM users u LEFT JOIN accounts a ON a.user_id=u.id WHERE a.user_id IS NULL')) denied('UNPROVISIONED_PROFILES', 'Public mode refuses databases containing unprovisioned guest profiles', 503);
     },
     assertGuestCreationAllowed() {
-      if (disabled) denied('GUEST_CREATION_DISABLED', 'This private preview requires an operator-provisioned account');
+      if (disabled&&!publicGuests) denied('GUEST_CREATION_DISABLED', 'This private preview requires an operator-provisioned account');
     },
     assertRegistrationAllowed() {
       if (disabled) denied('REGISTRATION_DISABLED', 'Web registration is disabled for this private preview');
     },
     publicPolicy() {
-      return { mode: config.mode, guestCreation: !disabled, registration: !disabled, login: true, provisioning: disabled ? 'operator' : 'local' };
+      return { mode: config.mode, guestCreation: !disabled||publicGuests, ...(publicGuests?{publicGuests:true}:{}), registration: !disabled, login: true, provisioning: disabled ? 'operator' : 'local' };
     },
   });
 }

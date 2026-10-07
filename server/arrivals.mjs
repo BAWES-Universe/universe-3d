@@ -1,3 +1,4 @@
+import {sessionPrincipal,hasRoomSession} from './public-guests.mjs';
 import {randomUUID} from 'node:crypto';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
 import {entryCatalog,resolveArrival,validateEntryKey,validateArrivalGeometry} from '../src/arrivals.js';
@@ -32,8 +33,8 @@ export function createArrivalService({store,presence,now,residents=()=>[]}){
  const epoch=randomUUID(),epochs=new Map(),records=new Map();let sequence=0;
  function captureFence(s){const person=presence.get(`${s.current_room_id}:${s.user_id}`);return{roomId:s.current_room_id,epoch:epochs.get(s.token_hash)??0,admissionId:person?.admissionId??null,admissionEpoch:person?.admissionEpoch??null,admissionRevision:person?.admissionRevision??null};}
  function checkFence(s,fence){
-  const live=store.get('SELECT * FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?',s.token_hash,s.user_id,now());
-  if(!live)v.fail(401,'AUTH_REQUIRED');
+  const live=sessionPrincipal(store,s.token_hash,now());
+  if(!live||live.user_id!==s.user_id)v.fail(401,'AUTH_REQUIRED');
   const current=captureFence(live);
   if(current.roomId!==fence.roomId||current.epoch!==fence.epoch||current.admissionId!==fence.admissionId||current.admissionEpoch!==fence.admissionEpoch||current.admissionRevision!==fence.admissionRevision)v.fail(409,'STALE_ARRIVAL','Your arrival changed while this request was in progress');
   return live;
@@ -48,20 +49,20 @@ export function createArrivalService({store,presence,now,residents=()=>[]}){
  function catalog(roomId,userId){const {row}=store.authorize(roomId,userId);return{roomId,revision:row.revision,entries:entryCatalog(JSON.parse(row.scene))};}
  function prepare(roomId,userId,{entry,resume=false,strict=false,sessionToken=null,retiringAccountId=null}={}){
   const {row}=store.authorize(roomId,userId),key=`${roomId}:${userId}`,old=presence.get(key),prior=records.get(key);
-  strict ||= !!prior?.strict||!!store.get('SELECT 1 FROM arrival_session_guards g JOIN sessions s ON s.token_hash=g.token_hash WHERE s.user_id=? AND s.expires_at>? AND (s.current_room_id=? OR s.token_hash=?)',userId,now(),roomId,sessionToken??'');
+  strict ||= store.isPublicGuest(userId)||!!prior?.strict||!!store.get('SELECT 1 FROM arrival_session_guards g JOIN sessions s ON s.token_hash=g.token_hash WHERE s.user_id=? AND s.expires_at>? AND (s.current_room_id=? OR s.token_hash=?)',userId,now(),roomId,sessionToken??'');
   if(resume&&old&&now()-old.lastSeen<60000&&Number.isFinite(old.x)&&Number.isFinite(old.z)){
    const admissionId=old.admissionId??randomUUID(),admissionRevision=old.admissionEpoch===epoch&&Number.isSafeInteger(old.admissionRevision)?old.admissionRevision:++sequence;
    return{...prior?.arrival,x:old.x,z:old.z,requestedEntry:null,entry:prior?.arrival.entry??null,areaId:prior?.arrival.areaId??null,source:'resume',fallback:null,resumed:true,admissionId,admissionEpoch:epoch,admissionRevision,strict:strict||!!prior?.strict};
   }
   const scene=JSON.parse(row.scene);bindImageDefinitions(scene,store.imageDefinitions?.(roomId,scene)??{},roomId);
   const occupants=[...presence.values()].filter(p=>p.roomId===roomId&&p.userId!==userId&&now()-p.lastSeen<60000
-    &&store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND expires_at>?',p.userId,roomId,now())&&store.canSeeRoom(row,p.userId));
+    &&hasRoomSession(store,p.userId,roomId,now())&&store.canSeeRoom(row,p.userId));
   occupants.push(...residents(roomId,{retiringAccountId}).filter(p=>p.kind==='bot'&&Number.isFinite(p.x)&&Number.isFinite(p.z)));
   try{return{...resolveArrival(scene,{entry,occupants,seed:randomUUID()}),admissionId:randomUUID(),admissionEpoch:epoch,admissionRevision:++sequence,strict:strict||!!prior?.strict};}catch(error){translate(error);}
  }
  function commit(roomId,userId,prepared,sessionToken=null){
   const {strict,...arrival}=prepared;
-  if(strict)store.run('INSERT OR IGNORE INTO arrival_session_guards(token_hash) SELECT token_hash FROM sessions WHERE user_id=? AND expires_at>? AND (current_room_id=? OR token_hash=?)',userId,now(),roomId,sessionToken??'');
+  if(strict&&!store.isPublicGuest(userId))store.run('INSERT OR IGNORE INTO arrival_session_guards(token_hash) SELECT token_hash FROM sessions WHERE user_id=? AND expires_at>? AND (current_room_id=? OR token_hash=?)',userId,now(),roomId,sessionToken??'');
   records.set(`${roomId}:${userId}`,{arrival,strict});return arrival;
  }
  function authorizeMovement(s,input){
@@ -71,6 +72,6 @@ export function createArrivalService({store,presence,now,residents=()=>[]}){
   if((record?.strict||input.admissionId!==undefined)&&input.admissionId!==person?.admissionId)v.fail(409,'STALE_ARRIVAL','Use the current arrival before sending movement');
  }
  function validateScene(scene,definitions,roomId){bindImageDefinitions(scene,definitions,roomId);try{validateArrivalGeometry(scene);}catch(error){translate(error,400);}}
- function sweep(){for(const token of epochs.keys())if(!store.get('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?',token,now()))epochs.delete(token);for(const key of records.keys())if(!presence.has(key))records.delete(key);}
+ function sweep(){for(const token of epochs.keys())if(!sessionPrincipal(store,token,now()))epochs.delete(token);for(const key of records.keys())if(!presence.has(key))records.delete(key);}
  return{epoch,captureFence,checkFence,matchesPlacement,retire,catalog,prepare,commit,authorizeMovement,validateScene,sweep};
 }

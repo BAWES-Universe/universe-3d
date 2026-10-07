@@ -16,6 +16,8 @@ Open http://127.0.0.1:4190. No legacy sprite files are needed. If you received a
 
 In local development mode, the first guest on a fresh database owns the seeded places. Later public visitors remain transient guests; visiting does not silently create durable membership. Use separate browser profiles to test different people. The owner can administer real Universe → World → Room membership and access in Manage.
 
+Public/open sites with completed owner setup also offer bounded account-free exploration of public rooms. These visitors receive no ownership, editing, upload or saved-data rights. See [public guest lifetime and release contract](docs/PUBLIC-GUESTS.md).
+
 Data lives in `data/universe.sqlite`. Keep it across restarts. Create a local account in You to recover your character and identity after clearing cookies. There is no email/password recovery or SSO. Local development defaults to loopback and exact loopback Host checks. For the separate private dev preview, explicit public-mode Host/Origin/TLS settings, offline owner/reviewer provisioning and a dedicated persistent volume are supplied. Read `DEV-PREVIEW-OPERATOR.md` before exposing the app; changing only the listen address is unsafe.
 
 Optional all-member proximity and Nearby text are off by default. An operator can activate them through the strictly validated `UNIVERSE_PROXIMITY_CONFIG`, without editing the application factory. Every membership policy value must be explicit; no deployed cap, threshold or coordinate scale is inferred. See [the configuration contract](PROXIMITY-RUNTIME-CONFIG.md). This does not configure a relay or SFU.

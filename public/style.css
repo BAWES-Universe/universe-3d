@@ -2047,3 +2047,35 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
  #app #hud#hud { grid-template-columns:124px minmax(0,1fr) auto; }
  #app #hud#hud > .room-heading { grid-column:2; grid-row:1; align-self:center; }
 }
+
+/* Keep the nearby action in the free hand's lane, never under the movement pad.
+   The grid row anchors it above the dock in either compact orientation. */
+@media(max-width:700px),(max-height:540px) {
+ #app #interaction#interaction {
+  grid-row:3 / 4;
+  grid-column:1 / -1;
+  left:0;
+  right:auto;
+  bottom:18px;
+  transform:none;
+  margin:0;
+  width:max-content;
+  max-width:calc(100% - 116px);
+  gap:8px;
+  padding:8px;
+  border-radius:18px;
+  z-index:12;
+ }
+ #app[data-movement-side=left] #interaction#interaction { left:auto; right:0; }
+ #app #interaction-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.714286rem; }
+ #app #interact { flex:0 0 auto; min-width:48px; max-width:100%; min-height:48px; font-size:.857143rem; line-height:1.25; }
+}
+
+/* Short, wide screens have a separate horizontal action slot. Reserving the
+   full action height above this slot would collapse enlarged contextual text. */
+@media(max-height:540px) and (min-width:550px) {
+ #app #interaction#interaction { left:auto; right:116px; bottom:0; width:180px; max-width:180px; padding:4px; gap:4px; }
+ #app[data-movement-side=left] #interaction#interaction { left:116px; right:auto; }
+ #app #interaction #interact { padding:4px 8px; line-height:1.2; }
+ #app:has(#interaction:not([hidden])) .quest-context { width:min(330px,calc(100vw - 340px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px))); }
+}

@@ -1,3 +1,4 @@
+import {hasRoomSession} from './public-guests.mjs';
 import {imageCollisionCells} from '../src/image-asset-geometry.js';
 import {validateImageInstance} from '../src/image-asset-schema.js';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
@@ -18,7 +19,7 @@ export function validateImageSceneDelta({store,presence,now,room,before,next,bef
   if(!changed.length)return;
   const people=[...presence.values()].filter(person=>person.roomId===room.id&&now()-person.lastSeen<60000
     &&Number.isFinite(person.x)&&Number.isFinite(person.z)
-    &&store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND expires_at>?',person.userId,room.id,now())
+    &&hasRoomSession(store,person.userId,room.id,now())
     &&store.canSeeRoom(room,person.userId));
   let changedColliders=false;
   for(const object of changed){

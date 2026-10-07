@@ -1,3 +1,4 @@
+import {signupLink,signupViewLink} from './signup-navigation.js';
 import {PASSWORD_MIN_LENGTH,PASSWORD_MAX_LENGTH,PASSWORD_HELP,validAccountPassword} from './password-policy.js';
 import {mountSocialSheet} from './social-sheet-layout.js';
 import {icon} from './universe-icons.js';
@@ -834,7 +835,13 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     return updated;
   }
   function buildSettings() {
-    const self = user(); profileSelection = Math.max(0, Math.min(5, Number(self.woka) || 0));
+    const self = user();
+    if(self.ephemeralGuest){
+      const signup=signupLink(location.href),signin=signupViewLink(new URL(signup,location.origin).href,true);
+      panel.append(el('section',{class:'social-scroll social-stack'},el('h3',{class:'social-section-title',text:'Exploring as '+self.name}),notice('You can look around, walk, jump and sit in public rooms. This temporary visit lasts up to 24 hours.'),el('p',{class:'social-muted',text:'Create an account to save your identity and character, create places or connect. Room owners still control building and private access.'}),el('a',{class:'button social-btn social-btn-primary',href:signup,text:'Create account'}),el('a',{class:'button social-btn',href:signin,text:'Sign in'}),button('End guest visit',async()=>{await api('/api/logout',{method:'POST',body:{}});window.dispatchEvent(new CustomEvent('session-ended'));},{class:'button social-btn social-btn-quiet'})));
+      return;
+    }
+    profileSelection = Math.max(0, Math.min(5, Number(self.woka) || 0));
     const name = input({ required: 'required', maxlength: '32', 'aria-label': 'Display name' }); name.value = self.name || '';
     const availability = el('select', { class: 'input social-input', 'aria-label': 'Availability' });
     for (const value of ['online', 'away', 'busy']) availability.append(el('option', { value, text: STATUS_LABELS[value] }));

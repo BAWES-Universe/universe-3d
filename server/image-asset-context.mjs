@@ -1,3 +1,4 @@
+import {sessionPrincipal} from './public-guests.mjs';
 import {initializeImageAssetSchema,createImageAssetRepository} from './image-asset-store.mjs';
 import {createImageAssetService,createImageAssetHttpHandler,imageReferenceKey} from './image-assets.mjs';
 import {validatePng} from './png-validation.mjs';
@@ -19,7 +20,7 @@ export function createRoomImageAssets({store,session,now,emitRoom,isPhysicalSize
   const repo=createImageAssetRepository(store.db),epochs=new Map();
   const service=createImageAssetService({repo,now,validateImage:validatePng,isPhysicalSizeEnabled,
     resolveSession(token){
-      const row=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
+      const row=sessionPrincipal(store,token,now());
       return row?{userId:row.user_id,currentRoomId:row.current_room_id,expiresAt:row.expires_at,sessionEpoch:epochs.get(token)??0}:null;
     },
     authorizeRead({roomId,userId}){store.authorize(roomId,userId);return true;},

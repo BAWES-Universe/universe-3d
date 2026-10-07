@@ -50,7 +50,9 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
     const dockClearance=innerHeight-(rect('dock')?.top??innerHeight)+8;
     const receipt=document.getElementById('toast'),receiptHeight=hasQuest&&!quiet?(rect('toast')?.height||0):0;
     receipt?.style.setProperty('--quest-receipt-bottom',dockClearance+'px');
-    const bottom=dockClearance+(receiptHeight?receiptHeight+8:0),height=Math.max(0,innerHeight-bottom-top);
+    const interaction=rect('interaction'),lane=messageRegion.getBoundingClientRect();
+    const interactionClearance=interaction&&interaction.right>lane.left&&interaction.left<lane.right?innerHeight-interaction.top+8:0;
+    const bottom=Math.max(dockClearance+(receiptHeight?receiptHeight+8:0),interactionClearance),height=Math.max(0,innerHeight-bottom-top);
     messageRegion.dataset.tight=String(height<96);
     messageRegion.style.setProperty('--quest-context-bottom',bottom+'px');
     messageRegion.style.setProperty('--quest-context-height',height+'px');
@@ -62,7 +64,7 @@ export function mountQuests({root,api,getContext,onGuide=()=>{},onWalk=()=>{},on
   areaToggle.onclick=()=>{areaExpanded=!areaExpanded;syncMessageRegion(isQuiet()||opened);};
   const onLayout=()=>syncMessageRegion(isQuiet()||opened);
   const layoutObserver=new ResizeObserver(onLayout);
-  for(const id of ['hud','view-controls','movement-side-toggle','dock','toast']){const node=document.getElementById(id);if(node)layoutObserver.observe(node);}
+  for(const id of ['hud','view-controls','movement-side-toggle','dock','toast','interaction']){const node=document.getElementById(id);if(node)layoutObserver.observe(node);}
   compact.addEventListener('change',onLayout);window.addEventListener('resize',onLayout);
   invitation.setAttribute('aria-label','Optional welcome');payoff.setAttribute('role','status');payoff.setAttribute('aria-live','polite');
   tracker.setAttribute('aria-label','Current quest');buildHint.setAttribute('role','status');buildHint.hidden=true;

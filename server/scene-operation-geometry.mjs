@@ -1,3 +1,4 @@
+import {hasRoomSession} from './public-guests.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
 import {collisionBoxes,contains} from '../src/worlds.js';
@@ -17,7 +18,7 @@ export function sceneOperationGeometryConflicts({store,presence,residents=[],now
  const conflicts=new Map(),add=target=>conflicts.set(JSON.stringify(target),target),objectTarget=object=>({kind:'object',id:object.id}),cellTarget=box=>({kind:'terrain',x:box.x-.5,z:box.z-.5});
  const boundsChanged=!isDeepStrictEqual(before.bounds,next.bounds),spawnChanged=!isDeepStrictEqual(before.spawn,next.spawn),roomBox={x:0,z:0,width:next.bounds.width,depth:next.bounds.depth};
  const boundsTarget={kind:'scene',field:'bounds'},spawnTarget={kind:'scene',field:'spawn'};
- const timestamp=now(),people=[...presence.values()].filter(person=>person.roomId===room.id&&timestamp-person.lastSeen<60000&&Number.isFinite(person.x)&&Number.isFinite(person.z)&&store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND expires_at>?',person.userId,room.id,timestamp)&&store.canSeeRoom(room,person.userId));
+ const timestamp=now(),people=[...presence.values()].filter(person=>person.roomId===room.id&&timestamp-person.lastSeen<60000&&Number.isFinite(person.x)&&Number.isFinite(person.z)&&hasRoomSession(store,person.userId,room.id,timestamp)&&store.canSeeRoom(room,person.userId));
  const occupants=[...people,...residents.filter(person=>person.kind==='bot'&&person.roomId===room.id&&Number.isFinite(person.x)&&Number.isFinite(person.z))];
  if(boundsChanged&&occupants.some(person=>!footprintInside(roomBox,{x:person.x,z:person.z,width:.8,depth:.8})))add(boundsTarget);
  const introduced=[];

@@ -2,14 +2,15 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
- livefeedback:['world-input-multipointer.browser.mjs','live-media-layout.browser.mjs','live-layout.full.mjs','quests-guidance.full.mjs','quest-area-layout.full.mjs','resident-map-tray.full.mjs','enlarged-control-text.full.mjs','live-feedback-motion.full.mjs','wall-building.full.mjs'],
+ publicguests:['public-guests.full.mjs','public-guest-entry.full.mjs'],
+ livefeedback:['jump-input.full.mjs','native-seat-matrix.full.mjs','world-input-multipointer.browser.mjs','live-media-layout.browser.mjs','live-layout.full.mjs','quests-guidance.full.mjs','quest-area-layout.full.mjs','resident-map-tray.full.mjs','enlarged-control-text.full.mjs','live-feedback-motion.full.mjs','wall-building.full.mjs'],
  friendjourney:['complete-friend-journey.full.mjs'],
  placescreation:['places-creation-focus.browser.mjs','places-foreground.full.mjs','places-creation.full.mjs'],
  compactconversations:['compact-conversations-sheet.browser.mjs','compact-conversations-layout.full.mjs','compact-conversations.full.mjs'],
  editorpolish:['editor-polish-feedback.browser.mjs','editor-polish-experience.full.mjs'],
  worldpolish:['world-presentation-occlusion.mjs'],
  shellpolish:['external-shell-journeys.mjs','external-shell-menu-input.mjs','polish-integration-side-content.mjs','polish-integration-friends.mjs'],
- signup:['shared-entry.full.mjs','site-admission-ui.browser.mjs','open-signup-ui.browser.mjs','onboarding-continuation.full.mjs'],
+ signup:['public-guests.full.mjs','public-guest-entry.full.mjs','shared-entry.full.mjs','site-admission-ui.browser.mjs','open-signup-ui.browser.mjs','onboarding-continuation.full.mjs'],
  imageprotocol:['image-client-protocol.full.mjs'],
  imagesizing:['image-physical-size.browser.mjs','image-physical-size-renderer.browser.mjs','image-physical-size.full.mjs'],
  imageversions:['image-library-setup.browser.mjs','image-setup-version.full.mjs'],

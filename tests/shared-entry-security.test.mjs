@@ -64,7 +64,7 @@ test('actual public HTTP shell entry is static and cannot bypass revalidation, a
  for(const url of forbidden.filter(url=>!/[\r\n]/.test(url)))assert.equal((await call(url,{headers:navigation})).status,url==='//'?500:403,url);
  assert.equal((await call('/api/session')).data.code,'AUTH_REQUIRED');
  assert.equal((await call('/api/rooms/commons')).status,401);
- assert.equal((await call('/api/session',{method:'POST',headers:{Origin:'https://preview.example.test','Content-Type':'application/json'},body:'{}'})).data.code,'GUEST_CREATION_DISABLED');
+ const guest=await call('/api/session',{method:'POST',headers:{Origin:'https://preview.example.test','Content-Type':'application/json'},body:'{}'});assert.equal(guest.status,201);assert.equal(guest.data.user.ephemeralGuest,true);assert.equal(app.store.get('SELECT 1 FROM users WHERE id=?',guest.data.user.id),undefined);
  for(const url of['/api/signup','/api/login','/api/rooms/commons/join'])assert.equal((await call(url,{method:'POST',headers:{...navigation,Origin:'https://preview.example.test','Content-Type':'application/json'},body:'{}'})).status,403);
  assert.equal(app.store.get('SELECT COUNT(*) AS n FROM accounts').n,before);assert.equal(app.store.get('SELECT COUNT(*) AS n FROM sessions').n,0);
  const setupDb=join(directory,'setup.sqlite'),setup=createGameServer({database:setupDb,dist,seeds:seedWorlds,runtimeConfig:readRuntimeConfig({...environment(setupDb),UNIVERSE_SETUP_ONLY:'1'})});t.after(()=>setup.close());const setupPort=(await setup.listen(0)).port;

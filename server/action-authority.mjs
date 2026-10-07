@@ -1,3 +1,4 @@
+import {sessionPrincipal} from './public-guests.mjs';
 /** Resolves only committed room actions at the moment of an interaction. */
 import {fail,id,integer,oneOf,record} from './validation.mjs';
 import {itemActions} from '../src/action-schema.js';
@@ -12,8 +13,8 @@ export function canonicalAreaActions(area){
 export function createActionAuthority({store,presence,body,send,now=Date.now,captureFence=()=>null,checkFence=()=>{}}){
  function resolveCanonical({roomId,userId,session,input}){
   id(roomId);record(input);
-  const current=store.get('SELECT * FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?',session.token_hash,userId,now());
-  if(!current)fail(401,'AUTH_REQUIRED','Sign in again before using this action');
+  const current=sessionPrincipal(store,session.token_hash,now());
+  if(!current||current.user_id!==userId)fail(401,'AUTH_REQUIRED','Sign in again before using this action');
   if(current.current_room_id!==roomId)fail(409,'ROOM_CHANGED','Return to this room before using the item');
   store.authorize(roomId,userId);
   const row=store.roomRow(roomId),revision=integer(input.revision,'revision');

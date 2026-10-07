@@ -1,3 +1,4 @@
+import {hasRoomSession} from './public-guests.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {bindImageDefinitions} from '../src/image-asset-context.js';
 import {canLeaveArrival} from '../src/editor-geometry.js';
@@ -26,7 +27,7 @@ export function validateTerrainSceneDelta({store,presence,residents=[],now,room,
  const timestamp=now();
  const people=[...presence.values()].filter(person=>person.roomId===room.id&&person.kind!=='bot'&&timestamp-person.lastSeen<60000
   &&Number.isFinite(person.x)&&Number.isFinite(person.z)
-  &&store.get('SELECT 1 FROM sessions WHERE user_id=? AND current_room_id=? AND expires_at>?',person.userId,room.id,timestamp)
+  &&hasRoomSession(store,person.userId,room.id,timestamp)
   &&store.canSeeRoom(room,person.userId));
  const activeResidents=residents.filter(person=>person.roomId===room.id&&person.kind==='bot'&&Number.isFinite(person.x)&&Number.isFinite(person.z));
  for(const {box,kind,details}of added){

@@ -35,7 +35,7 @@ const operationId = () => globalThis.crypto?.randomUUID?.() || `place-${Date.now
 const formValues = item => ({ name: item?.name || '', slug: item?.slug || '', description: item?.description || '', public: item?.public ?? true, thumbnail: item?.thumbnail || '' });
 const sameValues = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChanged = () => {}, toast = () => {}, onClose = () => {}, onOpenChange = () => {} }) {
+export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChanged = () => {}, onRequireAccount = () => {}, toast = () => {}, onClose = () => {}, onOpenChange = () => {} }) {
   if (!root || typeof api !== 'function' || typeof getState !== 'function') throw new Error('mountPlaces needs root, api and getState');
   let destroyed = false, activeTab = 'explore', selected = null, currentUser = '', request = 0, loading = false;
   let catalog = [], memberships = [], invitations = [], stars = new Set(), filter = '', showArchived = false, scope = 'all';
@@ -328,6 +328,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     detail.append(section);
   }
   function startGuide() {
+    if(user().ephemeralGuest){onRequireAccount();return;}
     guideVisible = true; createDraft = null; detailMode = ''; activeTab = 'explore';
     if (!guide) {
       try { guide = readPlaceDraft(sessionStorage, currentUser); guideError = ''; }
@@ -396,6 +397,7 @@ export function mountPlaces({ root, api, getState, onNavigate = () => {}, onChan
     detail.append(form);
   }
   function startCreate(kind, parent) {
+    if(user().ephemeralGuest){onRequireAccount();return;}
     guideVisible = false;
     const draftKey = `${kind}:${parent?.id || 'new'}`;
     if (!creationDrafts.has(draftKey)) creationDrafts.set(draftKey, { kind, parent, values: formValues(null), base: formValues(null), operationId: operationId(), draftKey });

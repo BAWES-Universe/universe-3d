@@ -96,7 +96,7 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     return point?{available:true,target:{...target,...point},guidance:{phase:leave?'leave-area':'enter-area',instruction:leave?`Step outside ${area.name} first.`:`Walk into ${area.name}.`,detail:leave?'You accepted while already inside. Walk outside, then return to finish.':'Enter the marked area to finish. Your stamp is awarded automatically.'}}:{available:false,reason:'The target is not reachable from here',target:null};
   }
   function state(userId,roomId) {
-    if(!enabled)return {enabled:false,scope:'standalone-local',available:[],attempts:[],tracked:null,stampCount:0};
+    if(!enabled||store.isPublicGuest(userId))return {enabled:false,scope:'standalone-local',available:[],attempts:[],tracked:null,stampCount:0};
     const prefs=preferences(userId);
     const rows=store.all('SELECT a.*,g.id AS stamp_id,g.granted_at FROM quest_attempts a LEFT JOIN quest_grants g ON g.attempt_id=a.id WHERE a.user_id=? ORDER BY a.accepted_at DESC,a.rowid DESC',userId);
     const attempts=rows.map(row=>({id:row.id,definitionId:row.definition_id,version:row.version,roomId:row.room_id,kind:row.kind,title:row.title,objective:row.objective,status:row.status,acceptedAt:row.accepted_at,completedAt:row.completed_at,stampId:row.stamp_id||null,tracked:prefs.trackedAttemptId===row.id,...currentTarget(row,roomId)}));
