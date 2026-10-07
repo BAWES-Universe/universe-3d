@@ -42,6 +42,20 @@ test('explore requires a post-acceptance crossing and rejects stale or deleted t
  assert.equal((await state(b)).available.length,0);
 });
 
+test('Explore guidance walks outside first when accepted inside, then back in without early credit',async t=>{
+ const f=await fixture();t.after(()=>f.app.close());const a=await f.guest('Inside explorer');
+ await move(a,6);const accepted=await accept(a,'explore');let tracked=(await state(a)).tracked;
+ assert.equal(tracked.guidance.phase,'leave-area');assert.match(tracked.guidance.instruction,/Step outside Named garden first/);
+ assert.ok(Math.abs(tracked.target.x-6)>1.5||Math.abs(tracked.target.z)>1.5,'first target is outside the area');
+ await move(a,tracked.target.x,tracked.target.z);let snapshot=await state(a);tracked=snapshot.tracked;
+ assert.equal(snapshot.stampCount,0);assert.equal(tracked.status,'accepted');assert.equal(tracked.version,accepted.def.version);
+ assert.equal(tracked.guidance.phase,'enter-area');assert.match(tracked.guidance.instruction,/Walk into Named garden/);
+ assert.ok(Math.abs(tracked.target.x-6)<=1.5&&Math.abs(tracked.target.z)<=1.5,'next target is inside the area');
+ await move(a,tracked.target.x,tracked.target.z);snapshot=await state(a);
+ assert.equal(snapshot.stampCount,1);assert.equal(snapshot.tracked,null);assert.equal(snapshot.attempts[0].status,'completed');
+ await move(a,0);await move(a,6);assert.equal((await state(a)).stampCount,1);
+});
+
 test('Build credits only the actor’s successful authorized new instance CAS, atomically once',async t=>{
  const f=await fixture();t.after(()=>f.app.close());const a=await f.guest('Owner'),b=await f.guest('Editor');await a.call(`/api/rooms/room/members/${b.user.id}`,'PUT',{role:'editor'});await accept(a,'build');await accept(b,'build');
  const data={revision:0,scene:{...scene,objects:[{id:'new-object',type:'chair',x:2,z:2}]}};
@@ -59,6 +73,19 @@ test('Meet needs two distinct real opt-in players, post-acceptance reciprocal wa
  assert.equal((await state(a)).available.some(q=>q.kind==='meet'),false);await connect(a);await connect(b);await wave(b);await accept(a,'meet');await wave(a);assert.equal((await state(a)).stampCount,0);await wave(b);assert.equal((await state(a)).stampCount,1);
  await accept(b,'meet');await wave(b);await move(a,8);await move(a,0);await wave(a);assert.equal((await state(b)).stampCount,0);await wave(b);assert.equal((await state(b)).stampCount,1);
  await wave(a);await wave(b);assert.equal((await state(a)).stampCount,1);assert.equal((await state(b)).stampCount,1);
+});
+
+test('Meet progress reflects only post-acceptance waves in the same current pair and resets on reconnect',async t=>{
+ const f=await fixture();t.after(()=>f.app.close());const a=await f.guest('A'),b=await f.guest('B');
+ await connect(a);await connect(b);await wave(a);await wave(b);await accept(a,'meet');
+ let tracked=(await state(a)).tracked;assert.deepEqual(tracked.progress,{completed:0,total:2,ownWave:false,otherWave:false});
+ await wave(a);tracked=(await state(a)).tracked;
+ assert.deepEqual(tracked.progress,{completed:1,total:2,ownWave:true,otherWave:false});assert.equal(tracked.guidance.phase,'waiting-for-wave');
+ assert.equal((await state(a)).stampCount,0);
+ await b.call('/api/media/state','POST',{enabled:false});tracked=(await state(a)).tracked;assert.equal(tracked.available,false);assert.equal(tracked.progress,undefined);
+ await connect(b);tracked=(await state(a)).tracked;assert.equal(tracked.progress.completed,0);assert.equal(tracked.guidance.phase,'send-wave');
+ await wave(b);tracked=(await state(a)).tracked;assert.deepEqual(tracked.progress,{completed:1,total:2,ownWave:false,otherWave:true});assert.match(tracked.guidance.instruction,/Wave back/);
+ await wave(a);assert.equal((await state(a)).stampCount,1);
 });
 
 test('room leave, media off and reconnect do not combine separate greeting sessions',async t=>{

@@ -516,3 +516,48 @@
 .media-away-choice input:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
 .media-away-help, .media-away-status { margin: 7px 0; font-size: 11px; line-height: 1.5; }
 .media-away-help { color: var(--u-text-muted, #c6b2dc); }
+
+/* Live-feedback settings use the same owned streams as the call. Opening this
+   surface never captures; the preview is muted and only mirrors local display. */
+.media-dock { flex-wrap: wrap; gap: 8px 12px; border-radius: 22px; }
+.media-context { flex: 1 1 180px; min-width: 0; max-width: none; }
+.media-context-detail { max-width: none; font-size: 12px; }
+.media-actions { flex: 0 1 auto; max-width: 100%; gap: 4px; }
+.media-details-toggle { font-size: 12px !important; padding: 4px 9px; }
+.media-warning { font-size: 13px; max-width: none; }
+.media-details { position: fixed; top: max(12px,env(safe-area-inset-top)); bottom: auto; right: max(12px,env(safe-area-inset-right)); width: 410px; max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 16px; background: var(--u-ink,#14121e); z-index: 30; overscroll-behavior: contain; font-size: 14px; }
+.media-details-heading { position: sticky; top: -16px; z-index: 1; background: var(--u-ink,#14121e); padding: 8px 0; font-size: 17px; }
+.media-settings-close { margin-left: auto; border: 0; border-radius: 50%; background: var(--u-secondary,#332e43); min-width: 48px; min-height: 48px; font-size: 24px!important; }
+.media-self-preview { position: relative; margin: 8px 0; width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 12px; background: #211c2e; display: grid; place-items: center; }
+.media-self-preview video { width: 100%; height: 100%; object-fit: cover; }
+.media-preview-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px; background: linear-gradient(transparent,#100c19); font-size: 13px; }
+.media-preview-empty { padding: 16px; color: var(--u-text-muted,#c8bfdb); }
+.media-preview-help,.media-device-help,.media-speaker-help { font-size: 12px; line-height: 1.5; color: var(--u-text-muted,#c8bfdb); }
+.media-setting-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #ffffff16; }
+.media-setting-row > label { flex: 1 0 100%; font-weight: 650; }
+.media-setting-row select { flex: 1; min-width: 0; max-width: 100%; min-height: 44px; background: #292334; color: #fff; border: 1px solid #776a8c; border-radius: 8px; padding: 8px; font: inherit; }
+.media-setting-row button,.media-refresh-devices,.media-retry { border: 0; border-radius: 10px; min-height: 44px; padding: 8px 12px; background: var(--u-secondary,#332e43); }
+.media-setting-choice { display: flex; gap: 10px; align-items: center; min-height: 44px; padding: 4px 0; cursor: pointer; }
+.media-setting-choice input { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--u-primary,#8455e9); }
+.media-device-list-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.media-device-list-status { font-size: 12px; color: #f4c1d3; }
+.media-connection-details { margin-top: 12px; border-top: 1px solid #ffffff20; padding-top: 8px; }
+.media-connection-details summary { min-height: 44px; cursor: pointer; display: flex; align-items: center; font-weight: 650; }
+.media-connection-details p,.media-away-help,.media-away-status { font-size: 12px; }
+.media-self-camera[data-mirrored=true] video { transform: scaleX(-1); }
+.media-tile-title { font-size: 12px; }
+.media-peers { max-height: min(32vh,220px); overflow: auto; }
+@media(max-width:700px),(max-height:540px) {
+ .media-dock { padding: 8px; border-radius: 16px; }
+ .media-context { flex-basis: 100%; }
+ .media-context-label { font-size: 13px; }
+ .media-context-detail { font-size: 11px; }
+ .media-actions { width: 100%; justify-content: space-between; }
+ .media-device { min-width: 44px; }
+ .media-device span { font-size: 10px; }
+ .media-join { font-size: 12px!important; padding: 8px; }
+ .media-divider { display:none; }
+ .media-details-toggle { min-width: 48px; padding: 4px; }
+ .media-details { width: min(410px,calc(100vw - 24px)); }
+}
+.media-capture-error { color:#f4c1d3; background:#33212e; border:1px solid #704358; padding:10px; border-radius:8px; font-size:13px; line-height:1.5; }

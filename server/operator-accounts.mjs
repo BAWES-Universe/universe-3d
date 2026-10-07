@@ -1,3 +1,4 @@
+import { validateAccountPassword } from './account-identity.mjs';
 import { randomBytes, randomUUID, scrypt } from 'node:crypto';
 import { promisify } from 'node:util';
 import { BOOTSTRAP_KEY, createAccessGate } from './access-gate.mjs';
@@ -13,7 +14,7 @@ function validate(input) {
   if (typeof username !== 'string' || !/^[a-z0-9_]{3,32}$/.test(username)) fail('INVALID_USERNAME', 'Username must be 3–32 lowercase letters, digits or underscores');
   // Login currently trims text inputs. Refuse ambiguous surrounding whitespace
   // here rather than provision a password the current login cannot reproduce.
-  if (typeof password !== 'string' || password.length < 16 || password.length > 256 || password !== password.trim() || /[\u0000-\u001f\u007f]/.test(password)) fail('INVALID_PASSWORD', 'Use a unique 16–256 character password without outer whitespace or control characters');
+  validateAccountPassword(password);
   return { name: name.trim(), username, password };
 }
 

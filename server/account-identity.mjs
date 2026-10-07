@@ -1,4 +1,5 @@
 import { fail } from './validation.mjs';
+import { validAccountPassword, PASSWORD_HELP } from '../src/password-policy.js';
 
 /** Product rule: trim and lowercase the whole ASCII address, preserving + tags. */
 export function normalizeEmail(value) {
@@ -19,8 +20,6 @@ export function normalizeEmail(value) {
 }
 
 export function validateAccountPassword(password) {
-  if (typeof password !== 'string' || password.length < 16 || password.length > 256 || password !== password.trim() || /[\u0000-\u001f\u007f]/.test(password)) {
-    fail(400, 'INVALID_PASSWORD', 'Use a unique 16–256 character password without outer whitespace or control characters');
-  }
+  if (!validAccountPassword(password)) fail(400, 'INVALID_PASSWORD', PASSWORD_HELP);
   return password;
 }

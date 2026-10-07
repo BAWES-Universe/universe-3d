@@ -5,23 +5,24 @@ import { launch } from '../scripts/browser.mjs';
 import assert from 'node:assert/strict';
 import { writeFile, mkdir } from 'node:fs/promises';
 
-const source = `import {createBotEditor} from './src/bot-editor.js';import {AVATAR_PRESETS} from './src/avatar-spec.js';
-window.presets=AVATAR_PRESETS;window.scene={bounds:{width:32,depth:26},spawn:{x:0,z:5},objects:[{x:8,z:5,width:2,depth:2}],areas:[{id:'quiet',name:'Quiet garden',x:-7,z:-6,width:3,depth:3}]};
-window.record=(id,name='Moss',enabled=true,roomId='alpha')=>({id,roomId,revision:0,name,enabled,appearance:structuredClone(presets[0].appearance),spawn:{x:0,z:0},radius:6,responseRadius:3,behavior:'idle',waypoints:[],speed:1.5,pauseMs:1000,loop:true,respondToPlayers:true,privateInstructions:'Only managers see these instructions',permissions:{pause:true,resume:true,return:true},restrictedAreaIds:[]});
-window.room=(id='alpha')=>({id,name:id==='alpha'?'The Commons':id==='beta'?'Moon Studio':id,scene:structuredClone(scene)});
-window.setup=async()=>{window.editor?.destroy();window.currentRoom=room();window.actorId='owner-a';window.logs={requests:[],preview:[],saved:[],closed:0};window.database={alpha:[record('moss'),record('rose','Rose',false)],beta:[record('ocean','Ocean',true,'beta')]};window.receipts=new Map();window.pending=[];window.manual=false;window.holdGets=false;window.failNext=null;window.uncertainNext=false;window.denied=false;window.created=0;
-window.response=(url,args={})=>{const parts=url.split('/');const roomId=decodeURIComponent(parts[3]),id=parts[5],command=parts[6];if(!args.method||args.method==='GET'){return{bots:structuredClone(database[roomId]||[]),capabilities:{canManage:!denied},catalog:{appearances:structuredClone(roomId==='beta'?[presets[5]]:presets),behaviors:[{id:'idle'},{id:'patrol'},{id:'social'}],tools:[{id:'pause'},{id:'resume'},{id:'return'}]}};}const op=args.body.clientOperationId;if(receipts.has(op))return{...structuredClone(receipts.get(op)),duplicate:true};let data;if(args.method==='POST'&&command){data={accepted:true,id,command:args.body.command}}else if(args.method==='POST'){const bot={id:'new-'+(++created),roomId,revision:0,...structuredClone(args.body.config)};(database[roomId]||=[]).push(bot);data={bot};}else{const bot=(database[roomId]||[]).find(b=>b.id===id);if(!bot)throw Object.assign(new Error('Resident was deleted'),{status:404});if(bot.revision!==args.body.revision)throw Object.assign(new Error('Revision changed'),{status:409,code:'BOT_REVISION_CONFLICT'});if(args.method==='DELETE'){database[roomId]=database[roomId].filter(b=>b.id!==id);data={deleted:true,id};}else{Object.assign(bot,structuredClone(args.body.patch),{revision:bot.revision+1});data={bot};}}receipts.set(op,structuredClone(data));return structuredClone(data)};
-window.request=(url,args={})=>{logs.requests.push({url,args:structuredClone(args)});if((!args.method&&holdGets)||(args.method&&manual))return new Promise((resolve,reject)=>pending.push({url,args:structuredClone(args),resolve,reject}));if(args.method&&failNext){const error=failNext;failNext=null;return Promise.reject(Object.assign(new Error(error.message||'Network unavailable'),error));}const result=response(url,args);if(args.method&&uncertainNext){uncertainNext=false;return Promise.reject(new Error('Connection lost after write'));}return Promise.resolve(result)};
-window.accept=()=>{const next=pending.shift();next.resolve(response(next.url,next.args));};window.reject=(message='Server unavailable',status)=>{const next=pending.shift();next.reject(Object.assign(new Error(message),{status}));};
-window.editor=createBotEditor({getRoom:()=>currentRoom,getActorId:()=>actorId,request,onPreview:value=>logs.preview.push(value),onClose:()=>logs.closed++,onSaved:(bot,context)=>logs.saved.push({bot,context})});await editor.open();};setup();`;
+import {source} from './bot-editor-fixture.mjs';
 const result = await build({ stdin: { contents: source, resolveDir: process.cwd(), sourcefile: 'resident-editor-fixture.js' }, bundle: true, format: 'iife', write: false, outfile: '/tmp/universe-resident-editor-fixture.js' });
 const browser = await launch(), page = await browser.newPage({ viewport: { width: 1280, height: 920 } });
 const errors = [], checks = [];
 page.on('pageerror', error => errors.push(error.message));
 const check = name => { checks.push({ name, status: 'passed' }); console.log('PASS', name); };
-const field = path => page.locator(`[data-bot-field="${path}"]`);
+const field = path => { const control = page.locator(`[data-bot-field="${path}"]`); return new Proxy(control, { get(target, key) { const value = target[key]; if (['fill', 'selectOption', 'check', 'uncheck', 'focus', 'press'].includes(key)) return async (...args) => { await target.evaluate(node => { for (let parent = node.parentElement; parent; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true; }); return value.apply(target, args); }; return typeof value === 'function' ? value.bind(target) : value; } }); };
 const saved = () => page.waitForFunction(() => !editor.isSaving());
 const mutations = () => page.evaluate(() => logs.requests.filter(r => r.args.method));
+async function listView() {
+  if (await page.getByRole('button', { name: 'Back to residents', exact: true }).isVisible()) {
+    await page.getByRole('button', { name: 'Back to residents', exact: true }).click();
+    if (await page.getByTestId('bot-confirm-save').isVisible()) { await page.getByTestId('bot-confirm-save').click(); await saved(); }
+  }
+}
+async function chooseResident(id) { await listView(); await page.locator(`[data-bot-id="${id}"]`).click(); }
+async function createDraft() { await listView(); await page.getByTestId('bot-create').click(); }
+
 await mkdir('evidence', { recursive: true });
 try {
   await page.route('https://resident-editor.test/', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:linear-gradient(140deg,#564967,#2e443e);height:100vh}button,input{font-family:Arial}</style><button id="launch">Open residents</button>' }));
@@ -30,7 +31,7 @@ try {
   await page.addScriptTag({ content: result.outputFiles.find(file => file.path.endsWith('.js')).text });
   await page.waitForFunction(() => document.querySelectorAll('[data-bot-id]').length === 2);
   assert.match(await page.locator('[data-bot-id="rose"]').innerText(), /Disabled/);
-  await page.locator('[data-bot-id="rose"]').click();
+  await chooseResident('rose');
   assert.equal(await field('enabled').isChecked(), false);
   assert.equal(await field('privateInstructions').inputValue(), 'Only managers see these instructions');
   assert.deepEqual(await page.evaluate(() => editor.getIdentity()), { roomId: 'alpha', botId: 'rose' });
@@ -54,11 +55,15 @@ try {
 
   await field('name').fill('Saved by Back');
   await page.getByRole('button', { name: 'Back to residents', exact: true }).click();
+  assert.equal(await page.evaluate(() => database.alpha[1].name), 'Rose renamed without blur');
+  await page.getByTestId('bot-confirm-save').click();
   await page.waitForFunction(() => editor.getDraft() === null);
   assert.equal(await page.evaluate(() => database.alpha[1].name), 'Saved by Back');
-  await page.locator('[data-bot-id="rose"]').click();
+  await chooseResident('rose');
   await field('name').fill('Kept after close failure');
   await page.evaluate(() => { manual = true; window.closing1 = editor.close(); window.closing2 = editor.close(); });
+  assert.equal(await page.evaluate(() => pending.length), 0);
+  await page.getByTestId('bot-confirm-save').click();
   assert.equal(await page.evaluate(() => pending.length), 1);
   assert.equal(await page.evaluate(() => closing1 === closing2), true);
   await page.evaluate(() => reject('Connection unavailable'));
@@ -68,14 +73,15 @@ try {
   assert.match(await page.locator('.resident-error:not([hidden])').innerText(), /Connection unavailable/);
   const failedId = (await mutations()).at(-1).args.body.clientOperationId;
   await page.evaluate(() => { manual = false; });
-  await page.getByRole('button', { name: 'Save and close residents' }).click();
+  await page.getByRole('button', { name: 'Close residents' }).click();
+  await page.getByTestId('bot-confirm-save').click();
   await page.waitForFunction(() => !editor.isOpen());
   assert.equal((await mutations()).at(-1).args.body.clientOperationId, failedId);
   assert.equal(await page.evaluate(() => logs.closed), 1);
-  check('Back flushes changes; repeated Close serializes one save, preserves failure, and retries the same operation');
+  check('Back and Close require explicit Save; repeated saves serialize, preserve failure and retry the same operation');
 
   await page.evaluate(() => setup());
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await field('name').fill('Uncommitted Alpha');
   await field('privateInstructions').fill('Private draft, not a room record');
   await field('radius').fill('');
@@ -86,17 +92,17 @@ try {
   assert.deepEqual(await mutations(), []);
   assert.equal(await page.locator('[data-bot-id]').count(), 2);
   assert.match(await page.getByTestId('bot-create').innerText(), /Resume/);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.equal(await field('name').inputValue(), 'Uncommitted Alpha');
   assert.equal(await field('radius').inputValue(), '');
   await field('radius').fill('7');
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   assert.equal(await field('name').inputValue(), 'Moss');
   assert.deepEqual(await mutations(), []);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.equal(await field('name').inputValue(), 'Uncommitted Alpha');
   assert.equal(await page.evaluate(() => editor.setRoom(room('beta'))), true);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await field('name').fill('Uncommitted Beta');
   assert.equal(await page.evaluate(() => editor.setRoom(room('alpha'))), true);
   assert.equal(await field('name').inputValue(), 'Uncommitted Alpha');
@@ -122,7 +128,7 @@ try {
   check('New drafts survive Back, selection, Close and room switches with zero mutation requests; reopening rechecks access and only explicit Create commits');
 
   await page.evaluate(() => setup());
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await field('name').fill('Discard this draft');
   await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
   assert.equal(await page.evaluate(() => editor.getDraft()), null);
@@ -130,20 +136,20 @@ try {
   assert.equal(await page.evaluate(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; }), false);
   await page.evaluate(() => editor.open());
   assert.equal(await page.evaluate(() => editor.getDraft()), null);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.equal(await field('name').inputValue(), 'New resident');
   assert.deepEqual(await mutations(), []);
   check('Deliberate Discard removes the retained new draft and reload warning without creating a resident');
 
   await page.evaluate(() => setup());
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await field('name').fill('Keep while editing Moss');
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   await field('name').fill('Updated Moss');
   await page.getByTestId('bot-save').click(); await saved();
   assert.equal((await mutations()).length, 1);
   assert.equal((await mutations())[0].args.method, 'PATCH');
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.equal(await field('name').inputValue(), 'Keep while editing Moss');
   await page.evaluate(() => { editor.save(); editor.updateAuthority(false); });
   await saved();
@@ -154,7 +160,7 @@ try {
 
 
   await page.evaluate(() => setup());
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await field('name').fill('Owner A private draft');
   await field('privateInstructions').fill('Never show to a different account');
   await page.evaluate(() => editor.close());
@@ -172,7 +178,7 @@ try {
   assert.equal(await field('privateInstructions').count(), 0);
   await page.evaluate(() => editor.setRoom(room()));
   assert.equal(await page.evaluate(() => editor.getDraft()), null);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.equal(await field('privateInstructions').inputValue(), '');
   await page.evaluate(() => editor.close());
   await page.evaluate(() => { actorId = 'owner-a'; });
@@ -182,7 +188,7 @@ try {
   check('Restoration requires fresh management permission; account changes clear both active and retained private drafts');
 
   await page.evaluate(() => setup());
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await field('name').fill('Explicit Create in flight');
   await page.evaluate(() => { manual = true; window.creating = editor.save(); window.dismissCreating = editor.close(); });
   await page.waitForFunction(() => pending.length === 1);
@@ -205,7 +211,7 @@ try {
   check('Close waits for an explicitly started Create without posting again; ambiguous results survive reopen and retry the identical receipt');
 
   await page.evaluate(() => setup());
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.deepEqual(await page.evaluate(() => editor.getIdentity()), { roomId: 'alpha', botId: null });
   assert.equal(await page.evaluate(() => editor.updateMap({ roomId: 'alpha', botId: null, radius: 7 })), true);
   await field('name').fill('New uncertain resident');
@@ -216,10 +222,10 @@ try {
   await page.getByRole('button', { name: 'Back to residents', exact: true }).click();
   await page.waitForFunction(() => editor.getDraft() === null);
   assert.equal((await mutations()).length, 1);
-  await page.getByTestId('bot-create').click();
-  await page.locator('[data-bot-id="moss"]').click();
+  await createDraft();
+  await chooseResident('moss');
   assert.equal((await mutations()).length, 1);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   await page.evaluate(() => editor.close());
   assert.equal((await mutations()).length, 1);
   await page.evaluate(() => editor.open());
@@ -238,7 +244,7 @@ try {
   check('Uncertain create retry reuses exact body and operation ID, then serially saves later edits without duplication');
 
   await page.evaluate(() => setup());
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   await field('name').fill('Snapshot one');
   await page.evaluate(() => { manual = true; editor.save(); editor.save(); });
   await page.waitForFunction(() => pending.length === 1);
@@ -261,28 +267,31 @@ try {
   await page.evaluate(() => accept());
   assert.equal(await page.locator('[data-bot-id="ocean"]').count(), 1);
   assert.equal(await page.locator('[data-bot-id="moss"]').count(), 0);
-  await page.getByTestId('bot-create').click();
+  await createDraft();
   assert.equal(await page.locator('[data-appearance-id]').count(), 1);
   assert.equal(await page.locator('[data-appearance-id="ocean"]').count(), 1);
   check('An old room response resolving last cannot replace the current resident list or appearance catalog');
 
   await page.evaluate(() => setup());
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   await field('name').fill('Stay here until saved');
   await page.evaluate(() => { failNext = { message: 'Room save failed' }; });
   assert.equal(await page.evaluate(() => editor.setRoom(room('beta'))), false);
+  await page.getByTestId('bot-confirm-save').click(); await saved();
   assert.equal(await page.locator('.resident-room').innerText(), 'The Commons');
   assert.equal(await field('name').inputValue(), 'Stay here until saved');
   assert.match(await page.locator('.resident-error:not([hidden])').innerText(), /Room save failed/);
   await page.evaluate(() => { window.staleInput = document.querySelector('[data-bot-field="name"]'); });
-  assert.equal(await page.evaluate(() => editor.setRoom(room('beta'))), true);
-  await page.locator('[data-bot-id="ocean"]').click();
+  assert.equal(await page.evaluate(() => editor.setRoom(room('beta'))), false);
+  await page.getByTestId('bot-confirm-save').click(); await saved();
+  await page.waitForFunction(() => document.querySelector('.resident-room').textContent === 'Moon Studio');
+  await chooseResident('ocean');
   await page.evaluate(() => { staleInput.value = 'Old detached write'; staleInput.dispatchEvent(new Event('input', { bubbles: true })); });
   assert.equal(await field('name').inputValue(), 'Ocean');
   check('Failed room-change save keeps the old draft visible; detached old fields cannot mutate a new room');
 
   await page.evaluate(() => setup());
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   await field('behavior').selectOption('patrol');
   await page.getByTestId('bot-add-waypoint').click();
   await field('waypoints.0.x').fill('1'); await field('waypoints.0.z').fill('2');
@@ -294,13 +303,15 @@ try {
   await page.getByRole('button', { name: 'Remove waypoint 1', exact: true }).click();
   assert.deepEqual(await page.evaluate(() => editor.getDraft().waypoints), [{ x: 3, z: 4 }, { x: 2, z: 3 }]);
   assert.equal(await page.locator('[data-plan-handle="waypoint"]').count(), 2);
+  await page.getByText('Room plan & exact coordinates', { exact: true }).click();
   await page.locator('[data-plan-handle="waypoint"][data-index="0"]').focus();
   await page.keyboard.press('ArrowLeft');
-  assert.equal(await field('waypoints.0.x').inputValue(), '2.5');
+  assert.equal(await field('waypoints.0.x').inputValue(), '3.4');
+  assert.equal(await field('waypoints.0.z').inputValue(), '3.6');
   await page.locator('[data-plan-handle="radius"]').focus(); await page.keyboard.press('ArrowRight');
   assert.equal(await field('radius').inputValue(), '6.5');
   await page.getByTestId('bot-save').click(); await saved();
-  assert.deepEqual(await page.evaluate(() => database.alpha[0].waypoints), [{ x: 2.5, z: 4 }, { x: 2, z: 3 }]);
+  assert.deepEqual(await page.evaluate(() => database.alpha[0].waypoints), [{ x: 3.4, z: 3.6 }, { x: 2, z: 3 }]);
   check('Ordered waypoint add, insertion, reordering, removal and keyboard plan handles persist in matching route order');
 
   await page.locator('[data-plan-handle="spawn"]').scrollIntoViewIfNeeded();
@@ -324,7 +335,7 @@ try {
   check('Unconnected social behavior is explicit and silent; local command permissions save before server-authorized commands');
 
   await page.evaluate(() => setup());
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   await page.evaluate(() => { failNext = { status: 409, code: 'BOT_INACTIVE', message: 'A person must be in the room' }; });
   await page.locator('[data-live-command="pause"]').click();
   await page.waitForFunction(() => document.querySelector('.resident-error:not([hidden])')?.textContent.includes('A person'));
@@ -336,7 +347,7 @@ try {
   await page.locator('[data-live-command="pause"]').click();
   await page.waitForFunction(() => document.querySelector('.resident-error:not([hidden])')?.textContent.includes('Connection lost'));
   const firstCommand = (await mutations()).at(-1);
-  await page.locator('[data-bot-id="rose"]').click();
+  await chooseResident('rose');
   await field('enabled').check();
   await page.locator('[data-live-command="pause"]').click();
   await page.waitForFunction(() => logs.requests.at(-1).url.includes('/rose/commands'));
@@ -345,7 +356,7 @@ try {
   check('Inactive command errors do not lock editing; an uncertain command receipt cannot leak across resident targets');
 
   await page.evaluate(() => setup());
-  await page.locator('[data-bot-id="moss"]').click(); await field('name').fill('My conflicting draft');
+  await chooseResident('moss'); await field('name').fill('My conflicting draft');
   await page.evaluate(() => { database.alpha[0].revision = 3; database.alpha[0].name = 'Other editor'; });
   await page.getByTestId('bot-save').click(); await saved();
   assert.equal(await field('name').inputValue(), 'My conflicting draft');
@@ -368,7 +379,7 @@ try {
   check('Deletion requires an explicit confirmation and uses the selected immutable ID and current revision');
 
   await page.evaluate(() => setup());
-  await page.locator('[data-bot-id="moss"]').click();
+  await chooseResident('moss');
   await field('name').fill('Keyboard-safe name');
   await page.evaluate(() => { window.keysLeaked = 0; document.addEventListener('keydown', () => keysLeaked++); });
   await page.keyboard.press('w'); await page.keyboard.press('ArrowLeft');
@@ -389,6 +400,7 @@ try {
   assert.equal(await field('name').evaluate(el => getComputedStyle(el).fontSize), '16px');
   await page.screenshot({ path: 'evidence/bot-editor-mobile.png' });
   await page.getByRole('button', { name: 'Back to residents', exact: true }).click();
+  await page.getByTestId('bot-confirm-save').click();
   await page.waitForFunction(() => editor.getDraft() === null);
   assert.equal(await page.getByTestId('bot-create').isVisible(), true);
   check('320px layout has no horizontal overflow, touch-sized controls, readable inputs and equivalent list navigation');

@@ -66,7 +66,7 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
  function reportOpen(){const next=!root.hidden;if(reportedOpen===next)return;reportedOpen=next;onOpenChange(next);}
  const visibility=new MutationObserver(reportOpen);visibility.observe(root,{attributes:true,attributeFilter:['hidden']});
  function setOpen(value,{trigger,focusWorld=false,record=true}={}){
-  if(value&&!context().capabilities.canRead)return false;
+  if(value&&(getState().user?.ephemeralGuest||!context().capabilities.canRead))return false;
   if(!!value===isOpen()){if(!record)reportedOpen=isOpen();if(focusWorld)document.getElementById('game')?.focus({preventScroll:true});return true;}
   panel.setOpen(value,trigger);if(record)reportOpen();else reportedOpen=!root.hidden;
   if(focusWorld)document.getElementById('game')?.focus({preventScroll:true});return true;
@@ -102,6 +102,7 @@ export function mountImageLibraryShell({root,statusRoot,getState,getRenderer,onC
    const entries=Object.values(getState().room.imageDefinitions||{}).filter(entry=>entry.definition.assetId===event.assetId).map(entry=>validateResolvedImageAsset({...entry,status:event.status,metadata:event.metadata||entry.metadata,revision:event.revision||entry.revision}));
    if(entries.length)cache(entries,stamp(),context().roomId,{authoritative:false});
   }
+  if(getState().user?.ephemeralGuest)return;
   if(isOpen())return panel.refresh();return service.list({roomId:context().roomId,query:''}).catch(()=>{});}
  function dispose(){disposed=true;visibility.disconnect();renderer?.setImageStateListener?.(null);panel.dispose();statusRoot?.replaceChildren();}
  return Object.freeze({getRecoverySnapshot:()=>panel.getRecoverySnapshot?.()??null,isOpen,hasFocus,setOpen,refresh,suspend,resume,prepareRoom,receiveRoom,acceptRoom,syncAuthority,syncRenderer,getContext:context,dispose});

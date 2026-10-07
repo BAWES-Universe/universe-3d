@@ -43,7 +43,7 @@ try {
  await checkbox.press('Space');assert.equal(await checkbox.isChecked(),false);await mobile.locator('.media-away-choice').tap();assert.equal(await checkbox.isChecked(),true);await mobile.locator('.media-away-choice').tap();assert.equal(await checkbox.isChecked(),false);
  const size=await mobile.locator('.media-away-choice').boundingBox();assert(size.height>=48);assert(await mobile.locator('.media-away-help').isVisible());
  results.push({test:'Phone OFF default, independent storage, keyboard Space and touch label toggle',status:'pass',labelHeight:size.height});
- await mobile.getByRole('button',{name:'Media connection details',exact:true}).tap();
+ await mobile.getByRole('button',{name:'Close media settings',exact:true}).tap();
  await mobile.locator('[data-media="microphone"]').tap();await mobile.waitForFunction(()=>media.getStatus().devices.microphone.status==='on');
  await mobile.evaluate(()=>window.dispatchEvent(new Event('blur')));await mobile.frameLocator('#content').getByRole('button').tap();
  await mobile.getByRole('button',{name:'Media connection details',exact:true}).tap();assert.equal(await mobile.evaluate(()=>captureCalls),1);assert.equal(await mobile.evaluate(()=>tracks[0].readyState),'live');assert.equal(await mobile.evaluate(()=>media.getStatus().awayPrivacy.away),false);

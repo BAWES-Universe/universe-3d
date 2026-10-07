@@ -36,8 +36,8 @@ try{
  page=await context.newPage();page.setDefaultTimeout(45000);page.on('pageerror',error=>errors.push(error.message));
  page.on('request',request=>{const url=new URL(request.url());if(url.pathname==='/api/presence')requests.presence++;if(url.pathname==='/api/media')requests.media++;});
  await page.goto(base,{waitUntil:'domcontentloaded'});await page.getByPlaceholder('Your name').fill('Presentation fixture player');await page.locator('#join-button').click();
- await page.waitForFunction(()=>window.__universe?.getState().ready&&__universe.getStats().presentation.drawnFrames>5);
- const initialState=await state(),initialStats=await stats();await page.screenshot({path:out+'/01-world-layers.png'});
+ await page.waitForFunction(()=>window.__universe?.getState().ready&&__universe.getStats().presentation.drawnFrames>5&&Number.isFinite(__universe.getState().position.y));
+ const initialState=await state(),initialStats=await stats();assert.equal(initialState.position.y,0,'Fixture starts on the ground after its first3D motion frame');await page.screenshot({path:out+'/01-world-layers.png'});
  await openCreator();const opened=await stats(),previewStart=await preview(),initialRequests={...requests};
  await page.getByRole('tab',{name:'Hair',exact:true}).click();await page.getByRole('button',{name:'Hairstyle: High bun',exact:true}).click();
  await page.locator('.avatar-preview').focus();await page.keyboard.down('w');await page.waitForTimeout(200);await page.keyboard.up('w');

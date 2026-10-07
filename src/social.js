@@ -1,3 +1,5 @@
+import {signupLink,signupViewLink} from './signup-navigation.js';
+import {PASSWORD_MIN_LENGTH,PASSWORD_MAX_LENGTH,PASSWORD_HELP,validAccountPassword} from './password-policy.js';
 import {mountSocialSheet} from './social-sheet-layout.js';
 import {icon} from './universe-icons.js';
 import {roomAllows} from './permissions.js';
@@ -833,7 +835,13 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     return updated;
   }
   function buildSettings() {
-    const self = user(); profileSelection = Math.max(0, Math.min(5, Number(self.woka) || 0));
+    const self = user();
+    if(self.ephemeralGuest){
+      const signup=signupLink(location.href),signin=signupViewLink(new URL(signup,location.origin).href,true);
+      panel.append(el('section',{class:'social-scroll social-stack'},el('h3',{class:'social-section-title',text:'Exploring as '+self.name}),notice('You can look around, walk, jump and sit in public rooms. This temporary visit lasts up to 24 hours.'),el('p',{class:'social-muted',text:'Create an account to save your identity and character, create places or connect. Room owners still control building and private access.'}),el('a',{class:'button social-btn social-btn-primary',href:signup,text:'Create account'}),el('a',{class:'button social-btn',href:signin,text:'Sign in'}),button('End guest visit',async()=>{await api('/api/logout',{method:'POST',body:{}});window.dispatchEvent(new CustomEvent('session-ended'));},{class:'button social-btn social-btn-quiet'})));
+      return;
+    }
+    profileSelection = Math.max(0, Math.min(5, Number(self.woka) || 0));
     const name = input({ required: 'required', maxlength: '32', 'aria-label': 'Display name' }); name.value = self.name || '';
     const availability = el('select', { class: 'input social-input', 'aria-label': 'Availability' });
     for (const value of ['online', 'away', 'busy']) availability.append(el('option', { value, text: STATUS_LABELS[value] }));
@@ -867,10 +875,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
       el('div', { class: 'social-notice' }, 'Use WASD or arrow keys to move. Use the camera controls to zoom and rotate. Your room conversations and profile are saved on this server.'));
     if (!self.account) {
       const username = input({ minlength: '3', maxlength: '32', autocomplete: 'username', 'aria-label': 'Account username', placeholder: 'Choose a username' });
-      const password = input({ type: 'password', minlength: '10', autocomplete: 'new-password', 'aria-label': 'Account password', placeholder: 'At least 10 characters' });
+      const password = input({ type: 'password', minlength: String(PASSWORD_MIN_LENGTH), maxlength: String(PASSWORD_MAX_LENGTH), autocomplete: 'new-password', 'aria-label': 'Account password', placeholder: `${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters` });
       const accountNotice = el('div');
       const register = button('Keep this profile', async () => {
-        if (!username.value.trim() || password.value.length < 10) { accountNotice.replaceChildren(notice('Choose a username and a password of at least 10 characters.', true)); return; }
+        if (!username.value.trim() || !validAccountPassword(password.value)) { accountNotice.replaceChildren(notice('Choose a username. '+PASSWORD_HELP+'.', true)); return; }
         register.disabled = true;
         try { const result = await api('/api/account', { method: 'POST', body: { username: username.value.trim(), password: password.value } }); password.value = ''; Object.assign(user(), result.user);profileAvatar.children[1].lastChild.textContent='Local account'; accountBox.replaceChildren(notice('Your local account is ready. Sign in with this username on this same server to keep your worlds and progress.')); }
         catch (error) { accountNotice.replaceChildren(notice(error.message, true)); } finally { register.disabled = false; }

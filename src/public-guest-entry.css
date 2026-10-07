@@ -1,0 +1,13 @@
+/* Scoped to the server-advertised public guest mode only. */
+.public-guest-entry .welcome-card {padding:20px 26px}
+.public-guest-entry .guest-entry-options {margin-top:10px;text-align:left}
+.public-guest-entry .guest-entry-options > summary {min-height:48px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 12px;width:100%;font-size:11px;box-sizing:border-box}
+.public-guest-entry .guest-entry-options > summary::after {content:'▾';margin-left:8px}
+.public-guest-entry .guest-entry-options[open] > summary::after {content:'▴'}
+.public-guest-entry .guest-entry-options > .field {margin-top:12px}
+.public-guest-entry .welcome-card .session-note {margin-top:10px}
+@media (max-height:500px) {
+ .public-guest-entry .welcome-card {padding:14px 26px}
+ .public-guest-entry .welcome-card h2 {margin:8px 0}
+ .public-guest-entry .welcome-card > p:not(.session-note) {margin:6px 0 12px}
+}

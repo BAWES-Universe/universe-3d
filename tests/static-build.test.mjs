@@ -16,6 +16,8 @@ test('the real build emits verified smaller artifacts and marks only generated h
   await writeFile(join(root,'src/main.js'),"import './main.css'; globalThis.load=()=>import('./lazy.js');");
   await writeFile(join(root,'src/main.css'),'body{color:green}');
   await writeFile(join(root,'src/lazy.js'),`export const payload=${JSON.stringify('compressible fixture '.repeat(1000))};`);
+  await writeFile(join(root,'src/signup-helper.js'),'export const destination="/";');
+  await writeFile(join(root,'public/signup.js'),"import {destination} from '../src/signup-helper.js';globalThis.signupDestination=destination;");
   await writeFile(join(root,'public/index.html'),'<html>Fixture</html>');
   await writeFile(join(root,'public/style.css'),'body { color: green; }\n'.repeat(1000));
   await writeFile(join(root,'public/chunks/impostor-ABCDEFGH.js'),'console.log("mutable copied asset");');
@@ -37,8 +39,9 @@ test('the real build emits verified smaller artifacts and marks only generated h
     }
   }
   assert.equal(immutableCount,1);assert(compressedCount>=4);
-  for(const name of ['main.js','main.css','index.html','style.css','chunks/impostor-ABCDEFGH.js','image.png'])assert.equal(manifest.assets[name].immutable,false,name);
+  for(const name of ['main.js','signup.js','main.css','index.html','style.css','chunks/impostor-ABCDEFGH.js','image.png'])assert.equal(manifest.assets[name].immutable,false,name);
   assert.deepEqual(manifest.assets['image.png'].encodings,{});
+  const signup=await readFile(join(root,'dist/signup.js'),'utf8');assert.doesNotMatch(signup,/\bimport\b|signup-helper|chunks\//);assert.match(signup,/signupDestination/);
   const sizes=JSON.parse(await readFile(join(root,'evidence/bundle-sizes.json'),'utf8'));
   assert(sizes['dist/main.js'].raw>0);assert(Object.keys(sizes).some(name=>name.startsWith('dist/chunks/lazy-')));
 });

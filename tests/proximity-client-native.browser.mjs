@@ -60,6 +60,8 @@ window.probe=()=>({
 window.ready=true;
 `);
 const app=createGameServer({database:':memory:',seeds:seedWorlds,dist:dir,iceRelayConfig,proximityMembershipConfig:proximityFixture});
+const iceAttempts={count:0,lastAt:0};
+app.server.on('request',request=>{if(request.method==='POST'&&request.url==='/api/media/ice'){iceAttempts.count++;iceAttempts.lastAt=Date.now();}});
 const {port}=await app.listen(0);
 let browser,phase='launch';
 const pages=[];
@@ -142,6 +144,15 @@ try {
  const newScopePeers=await Promise.all(pages.map(page=>page.evaluate(()=>({oldClosed:beforeScopePeer.connectionState==='closed',newNativePeer:current()!==beforeScopePeer,configurationMatches:configurationMatches(current()),scopeChanged:media.snapshot().policy.iceScope!==beforeScope}))));
  for(const row of newScopePeers)for(const value of Object.values(row))assert.equal(value,true);
  pass('Same-room proximity-to-meeting scope change closes old native transports, rejects retired scope, and authorizes replacement peers',{oldScopeStatus:areaOldScope.status,peers:newScopePeers});
+ phase='quiescent ICE rate window';
+ // Renewal and stale-scope probes share the real eight-attempt session budget.
+ // Retire live transports before waiting so renewal/expiry timers cannot add
+ // requests. Re-enter below refreshes presence after the real window expires.
+ await Promise.all(pages.map(page=>page.evaluate(()=>media.setJoined(false))));await allClosed();
+ const attemptsBeforeWait=iceAttempts.count,waitStarted=Date.now(),windowEndsAt=Math.max(iceAttempts.lastAt,waitStarted)+60025;
+ while(Date.now()<windowEndsAt)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,windowEndsAt-Date.now())));
+ assert.equal(iceAttempts.count,attemptsBeforeWait,'Opted-out native clients must not issue ICE during the quiet window');
+ pass('Prior native transports close and the real rate window expires before the independent Silent permission probe',{attemptsBeforeWait,quietMs:Date.now()-waitStarted});
  phase='Silent teardown';
  for(const page of pages)await page.evaluate(()=>enter('commons'));
  await Promise.all(pages.map(page=>page.evaluate(()=>media.setJoined(true))));await waitNegotiated();
@@ -178,7 +189,7 @@ try {
  for(const summary of summaries){assert.equal(summary.captureAttempts,0);assert.equal(summary.scaledRenewals,1);assert.equal(summary.credentialFreeSnapshot,true);assert.equal(summary.policyError,'');assert.equal(summary.iceError,'');assert.equal(summary.peers.every(peer=>peer.closed&&peer.configurationMatches&&peer.initialConfigurationMatched),true);}
  assert.deepEqual(pageErrors,[]);
  pass('Capture prohibited and never attempted; credential-free session snapshots; all created native connections closed',{captureAttempts:summaries.map(summary=>summary.captureAttempts),closedNativePeers:summaries.map(summary=>summary.peerCount),pageErrors:pageErrors.length});
- const report={type:'native-browser-proximity-v1-authorized-ice-and-restart',status:'pass',timestamp:new Date().toISOString(),browser:await browser.version(),launchArgs:['--no-sandbox','--no-zygote'],renderer:'Standalone media modules only; no 3D/app renderer',configuredUrls:urls,config:{ttlSeconds:60,renewalSeconds:45,secret:'Fresh synthetic random value generated per run; omitted'},timerAdaptation:'Only first 43000–45000 ms ICE renewal timer per context shortened to 2000 ms (offerer) or 5000 ms (answerer). Request timeouts, expiry timers, clocks and native RTC methods unchanged.',results,summaries,limits:['Device capture prohibited; zero getUserMedia/getDisplayMedia attempts.','Only loopback discard-port STUN/TURN URLs. No real relay service, real credentials, deployment or external provider.','Opt-in proximity-v1 native authorized configuration, actual SDP ICE-ufrag changes, cookie/SSE signaling and teardown are verified.','No TURN allocation, working connection, media packets, physical-device capture or multi-network traversal is claimed.']};
+ const report={type:'native-browser-proximity-v1-authorized-ice-and-restart',status:'pass',timestamp:new Date().toISOString(),browser:await browser.version(),launchArgs:['--no-sandbox','--no-zygote'],renderer:'Standalone media modules only; no 3D/app renderer',configuredUrls:urls,config:{ttlSeconds:60,renewalSeconds:45,secret:'Fresh synthetic random value generated per run; omitted'},timerAdaptation:'Only first 43000–45000 ms ICE renewal timer per context shortened to 2000 ms (offerer) or 5000 ms (answerer). Request timeouts, expiry timers, clocks and native RTC methods unchanged.',results,summaries,iceRequestCount:iceAttempts.count,limits:['Device capture prohibited; zero getUserMedia/getDisplayMedia attempts.','Only loopback discard-port STUN/TURN URLs. No real relay service, real credentials, deployment or external provider.','Opt-in proximity-v1 native authorized configuration, actual SDP ICE-ufrag changes, cookie/SSE signaling and teardown are verified.','No TURN allocation, working connection, media packets, physical-device capture or multi-network traversal is claimed.']};
  const serialized=JSON.stringify(report,null,2);
  assert.equal(serialized.includes(syntheticSecret),false,'Synthetic secret must not appear in evidence');
  await mkdir(new URL('../evidence/',import.meta.url),{recursive:true});
@@ -186,7 +197,7 @@ try {
  console.log(serialized);
 } catch(error) {
  // Avoid credential-bearing dumps from browser objects or response bodies.
- console.error(JSON.stringify({status:'fail',phase,error:error.name,message:String(error.message).replaceAll(syntheticSecret,'[redacted]'),completedResults:results},null,2));
+ console.error(JSON.stringify({status:'fail',phase,error:error.name,message:String(error.message).replaceAll(syntheticSecret,'[redacted]'),completedResults:results,iceRequestCount:iceAttempts.count},null,2));
  throw Error('Native ICE browser verification failed at: '+phase);
 } finally {
  for(const page of pages)if(!page.isClosed())await page.evaluate(()=>{window.media?.destroy();window.events?.close();}).catch(()=>{});

@@ -1119,3 +1119,69 @@
 /* Private protocol tests use the existing ink surface and native form controls. */
 .resident-test-reply{padding:.8rem;border:1px solid var(--u-surface-border,rgba(167,139,250,.18));border-radius:12px;overflow-wrap:anywhere;max-height:18rem;overflow:auto;color:#fff;background:rgba(255,255,255,.035)}
 .resident-test-reply:empty,.resident-test-tools:empty{display:none}.resident-test-tools{padding-inline-start:1.2rem;font-size:.84rem;color:rgba(255,255,255,.75)}
+
+/* A short editor leaves the room visible; advanced details remain optional. */
+.resident-panel { width: min(420px, calc(100vw - 24px)); }
+.resident-content { display: block; }
+.resident-sidebar { height: 100%; border-right: 0; }
+.resident-detail { display: none; height: 100%; }
+.resident-editor[data-detail=true] .resident-sidebar { display: none; }
+.resident-editor[data-detail=true] .resident-detail { display: block; }
+.resident-edit-label { font-size: 11px; color: var(--resident-purple); }
+.resident-fold > .resident-row,
+.resident-fold > .resident-plan-wrap { margin: 10px; }
+.resident-map-toolbar { padding: 18px; display: flex; flex-direction: column; min-height: 0; }
+.resident-map-body > strong { display: block; flex: none; font-size: 17px; margin-bottom: 7px; overflow-wrap: anywhere; }
+.resident-map-toolbar .resident-hint { font-size: 12px; }
+.resident-map-toolbar .resident-row { margin-top: 10px; }
+.resident-map-toolbar [aria-pressed=true] { border-color: var(--u-selected-border, #c6a6ff); background: var(--u-selected, #4d3665); }
+.resident-map-points { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; max-height: 100px; overflow: auto; }
+.resident-map-points:empty { display: none; }
+.resident-map-points button { min-width: 44px; }
+.resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel { top: auto; bottom: 104px; min-height: 0; max-height: calc(100vh - 210px); width: min(380px, calc(100vw - 24px)); }
+.resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-header,
+.resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-back,
+.resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-content,
+.resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-footer { display: none; }
+/* Only the settings scroll. Always leave the three completion targets in view. */
+.resident-map-toolbar { overflow: hidden; }
+.resident-map-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.resident-map-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: none; padding-top: 10px; border-top: 1px solid var(--resident-line); }
+.resident-map-actions button { min-width: 0; padding-inline: 4px; overflow-wrap: anywhere; }
+.resident-map-remove { margin-block: 8px; }
+.resident-map-points { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.resident-map-points button { flex: 0 0 auto; }
+@media (max-width: 600px) {
+  .resident-panel { width: auto; }
+  .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel { inset: auto 8px calc(10px + env(safe-area-inset-bottom)); width: auto; max-height: 43vh; }
+  .resident-map-toolbar { padding: 12px; }
+  .resident-map-body > strong { font-size: 15px; }
+  .resident-map-toolbar .resident-hint { margin-bottom: 4px; }
+  .resident-map-toolbar button { font-size: 12px; }
+}
+
+/* Pin route selection with the task actions, outside the scrolling explanation. */
+.resident-map-controls { display:flex; flex:none; gap:8px; margin-top:8px; }
+.resident-map-controls select { flex:1; min-width:0; min-height:48px; padding:8px; border:1px solid var(--resident-line); border-radius:12px; background:var(--resident-ink); }
+.resident-map-controls .resident-map-remove { flex:none; margin:0; }
+.resident-map-points { flex:none; }
+.resident-map-body .resident-hint { margin:0 0 6px; }
+@media (max-height: 500px) and (min-width: 601px) {
+  .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel { bottom:90px; max-height:calc(100dvh - 108px); }
+  .resident-map-toolbar { padding:12px; }
+  .resident-map-body > strong { font-size:15px; margin-bottom:3px; }
+  .resident-map-controls { margin-top:4px; }
+}
+/* Narrow landscape uses the native target selector instead of a second strip.
+   Keep the tray beside the canvas and above the dock, with every action pinned. */
+@media (max-height: 500px) and (max-width: 767px) and (orientation: landscape) {
+  .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel {
+    inset:auto 8px 90px auto;
+    width:min(264px, calc(100vw - 24px));
+    max-height:calc(100dvh - 108px);
+  }
+  .resident-map-points { display:none; }
+  .resident-map-controls .resident-map-remove:disabled { display:none; }
+  .resident-map-actions { grid-template-columns:1.25fr 1fr 1fr; gap:4px; }
+  .resident-map-actions button { white-space:nowrap; }
+}

@@ -27,7 +27,7 @@ function fixture(){
 }
 test('iframe DOM ownership survives foreground history metadata work; explicit close disposes and restore reauthorizes',async()=>{
  const f=fixture();try{assert(await f.open());const frame=f.all().find(n=>n.tagName==='iframe'),key=f.runtime.historyKey();assert.match(key,/^[\w-]+$/);frame.localFormDraft='typed state';
- assert.equal(f.runtime.isOpen(),true);assert.equal(f.all().find(n=>n.tagName==='iframe'),frame);assert.equal(f.calls.length,1);
+ assert.equal(f.runtime.isOpen(),true);assert.match(frame.attributes.allow,/camera 'none'/);assert.match(frame.attributes.allow,/microphone 'none'/);assert.match(frame.attributes.allow,/display-capture 'none'/);assert.doesNotMatch(frame.attributes.sandbox,/allow-top-navigation|allow-popups-to-escape-sandbox/);assert.equal(f.all().find(n=>n.tagName==='iframe'),frame);assert.equal(f.calls.length,1);
  f.runtime.close();assert.equal(frame.src,'about:blank');assert.equal(f.runtime.isOpen(),false);assert(await f.runtime.restore(key,{focus:false}));assert.equal(f.calls.length,2);assert.notEqual(f.all().find(n=>n.tagName==='iframe'),frame);assert.equal(f.runtime.historyKey(),key);
  }finally{f.runtime.destroy();}
 });

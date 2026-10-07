@@ -25,7 +25,7 @@ try{
   await page.locator('.inspector .editor-actions button').first().click();
   if(!before){assert.match(await page.locator('button[aria-label=Undo]').getAttribute('title'),/rotate Oak chair/i);}
   await page.getByRole('button',{name:'Close item details',exact:true}).click();if(!before)assert.equal(await page.evaluate(()=>document.activeElement.id),'game');
-  await page.getByRole('button',{name:'Close editor',exact:true}).click();await page.locator('#dock-build').click();assert.equal((await get()).editor.dirty,true);
+  await page.getByRole('button',{name:'Close editor',exact:true}).click();if(!before){await page.getByRole('button',{name:'Keep draft',exact:true}).click();assert.equal((await get()).editor.dirty,true);assert(await page.locator('#editor').isHidden());}await page.locator('#dock-build').click();assert.equal((await get()).editor.dirty,true);
   await page.locator('#game').focus();await page.keyboard.press('Control+z');await page.keyboard.press('Control+Shift+z');
   await page.getByRole('button',{name:'Save room',exact:true}).click();await page.waitForFunction(()=>!__universe.getEditor().dirty);
   assert.equal((await call(context,'/api/rooms/room')).room.scene.objects[0].rotation,(original.scene.objects[0].rotation+90)%360);

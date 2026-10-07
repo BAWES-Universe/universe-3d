@@ -1,3 +1,4 @@
+import {initializePublicGuests,publicGuestMethods} from './public-guests.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -13,7 +14,9 @@ export class Store {
     this.claimUnownedOnCreate=!!claimUnownedOnCreate;
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true });
     this.db = new DatabaseSync(filename);
-    this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+    // WAL selection/recovery can contend with another opening process too.
+    // Install the existing bounded wait policy before selecting the journal mode.
+    this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,name TEXT NOT NULL,woka TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'online',created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY COLLATE NOCASE,email TEXT COLLATE NOCASE UNIQUE,user_id TEXT NOT NULL UNIQUE REFERENCES users(id),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT REFERENCES users(id),public INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);
@@ -40,6 +43,7 @@ export class Store {
       }
       this.run('INSERT INTO metadata(key,value) VALUES(?,?)', 'seeded', '1');
     });
+    initializePublicGuests(this);
     migrateHierarchy(this);
     migratePersonalAreas(this);
     migrateSceneOperations(this);
@@ -48,7 +52,7 @@ export class Store {
   get(sql, ...args) { return this.db.prepare(sql).get(...args); }
   all(sql, ...args) { return this.db.prepare(sql).all(...args); }
   transaction(fn) { this.db.exec('BEGIN IMMEDIATE'); try { const result = fn(); this.db.exec('COMMIT'); return result; } catch (e) { this.db.exec('ROLLBACK'); throw e; } }
-  user(id) { const row = this.get('SELECT u.*,a.username FROM users u LEFT JOIN accounts a ON a.user_id=u.id WHERE u.id=?', id); return row && { id: row.id, name: row.name, woka: JSON.parse(row.woka), appearance: normalizeAppearance(JSON.parse(row.woka)), status: row.status, account: !!row.username, username: row.username || null }; }
+  user(id) { const row = this.publicGuestProfiles.get(id)??this.get('SELECT u.*,a.username FROM users u LEFT JOIN accounts a ON a.user_id=u.id WHERE u.id=?', id); return row && { id: row.id, name: row.name, woka: JSON.parse(row.woka), appearance: normalizeAppearance(JSON.parse(row.woka)), status: row.status, account: !!row.username, username: row.username || null, ...(this.isPublicGuest(id)?{ephemeralGuest:true}:{}) }; }
   createUser(name, woka) {
     const userId = randomUUID();
     this.transaction(() => {
@@ -61,7 +65,7 @@ export class Store {
     });
     return this.user(userId);
   }
-  membership(roomId, userId) { return this.get('SELECT * FROM members WHERE room_id=? AND user_id=?', roomId, userId); }
+  membership(roomId, userId) { if(this.isPublicGuest(userId))return this.publicGuestModeration.get(`${roomId}:${userId}`);return this.get('SELECT * FROM members WHERE room_id=? AND user_id=?', roomId, userId); }
   message(row, userId) {
     const reactions = {};
     for (const r of this.all('SELECT emoji,user_id FROM reactions WHERE message_id=?',row.id)) (reactions[r.emoji] ||= []).push(r.user_id);
@@ -79,7 +83,7 @@ export class Store {
     const hasMore=rows.length>limit;rows=rows.slice(0,limit);const last=rows.at(-1);
     return {messages:rows.reverse().map(r=>this.message(r,userId)),hasMore,nextCursor:hasMore&&last?`${last.created_at}_${last.sequence}`:null};
   }
-  close() { this.db.close(); }
+  close() { this.publicGuestProfiles.clear();this.publicGuestSessions.clear();this.publicGuestModeration.clear();this.db.close(); }
 }
 
-Object.assign(Store.prototype,hierarchyMethods,personalAreaMethods);
+Object.assign(Store.prototype,hierarchyMethods,personalAreaMethods,publicGuestMethods);

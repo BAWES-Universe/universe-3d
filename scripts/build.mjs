@@ -7,6 +7,10 @@ await rm('dist',{recursive:true,force:true});
 await mkdir('dist',{recursive:true}); await mkdir('evidence',{recursive:true});
 await cp('public','dist',{recursive:true});
 const result=await build({entryPoints:['src/main.js'],outdir:'dist',entryNames:'[name]',chunkNames:'chunks/[name]-[hash]',bundle:true,format:'esm',splitting:true,minify:true,target:'es2022',metafile:true});
+// Admission must stay one allowed script even in setup-only mode. Bundle its
+// shared destination validator without adding a runtime chunk dependency.
+const signup=await build({entryPoints:['public/signup.js'],outfile:'dist/signup.js',bundle:true,format:'iife',minify:true,target:'es2022',metafile:true});
+Object.assign(result.metafile.inputs,signup.metafile.inputs);Object.assign(result.metafile.outputs,signup.metafile.outputs);
 await writeFile('evidence/build-metafile.json',JSON.stringify(result.metafile,null,2));
 
 // Only bundler-generated paths in this explicitly content-hashed namespace

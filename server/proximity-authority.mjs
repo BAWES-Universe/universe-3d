@@ -73,7 +73,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
       for(const[key,p]of presence){
         if(p.roomId!==roomId||key!==`${roomId}:${p.userId}`)continue;
         const accountId=p.userId,user=store.get('SELECT id,status FROM users WHERE id=?',accountId);
-        if(!user||!store.canSeeRoom(row,accountId))continue;
+        if(!user||store.isPublicGuest?.(accountId)||!store.canSeeRoom(row,accountId))continue;
         integer(p.lastSeen,'lastSeen');invariant(p.lastSeen<=at,'FUTURE_PRESENCE');
         if(at-p.lastSeen>=config.memberTtlMs)continue;
         const sessions=store.all('SELECT token_hash FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? LIMIT ?',roomId,accountId,at,config.maxSessionsPerMember+1);
@@ -130,7 +130,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
     if(count>=config.maxSessionsPerMember)v.fail(429,'PROXIMITY_SESSION_LIMIT');
     const pairs=new Map();
     for(const p of presence.values()){
-      if(at-p.lastSeen>=config.memberTtlMs||!store.get('SELECT 1 FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? AND token_hash!=?',p.roomId,p.userId,at,s.token_hash))continue;
+      if(store.isPublicGuest?.(p.userId)||at-p.lastSeen>=config.memberTtlMs||!store.get('SELECT 1 FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? AND token_hash!=?',p.roomId,p.userId,at,s.token_hash))continue;
       let allowed=false;try{allowed=store.canSeeRoom(store.roomRow(p.roomId),p.userId);}catch{}if(allowed)pairs.set(`${p.roomId}:${p.userId}`,{roomId:p.roomId,accountId:p.userId});
     }
     pairs.set(`${roomId}:${s.user_id}`,{roomId,accountId:s.user_id});

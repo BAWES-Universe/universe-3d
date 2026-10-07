@@ -12,7 +12,7 @@
   <script src="/signup.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#content">Skip to your account</a>
+  <button class="skip-link" type="button">Skip to your account</button>
   <div class="admission-shell">
     <header class="site-header"><img class="signup-brand" src="/assets/bawes-universe-logo.png" alt="BAWES Universe" width="184" height="92"><span class="header-note">Make room for possibility.</span></header>
     <main id="content" class="admission-layout" tabindex="-1">
@@ -26,19 +26,21 @@
           <form id="signup-form">
             <label for="signup-name">What should we call you?</label><input id="signup-name" name="name" autocomplete="nickname" maxlength="40" required placeholder="Your name">
             <label for="signup-email">Email</label><input id="signup-email" name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required placeholder="you@example.com" aria-describedby="email-help"><p id="email-help" class="field-help">We trim surrounding spaces and treat email addresses as lowercase. Your email stays private.</p>
-            <label for="signup-password">Password</label><div class="password-field"><input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="16" maxlength="256" required aria-describedby="password-help"><button class="password-toggle" type="button" data-password="signup-password" aria-label="Show password" aria-pressed="false">Show</button></div><p id="password-help" class="field-help">16–256 characters, without spaces at either end or control characters.</p>
-            <label for="signup-confirm">Confirm password</label><div class="password-field"><input id="signup-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="16" maxlength="256" required><button class="password-toggle" type="button" data-password="signup-confirm" aria-label="Show confirmation password" aria-pressed="false">Show</button></div>
+            <label for="signup-password">Password</label><div class="password-field"><input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="256" required aria-describedby="password-help"><button class="password-toggle" type="button" data-password="signup-password" aria-label="Show password" aria-pressed="false">Show</button></div><p id="password-help" class="field-help">10–256 characters, without spaces at either end or control characters.</p>
+            <label for="signup-confirm">Confirm password</label><div class="password-field"><input id="signup-confirm" name="confirmation" type="password" autocomplete="new-password" minlength="10" maxlength="256" required><button class="password-toggle" type="button" data-password="signup-confirm" aria-label="Show confirmation password" aria-pressed="false">Show</button></div>
             <p id="signup-error" class="form-notice error" role="alert" hidden></p><button id="signup-submit" class="button primary wide" type="submit">Create my account</button>
           </form>
           <button id="signup-signin" class="button quiet wide" type="button">Already have an account? Sign in</button>
         </div>
         <div id="signin-view" class="view" hidden>
           <p class="eyebrow">WELCOME BACK</p><h2 id="signin-heading" tabindex="-1">Your people await.</h2><p id="signin-note" class="muted">Sign in with your email or existing username.</p>
+          <a id="signin-continue" class="button secondary wide" href="/" hidden>Continue with current account</a>
           <form id="signin-form"><label for="signin-identifier">Email or username</label><input id="signin-identifier" name="identifier" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="254" required>
             <label for="signin-password">Password</label><div class="password-field"><input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="256" required><button class="password-toggle" type="button" data-password="signin-password" aria-label="Show sign-in password" aria-pressed="false">Show</button></div>
             <p id="signin-error" class="form-notice error" role="alert" hidden></p><button id="signin-submit" class="button primary wide" type="submit">Sign in</button>
           </form><button id="signin-create" class="button quiet wide" type="button">New here? Create an account</button><p class="scope-note">This dev setup does not verify email and has no password reset. Keep your password safe.</p>
         </div>
+        <div id="entering-view" class="view" hidden><p class="eyebrow">YOU’RE READY</p><h2 tabindex="-1">Opening Universe</h2><p class="muted" role="status">Taking you to your place…</p><a id="continue-universe" class="button primary wide" href="/">Continue to Universe</a></div>
         <div id="account-view" class="view" hidden>
           <p id="account-eyebrow" class="eyebrow">YOU’RE SIGNED IN</p><h2 id="account-heading" tabindex="-1">A place to begin.</h2><p id="account-note" class="muted"></p>
           <label for="account-id">Your account ID</label><textarea id="account-id" class="account-id" rows="2" readonly spellcheck="false"></textarea><button id="copy-account-id" class="button secondary wide" type="button">Copy account ID</button><p id="copy-status" class="field-help" role="status"></p>

@@ -93,16 +93,21 @@ export function createRequestSecurity(config, { listeningPort = () => config.por
       const localSuffix = port === 80 ? '' : `:${port}`;
       const hosts = config.allowedHosts ?? ['127.0.0.1', 'localhost', '[::1]'].map(host => host + localSuffix);
       if (!authority || !hosts.includes(authority)) reject('HOST_REJECTED', 'The request Host is not allowed');
-      // An invitation is commonly opened from another origin. This sole safe
-      // navigation serves a non-consuming document; APIs, frames, resources,
-      // query-bearing URLs and all mutations keep the existing rejection.
-      const invitationNavigation = ((config.registrationMode === 'invite-only' && req.url === '/join.html') ||
-        (config.registrationMode === 'open' && req.url === '/signup.html')) &&
-        req.method === 'GET' &&
+      const userDocumentNavigation = req.method === 'GET' &&
         req.headers['sec-fetch-mode'] === 'navigate' &&
         req.headers['sec-fetch-dest'] === 'document' &&
         req.headers['sec-fetch-user'] === '?1';
-      if (req.headers['sec-fetch-site'] === 'cross-site' && !invitationNavigation) reject('ORIGIN_REJECTED', 'Cross-site requests are not allowed');
+      const invitationNavigation = userDocumentNavigation &&
+        ((config.registrationMode === 'invite-only' && req.url === '/join.html') ||
+        (config.registrationMode === 'open' && req.url === '/signup.html'));
+      // Only public/open/ready shell documents and generated destination links.
+      // Match the raw target, not a normalized pathname: aliases, extra queries
+      // and invitation capabilities never acquire this navigation exception.
+      const publicEntryNavigation = userDocumentNavigation && config.mode === 'public' &&
+        config.registrationMode === 'open' && config.setupOnly === false &&
+        typeof req.url === 'string' &&
+        /^(?:\/|\/index\.html)(?:\?room=[A-Za-z0-9_-]{1,80}(?:&entry=[a-z0-9][a-z0-9_-]{0,63})?)?(?![\s\S])/.test(req.url);
+      if (req.headers['sec-fetch-site'] === 'cross-site' && !invitationNavigation && !publicEntryNavigation) reject('ORIGIN_REJECTED', 'Cross-site requests are not allowed');
       const suppliedOrigin = req.headers.origin;
       const origin = suppliedOrigin === undefined ? null : parseOrigin(suppliedOrigin);
       const origins = config.allowedOrigins ?? [`${req.socket?.encrypted ? 'https' : 'http'}://${authority}`];

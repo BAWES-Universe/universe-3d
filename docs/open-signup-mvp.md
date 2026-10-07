@@ -4,6 +4,10 @@ Open signup is an explicit option: `UNIVERSE_REGISTRATION_MODE=open`. Public and
 
 `/signup.html` creates an ordinary account, then asks the person to sign in separately. Email is trimmed and lowercased as a product rule. The supported ASCII address subset accepts plus addressing, at most 254 characters overall and 64 in the local part. Email is stored only in the nullable, case-insensitive unique `accounts.email` credential column; public profiles use a generated username. Existing username login still works.
 
+All account creation paths (open signup, invite redemption, local profile registration, and offline provisioning) use the shared 10–256 character password policy. Outer whitespace and control characters are rejected; confirmation stays visible in both signup forms. Passwords remain salted scrypt hashes. The shorter minimum reduces invite friction; it does not add email verification or password recovery. Save the chosen password safely.
+
+`POST /api/signup` continues to take `{email, password, name}`. `POST /api/login` accepts `{identifier, password}`, where `identifier` is an email in open mode or an existing username. The original `email` and `username` fields remain supported for older clients. When `identifier` is supplied, conflicting `email` or `username` aliases are rejected rather than choosing an account silently. Requests using only the original fields retain their existing precedence. Signup displays a visible retryable error for rate-limit (429) responses, including a non-JSON proxy response.
+
 The new email column is created only for new databases. Enabling open signup against an incompatible account schema fails with `OPEN_SIGNUP_SCHEMA_REQUIRED`; it does not migrate that database.
 
 ## Initial owner setup

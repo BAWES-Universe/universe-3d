@@ -4,8 +4,9 @@ import {WALK_SPEED,FAST_WALK_MULTIPLIER} from './motion.js';
 export function resolveAvatarMotion(p){
  const dirs=[[0,1],[-1,0],[1,0],[0,-1]],facing=dirs[p.direction??0]||dirs[0];
  const heading=Number.isFinite(p.rotation)?p.rotation:Number.isFinite(p.heading)?p.heading:Math.atan2(facing[0],facing[1]);
- const moving=!!p.moving,running=moving&&p.running===true;
+ const seated=typeof p.seatId==='string'&&!!p.seatId,moving=!seated&&!!p.moving,running=moving&&p.running===true;
  const speed=moving?WALK_SPEED*(running?FAST_WALK_MULTIPLIER:1):0;
  const velocity=p.velocity&&Number.isFinite(p.velocity.x)&&Number.isFinite(p.velocity.z)?{x:p.velocity.x,z:p.velocity.z}:{x:Math.sin(heading)*speed,z:Math.cos(heading)*speed};
- return {heading,velocity,moving,running};
+ const waving=typeof p.emote==='string'&&(p.emote.includes('👋')||p.emote.toLowerCase()==='wave')&&(!Number.isFinite(p.emoteAt)||Date.now()-p.emoteAt<5000);
+ return {heading,velocity:seated?{x:0,z:0}:velocity,moving,running,seated,seatHeight:seated&&Number.isFinite(p.seatHeight)?p.seatHeight:.61,airborne:!seated&&p.grounded===false,waving};
 }

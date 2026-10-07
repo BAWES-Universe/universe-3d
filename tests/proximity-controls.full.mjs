@@ -50,6 +50,26 @@ const cameraKeys=['yaw','tilt','distance','follow','framingMode'];
 async function check(name,fn){phase=name;const start=Date.now();console.log('RUN',name);await fn();checks.push({name,status:'passed',elapsedMs:Date.now()-start});console.log('PASS',name);}
 async function frames(page,count=6){await page.evaluate(count=>new Promise(resolve=>{const tick=()=>--count<=0?resolve():requestAnimationFrame(tick);requestAnimationFrame(tick);}),count);}
 async function settled(page){await page.waitForFunction(()=>__universe.getMotion().speed<.02,null,{timeout:15000});}
+// Following can slide tangentially along a wall while converging to the leader's
+// Z coordinate. The app caps each motion tick at .25s, so a throttled renderer
+// needs a simulation-time budget rather than the generic 15s wall-clock wait.
+// Keep the same speed threshold and reject wall penetration on every observed frame.
+async function settledAtWall(page){
+ return page.evaluate(()=>new Promise((resolve,reject)=>{
+  let last=performance.now(),simulatedSeconds=0,observedFrames=0,maxX=-Infinity,done=false,frame;
+  const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);cancelAnimationFrame(frame);error?reject(error):resolve(value);};
+  const timer=setTimeout(()=>finish(Error('Wall convergence made insufficient rendered progress within 60 seconds')),60000);
+  const tick=now=>{
+   if(done)return;simulatedSeconds+=Math.max(0,Math.min(.25,(now-last)/1000));last=now;observedFrames++;
+   const position=__universe.getState().position,speed=__universe.getMotion().speed;maxX=Math.max(maxX,position.x);
+   if(position.x>=3.551)return finish(Error('Following crossed the wall face: '+JSON.stringify(position)));
+   if(speed<.02)return finish(null,{simulatedSeconds,observedFrames,maxX,speed});
+   if(simulatedSeconds>=8)return finish(Error('Following failed the unchanged settling threshold after 8 simulated seconds: '+JSON.stringify({position,speed})));
+   frame=requestAnimationFrame(tick);
+  };frame=requestAnimationFrame(tick);
+ }));
+}
+
 async function readyControls(page,count=2){await page.waitForFunction(count=>{const s=__universe.getProximityControls();return s.canAct&&!s.operation&&s.context?.participants.length===count;},count,{timeout:20000});}
 async function gameplay(page){await page.bringToFront();await page.locator('#game').focus();await frames(page,3);}
 async function nativeInvite(leader,follower,leaderName){await readyControls(leader);await leader.getByRole('button',{name:'Follow me',exact:true}).click();await follower.waitForFunction(name=>__universe.getProximityControls().invitations.some(invitation=>invitation.leaderName===name),leaderName);}
@@ -183,7 +203,7 @@ try{
   await alice.locator('#dock-chat').click();await alice.waitForFunction(()=>__universe.getFollowMotion().paused);const stopped=await position(alice);await alice.keyboard.press('Control+k');await alice.getByRole('combobox').fill('Stop following');const option=alice.getByRole('option').filter({hasText:'Stop following or leading'});assert.equal(await option.count(),1);await option.click();await alice.waitForFunction(()=>!__universe.getProximityControls().context?.following&&!__universe.getProximityControls().motion);await unchangedAcrossFrames(alice,stopped);assert.equal(await alice.locator('#social').isVisible(),true);await alice.getByRole('button',{name:'Close social panel',exact:true}).click();
  });
  await check('Direct following stops at the known wall instead of teleporting through it',async()=>{
-  await resetPair();await nativeInvite(bob,alice,names.bob);await nativeAccept(alice,names.bob);await alice.locator('#dock-chat').click();await alice.waitForFunction(()=>__universe.getFollowMotion().paused);const before=await position(alice);await walkAxis(bob,'z',6);await walkAxis(bob,'x',8);await walkAxis(bob,'z',0);await unchangedAcrossFrames(alice,before);await alice.getByRole('button',{name:'Close social panel',exact:true}).click();await gameplay(alice);await alice.waitForFunction(()=>__universe.getState().position.x>3.35,null,{timeout:20000});await settled(alice);const blocked=await position(alice);await unchangedAcrossFrames(alice,blocked,12);assert(blocked.x<3.551,JSON.stringify(blocked));assert(Math.abs(blocked.z)<2,'Fixture must hit the face of the wall');assert(canStand(seeds[0].rooms[0].scene,blocked.x,blocked.z));const leader=await position(bob);assert(distance(blocked,leader)>Math.sqrt(2000)/proximityFixture.sourceUnitsPerWorldUnit);assert((await controls(alice)).motion,'Collision must not erase consent');motionSamples.push({kind:'known-wall',before,blocked,leader,obstacle});await capture(alice,'actual-3d-follow-collision');
+  await resetPair();await nativeInvite(bob,alice,names.bob);await nativeAccept(alice,names.bob);await alice.locator('#dock-chat').click();await alice.waitForFunction(()=>__universe.getFollowMotion().paused);const before=await position(alice);await walkAxis(bob,'z',6);await walkAxis(bob,'x',8);await walkAxis(bob,'z',0);await unchangedAcrossFrames(alice,before);await alice.getByRole('button',{name:'Close social panel',exact:true}).click();await gameplay(alice);await alice.waitForFunction(()=>__universe.getState().position.x>3.35,null,{timeout:20000});const convergence=await settledAtWall(alice);const blocked=await position(alice);await unchangedAcrossFrames(alice,blocked,12);assert(blocked.x<3.551,JSON.stringify(blocked));assert(Math.abs(blocked.z)<2,'Fixture must hit the face of the wall');assert(canStand(seeds[0].rooms[0].scene,blocked.x,blocked.z));const leader=await position(bob);assert(distance(blocked,leader)>Math.sqrt(2000)/proximityFixture.sourceUnitsPerWorldUnit);assert((await controls(alice)).motion,'Collision must not erase consent');motionSamples.push({kind:'known-wall',before,blocked,leader,obstacle,convergence});await capture(alice,'actual-3d-follow-collision');
  });
  await check('Native room travel revokes accepted follow and old movement cannot revive',async()=>{
   await visit(alice,'The Studio','studio');await alice.waitForFunction(()=>!__universe.getProximityControls().context?.following);assert.equal((await controls(alice)).motion,null);assert.equal((await controller(alice)).armed,false);const stationary=await position(alice);await walkAxis(bob,'z',-5);await unchangedAcrossFrames(alice,stationary);await visit(alice,'The Commons','commons');

@@ -82,23 +82,95 @@
   }
 }
 .quest-tracker {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  max-width: min(460px, calc(100vw - 48px));
-}
-.quest-pill {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap !important;
   display: block;
-  border-radius: 24px;
-  box-shadow: var(--u-shadow-flat);
-  background: var(--u-surface-flat);
+  width: 330px;
+  max-width: min(330px, calc(var(--hud-width, 100vw) - 48px));
+  max-height: min(44dvh, 340px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--u-card-border, #574865);
+  border-radius: 16px;
+  background: var(--u-surface-raised, #201d2c);
+  box-shadow: var(--u-shadow-raised);
 }
-.quest-tracker .quest-button {
-  flex-shrink: 1;
+.quest-tracker-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-block-start: -5px;
+}
+.quest-tracker-heading .quest-button {
+  background: transparent;
+  border-color: transparent;
+  padding: 5px 7px;
+  font-size: .75rem;
+  flex-shrink: 0;
+}
+.quest-tracker-title {
+  display: block;
+  font-size: max(.95rem, 14px);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.quest-next-step {
+  font-size: max(.95rem, 14px);
+  line-height: 1.45;
+  margin: 9px 0;
+  overflow-wrap: anywhere;
+}
+.quest-state {
+  display: inline-block;
+  font-size: .72rem;
+  line-height: 1.3;
+  color: var(--quest-soft);
+}
+.quest-card > .quest-state {
+  margin-top: 10px;
+}
+.quest-progress {
+  color: var(--quest-soft);
+  font-size: max(.85rem, 12px);
+  line-height: 1.4;
+  margin: 7px 0;
+}
+.quest-tracker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quest-tracker-actions .quest-button {
+  flex: 1 1 96px;
+  min-width: 0;
+  padding: 8px;
+  font-size: max(.85rem, 12px);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.quest-build-hint {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--u-card-border, #574865);
+  margin: 5px 0 0;
+  padding-top: 7px;
+  font-size: max(.85rem, 12px);
+  line-height: 1.4;
+  color: var(--u-text-soft, #fff);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.quest-build-hint[hidden] {
+  display: none;
+}
+#editor :is(.builder-tray,.builder-terrain,.builder-inspector,.builder-tools) > .quest-build-hint {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 0;
+  border-bottom: 1px solid var(--u-card-border, #574865);
+  background: var(--u-surface-flat, #201d2c);
 }
 .quest-payoff {
   bottom: 170px;
@@ -299,12 +371,37 @@
   .quest-card-actions > .quest-button {
     flex: 1 1 auto;
   }
-  .quest-tracker .quest-pill {
-    min-width: 0;
-  }
   .quest-tracker {
     pointer-events: auto;
   }
+}
+/* Keep the objective in the opposite lane from the touch movement controls.
+   It can scroll at large text sizes without covering the dock or joystick. */
+@media (max-width: 700px) {
+  .quest-root .quest-tracker,
+  .quest-root .quest-invitation {
+    top: auto;
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    inset-inline-start: max(12px, env(safe-area-inset-left, 0px));
+    inset-inline-end: auto;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    width: min(330px, calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    max-width: calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-height: min(44dvh, 340px);
+    overflow: auto;
+    box-sizing: border-box;
+  }
+  #app[data-movement-side=left] .quest-tracker,
+  #app[data-movement-side=left] .quest-invitation {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right, 0px));
+    inset-inline-start: auto;
+    inset-inline-end: max(12px, env(safe-area-inset-right, 0px));
+  }
+  .quest-tracker { padding: 9px; }
+  .quest-tracker-title,
+  .quest-tracker .quest-next-step { font-size: max(.95rem, 14px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .quest-root * {
@@ -323,5 +420,95 @@
   }
   .quest-close {
     min-width: 48px;
+  }
+}
+
+/* Area information and quest guidance share a scrollable lane on compact
+   screens. Neither card can paint over the other or the movement controls. */
+.quest-context { display: contents; }
+.quest-area-toggle[hidden] { display: none !important; }
+@media (max-width: 700px), (max-height: 540px), (pointer: coarse) {
+  .quest-root .quest-context {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    bottom: var(--quest-context-bottom, 76px);
+    width: min(330px, calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    max-height: var(--quest-context-height, 44dvh);
+    overflow: auto;
+    overscroll-behavior: contain;
+    pointer-events: auto;
+  }
+  #app[data-movement-side=left] .quest-context {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right, 0px));
+  }
+  #app .quest-context > :is(.quest-invitation,.quest-tracker,.quest-payoff) {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    max-height: none;
+    flex: 0 0 auto;
+    overflow: visible;
+    box-sizing: border-box;
+  }
+  #app .quest-context > :is(.quest-invitation,.quest-tracker) {
+    pointer-events: auto;
+  }
+  #app .quest-context #area-banner#area-banner {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    min-height: 0;
+    flex: 0 0 auto;
+    padding: 8px 48px 8px 8px;
+    overflow: visible;
+  }
+  #app .quest-context[data-has-quest=true] #area-banner#area-banner {
+    flex: 0 0 auto;
+    display: block;
+  }
+  #app .quest-context #area-banner[data-quest-collapsed=true] > :not(.quest-area-toggle):not(.area-banner-dismiss) {
+    display: none !important;
+  }
+  .quest-area-toggle {
+    border: 0;
+    border-radius: 10px;
+    padding: 4px;
+    background: transparent;
+    color: inherit;
+    text-align: start;
+    overflow-wrap: anywhere;
+    width: 100%;
+  }
+  /* Keep one native scroll owner, even when only one action fits in the lane. */
+  .quest-context :is(.quest-button,.quest-area-toggle,.area-banner-dismiss) { scroll-snap-align: center; }
+  .quest-context[data-tight=true] { scroll-snap-type: y proximity; }
+  .quest-context[data-tight=true] :is(.quest-tracker-actions,.quest-invitation-actions) .quest-button {
+    flex-basis: 100%;
+    padding-block: 4px;
+  }
+  #app .quest-context #area-banner .area-banner-dismiss { top: 8px; font-size: 24px; }
+}
+
+@media (max-width: 700px), (max-height: 540px), (pointer: coarse) {
+  #app:has(.quest-context[data-has-quest=true]:not([hidden])) #toast {
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    bottom: var(--quest-receipt-bottom, 76px);
+    transform: none;
+    width: min(330px, calc(100vw - 148px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    box-sizing: border-box;
+  }
+  #app[data-movement-side=left]:has(.quest-context[data-has-quest=true]:not([hidden])) #toast {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right, 0px));
   }
 }

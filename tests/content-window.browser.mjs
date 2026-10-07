@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {build} from 'esbuild';
 import {launch} from '../scripts/browser.mjs';
+import {observeNativeTouchResize} from './native-touch-resize.mjs';
 const source=`import {mountEmbeddedPanels} from './src/embedded-panels.js';
 const root=document.querySelector('#content'),world=document.querySelector('#world'),dialog=document.querySelector('#higher');
 window.changes=[];window.opens=[];window.externalCalls=0;window.gameWidth=null;
@@ -55,9 +56,9 @@ try{
   await viewportSize({width:1440,height:900});await page.evaluate(()=>{gameWidth=1023;panels.refreshLayout();});assert.equal(await maximize().count(),0);await page.evaluate(()=>{gameWidth=1024;panels.refreshLayout();});assert.equal(await maximize().count(),1);await page.evaluate(()=>{gameWidth=null;panels.refreshLayout();});
  });
  await check('native touch drag and touchcancel release gesture and preserve prior width',async()=>{
-  await viewportSize({width:844,height:700});const box=await handle().boundingBox(),before=await width(),cdp=await context.newCDPSession(page);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+84,y:box.y+60,id:1}]});assert.equal((await state()).resizing,true);assert((await width())<before);await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});assert.equal((await state()).resizing,false);assert.equal(await width(),before);
-  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+64,y:box.y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});assert.equal((await state()).resizing,false);assert.equal(await width(),before-40);await cdp.detach();await retained();
+  await viewportSize({width:844,height:700});const box=await handle().boundingBox(),before=await width(),cdp=await context.newCDPSession(page),cancelled=await observeNativeTouchResize(handle());
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+84,y:box.y+60,id:1}]});assert.equal((await state()).resizing,true);assert((await width())<before);await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await cancelled('pointercancel');assert.equal((await state()).resizing,false);assert.equal(await width(),before);
+  const committed=await observeNativeTouchResize(handle());await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+24,y:box.y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+64,y:box.y+60,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await committed('pointerup');assert.equal((await state()).resizing,false);assert.equal(await width(),before-40);await cdp.detach();await retained();
  });
  await check('320 portrait, landscape and enlarged text keep Return, fallback and permitted Close reachable',async()=>{
   for(const [w,h]of[[320,568],[844,390],[1023,768],[1024,768]]){

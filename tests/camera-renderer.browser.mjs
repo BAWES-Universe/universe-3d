@@ -1,3 +1,4 @@
+import {CAMERA_LIMITS} from '../src/camera-rig.js';
 import {build} from 'esbuild';
 import {readFile,writeFile,rm} from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ try{
  for(const angle of [0,.55,-1.1]){await page.evaluate(a=>r.rotate(a),angle);await page.waitForTimeout(100);const picked=await page.evaluate(()=>{const p=r.screenPoint(-6,-2,1);return {p,hit:r.pick(p.x,p.y)}});assert.equal(picked.hit.id,'commons-table');check('camera-relative merged face pick at orbit '+angle);}
  const ray=await page.evaluate(()=>{const p=r.screenPoint(19,15,0);return r.pick(p.x,p.y)});assert(ray.point);assert(Math.abs(ray.point.x-19)<.015);assert(Math.abs(ray.point.z-15)<.015);check('ground ray projection persists outside floor bounds');
  await page.evaluate(()=>r.orbit(70,35));const a=await page.evaluate(()=>r.getCameraState());assert.notEqual(a.yaw,initial.yaw);assert.notEqual(a.tilt,initial.tilt);await page.evaluate(()=>r.pan(80,-40));assert.equal((await page.evaluate(()=>r.getCameraState())).follow,false);check('orbit, tilt and pan change pose without follow snapping');
- await page.evaluate(()=>{r.zoom(-999);r.render(.01)});assert.equal((await page.evaluate(()=>r.getCameraState())).distance,10);await page.evaluate(()=>r.zoom(999));assert.equal((await page.evaluate(()=>r.getCameraState())).distance,58);check('zoom clamps safely');
+ await page.evaluate(()=>{r.zoom(-999);r.render(.01)});assert.equal((await page.evaluate(()=>r.getCameraState())).distance,CAMERA_LIMITS.minDistance);await page.evaluate(()=>r.zoom(999));assert.equal((await page.evaluate(()=>r.getCameraState())).distance,CAMERA_LIMITS.maxDistance);check('zoom clamps safely');
  await page.evaluate(()=>{r.resetCamera();r.setGhost({type:'table',x:-2,z:5,rotation:45,valid:true});r.setDestination({x:4,z:6});});await page.waitForTimeout(350);await page.screenshot({path:'evidence/camera-ghost-valid.png'});
  const ghostPick=await page.evaluate(()=>{const p=r.screenPoint(-2,5,1);return r.pick(p.x,p.y)});assert.notEqual(ghostPick.id,'ghost-preview');check('ghost cannot steal placement or selection ray');
  await page.evaluate(()=>r.setGhost({type:'table',x:-2,z:5,rotation:45,valid:false}));await page.waitForTimeout(250);await page.screenshot({path:'evidence/camera-ghost-invalid.png'});

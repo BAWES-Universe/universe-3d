@@ -55,7 +55,7 @@ The operator chooses each unique password. These commands do not generate one, e
 UNIVERSE_DB=/data/universe.sqlite node scripts/operator-account.mjs bootstrap-owner
 ```
 
-In an interactive terminal, the CLI asks for display name, lowercase username and a hidden password twice. Passwords must contain 16–256 characters, with no outer whitespace or control characters. The account uses the application's salted scrypt hash format. New SQLite files and sidecars use an owner-only umask. Keep the containing volume private as well.
+In an interactive terminal, the CLI asks for display name, lowercase username and a hidden password twice. Passwords must contain 10–256 characters, with no outer whitespace or control characters. The account uses the application's salted scrypt hash format. New SQLite files and sidecars use an owner-only umask. Keep the containing volume private as well.
 
 The command initializes the normal seeds if necessary and atomically claims them for this explicitly created account. It refuses a prior bootstrap, any existing profile/account/session, or any existing ownership. It will not silently convert a first local guest into the public operator. A failed fresh public startup may have created only the empty seeded database; that is still safe to bootstrap. Never delete existing data to force this command through; investigate a refusal.
 

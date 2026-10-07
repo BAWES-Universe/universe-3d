@@ -127,12 +127,12 @@ try{
  await press(page.locator('#rotate-camera'));await press(page.locator('#dock-emote'));
  assert.equal(await page.locator('#social').isVisible(),true);assert.equal(await page.locator('.embedded-panel').isVisible(),true);await hit(page.getByRole('button',{name:'Close Express',exact:true}));
  const before=await page.evaluate(()=>({position:__universe.getState().position,camera:__universe.getCamera()}));
- assert.equal(before.camera.follow,true);assert.deepEqual(before.camera.target,before.position,'native Home establishes an exact stationary follow target');assert.notEqual(before.camera.yaw,homeCamera.yaw,'native Rotate establishes a nondefault camera before testing the Home key');
+ assert.equal(before.camera.follow,true);assert.equal(before.position.y,0,'HUD fixture starts on the ground');assert.deepEqual({...before.camera.target,y:before.camera.targetY},before.position,'native Home establishes an exact stationary3D follow target');assert.notEqual(before.camera.yaw,homeCamera.yaw,'native Rotate establishes a nondefault camera before testing the Home key');
  const expression=page.locator('.express-input');await press(expression);await expression.pressSequentially('e f r w');assert.equal(await expression.inputValue(),'e f r w');await page.keyboard.press('ArrowLeft');await page.keyboard.press('Home');
  assert.deepEqual(await expression.evaluate(el=>({focused:document.activeElement===el,start:el.selectionStart,end:el.selectionEnd})),{focused:true,start:0,end:0},'native editing keys stay in the Express input');
  const cdp=await ctx.newCDPSession(page);await cdp.send('Input.imeSetComposition',{text:'編集中',selectionStart:3,selectionEnd:3});await settle();assert.equal(await expression.inputValue(),'編集中e f r w');
  const after=await page.evaluate(()=>({position:__universe.getState().position,camera:__universe.getCamera()}));assert.deepEqual(after.position,before.position);
- for(const key of['yaw','tilt','distance','follow','framingMode','target'])assert.deepEqual(after.camera[key],before.camera[key],`Express input must preserve camera ${key}`);
+ for(const key of['yaw','tilt','distance','follow','framingMode','target','targetY'])assert.deepEqual(after.camera[key],before.camera[key],`Express input must preserve camera ${key}`);
  await cdp.send('Input.imeSetComposition',{text:'',selectionStart:0,selectionEnd:0});await page.screenshot({path:out+'/desktop-express-chat-content.png'});await press(page.getByRole('button',{name:'Close Express',exact:true}));
  await historyDisposition('Close Express after chat plus embed');pass('Express remains usable with chat plus embed; native text/IME leaves world and camera unchanged',{cameraPrecondition:'Native Home then Rotate, exact stationary follow target and nondefault yaw',before,after});
  await reset();await keyboardDockCheck();
