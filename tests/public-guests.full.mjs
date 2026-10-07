@@ -44,7 +44,7 @@ try{
  for(const viewport of[{width:1280,height:900},{width:320,height:568},{width:667,height:375}])for(const named of[false,true]){
   const mobile=viewport.width<800,label=`${viewport.width}x${viewport.height}-${named?'named':'root'}`;
   await fresh(mobile,viewport);const target=named?'/?room=studio&entry=welcome':'/',room=named?'studio':'commons',start=wire.length;
-  const {response}=await link(target,mobile);assert.equal(response.status(),200);await page.getByRole('button',{name:'Explore as guest'}).waitFor();assert.equal(await page.locator('#display-name').inputValue(),'');assert.equal(await page.locator('#display-name').getAttribute('required'),null);
+  const {response}=await link(target,mobile);assert.equal(response.status(),200);await page.getByRole('button',{name:'Explore as guest'}).waitFor();await page.waitForFunction(()=>window.__universe&&!document.getElementById('join-button').disabled);assert.equal(await page.locator('#display-name').inputValue(),'');assert.equal(await page.locator('#display-name').getAttribute('required'),null);
   if(mobile)await page.getByRole('button',{name:'Explore as guest'}).tap();else await page.getByRole('button',{name:'Explore as guest'}).press('Enter');
   let state=await ready(room);assert(state.user.ephemeralGuest);assert(!state.user.account);assertOrdinary(state.user.id);assert.equal(state.room.capabilities.canBuild,false);if(named)assert.equal(state.destination.entry,'welcome');let guestId=state.user.id;const session=(await context.cookies()).find(cookie=>cookie.name==='universe_session');assert(session);assert.equal(session.expires,-1);assert.equal(session.httpOnly,true);assert.equal(session.secure,true);assert.equal(session.sameSite,'Strict');
   await page.waitForTimeout(500);assert.equal(wire.slice(start).filter(r=>r.path.startsWith('/api/')&&r.status>=400&&!['/api/session'].includes(r.path)).length,0,'No guest background API errors');assert.deepEqual(wire.slice(start).filter(r=>r.method==='POST'&&['/api/signup','/api/login','/api/quests/preferences','/api/quests/notices/claim','/api/media/state'].includes(r.path)),[]);
@@ -54,7 +54,19 @@ try{
    if(mobile)await page.locator('#jump-button').tap();else{await page.locator('#game').focus();await page.keyboard.press('Space');}await page.waitForFunction(()=>__universe.getMotion().y>.1);await page.waitForFunction(()=>__universe.getMotion().grounded);
   }
   if(mobile)motionEvidence.push({label,records:await guestTouchMotion({page,context,out,label})});
-  if(!mobile){const before=await page.evaluate(()=>__universe.getState().position);await page.locator('#game').focus();await page.keyboard.down('w');await page.waitForTimeout(300);await page.keyboard.up('w');const moved=await page.evaluate(()=>__universe.getState().position);assert(Math.hypot(moved.x-before.x,moved.z-before.z)>.1);const camera=await page.evaluate(()=>__universe.getCamera());await page.keyboard.press(']');await page.waitForTimeout(150);assert.notDeepEqual(await page.evaluate(()=>__universe.getCamera()),camera);}
+  if(!mobile){
+   const before=await page.evaluate(()=>__universe.getState().position);await page.locator('#game').focus();
+   // Keep native movement held until a frame observes the original endpoint.
+   // A fixed key hold can begin and end between software-WebGL frames.
+   try{await page.keyboard.down('w');await page.waitForFunction(before=>{const moved=__universe.getState().position;return Math.hypot(moved.x-before.x,moved.z-before.z)>.1;},before);}
+   finally{await page.keyboard.up('w');}
+   const moved=await page.evaluate(()=>__universe.getState().position);assert(Math.hypot(moved.x-before.x,moved.z-before.z)>.1);
+   await page.waitForFunction(()=>__universe.getMotion().speed===0);
+   const camera=await page.evaluate(()=>__universe.getCamera());await page.keyboard.press(']');
+   await page.waitForFunction(yaw=>__universe.getCamera().yaw!==yaw,camera.yaw);
+   const rotated=await page.evaluate(()=>__universe.getCamera());assert.notEqual(rotated.yaw,camera.yaw);assert.notDeepEqual(rotated,camera);
+   motionEvidence.push({label,input:'keyboard',before,moved,cameraBefore:camera,cameraAfter:rotated});
+  }
   await page.reload();state=await ready(room);assert.equal(state.user.id,guestId);assert.equal((await link(target,mobile)).response.status(),200);assert.equal((await ready(room)).user.id,guestId);await page.screenshot({path:out+`/${label}-guest.png`});pass(`${mobile?`${viewport.width}x${viewport.height} touch`:'Desktop'} native external ${named?'named destination':'root'} guest entry/reload with no account or background denials; ${mobile?'visible mirrored Sit/Stand + simultaneous movement/camera/Jump':'native T/Space/WASD/camera'}`);
   if(!mobile&&named){
    const oldGuest=guestId;await app.close();app=createGameServer({database,seeds,dist,runtimeConfig});await app.listen(port);app.server.on('request',observeRequest);await page.reload();await page.getByRole('button',{name:'Explore as guest'}).click();state=await ready(room);assert.notEqual(state.user.id,oldGuest);assert.equal(state.destination.entry,'welcome');guestId=state.user.id;assert.equal(app.store.user(oldGuest),undefined);pass('Restart loses guest lease; one-click re-entry preserves named room/entry');
