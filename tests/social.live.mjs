@@ -23,7 +23,7 @@ const scriptStart = fixture.indexOf('<script type="module">');
 const scriptEnd = fixture.indexOf('</script>', scriptStart);
 await writeFile(join(dir, 'fixture.js'), fixture.slice(scriptStart + '<script type="module">'.length, scriptEnd));
 await writeFile(join(dir, 'index.html'), fixture.slice(0, scriptStart) + '<script type="module" src="/fixture.js"></script>' + fixture.slice(scriptEnd + '</script>'.length));
-for (const file of ['password-policy.js', 'social.js', 'social.css', 'permissions.js', 'proximity-text.js', 'proximity-typing.js', 'social-sheet-layout.js', 'universe-icons.js']) await writeFile(join(dir,file),await readFile(new URL(`../src/${file}`,import.meta.url)));
+for (const file of ['signup-navigation.js', 'travel-location.js', 'arrivals.js', 'worlds.js', 'media-policy-copy.js', 'image-asset-schema.js', 'image-asset-context.js', 'image-asset-geometry.js', 'terrain.js', 'password-policy.js', 'social.js', 'social.css', 'permissions.js', 'proximity-text.js', 'proximity-typing.js', 'social-sheet-layout.js', 'universe-icons.js']) await writeFile(join(dir,file),await readFile(new URL(`../src/${file}`,import.meta.url)));
 try { await cp(new URL('../public/assets',import.meta.url),join(dir,'assets'),{recursive:true}); } catch {}
 const scene={version:1,theme:'garden',bounds:{width:32,depth:26},spawn:{x:0,z:0},objects:[],areas:[]};
 const app=createGameServer({database:':memory:',seeds:[{id:'w1',name:'Test universe',rooms:[{id:'r1',name:'Moon garden',scene},{id:'r2',name:'Quiet room',scene}]}],dist:dir});
