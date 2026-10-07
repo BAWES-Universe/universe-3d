@@ -1174,7 +1174,7 @@
 }
 /* Narrow landscape uses the native target selector instead of a second strip.
    Keep the tray beside the canvas and above the dock, with every action pinned. */
-@media (max-height: 500px) and (max-width: 600px) and (orientation: landscape) {
+@media (max-height: 500px) and (max-width: 767px) and (orientation: landscape) {
   .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel {
     inset:auto 8px 90px auto;
     width:min(264px, calc(100vw - 24px));

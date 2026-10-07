@@ -16,7 +16,7 @@ const sourceIdentity=()=>({head:execFileSync('git',['rev-parse','HEAD'],{encodin
 const sourceBefore=sourceIdentity();
 const browser=await launch(),reports=[];
 try {
- for(const [width,height] of [[1440,900],[390,844],[320,700],[844,390],[568,320],[550,320]].filter(([w])=>!process.env.EDITOR_FLOW_WIDTH||w===Number(process.env.EDITOR_FLOW_WIDTH))){
+ for(const [width,height] of [[1440,900],[390,844],[320,700],[844,390],[568,320],[550,320],[601,320],[667,375],[767,320],[768,320]].filter(([w])=>!process.env.EDITOR_FLOW_WIDTH||w===Number(process.env.EDITOR_FLOW_WIDTH))){
   const app=createGameServer({database:':memory:',seeds:structuredClone(seedWorlds),dist:new URL('../dist',import.meta.url).pathname});
   const password='synthetic editor flow password';
   await bootstrapOwner(app.store,{name:'Synthetic editor owner',username:'editor_owner',password});
