@@ -122,6 +122,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   env.navigator?.mediaDevices?.addEventListener?.('devicechange', deviceChange);
   const peers = new Map();
   const earlyCandidates = new Map();
+  const pendingJoinSignals = new Set();
   const deviceJoins = {microphone:null,camera:null,screen:null};
   const awayPreference = createAwayMicrophonePreference(env);
   const awayLatch = createAwayLatch(env.document?.visibilityState || 'visible');
@@ -151,7 +152,8 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   // Orders overlapping HTTP fetches against accepted pushes within this client lifecycle.
   // The server has no monotonic revision; this is not an ordering claim across SSE reconnects.
   let policyEpoch = 0, localSilent = false, awaitingPolicy = false, roomUnavailable = false, committedAreas = null;
-  const transportAllowed = () => !disposed && joined && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy && !policyError && !iceError && (policy?.iceRequired!==true||!!policy?.iceScope) && policy?.enabled !== false && !scopedPolicyError(policy) && proximityP2PAllowed(policy) && policy?.roomId === roomId && policy?.context?.kind !== 'silent' && !(policy?.context?.kind === 'proximity' && policy.context.canPublish === false);
+  const transportAuthorityAllowed = () => !disposed && sameContext() && getState()?.ready !== false && !localSilent && !awaitingPolicy && !policyError && !iceError && (policy?.iceRequired!==true||!!policy?.iceScope) && policy?.enabled !== false && !scopedPolicyError(policy) && proximityP2PAllowed(policy) && policy?.roomId === roomId && policy?.context?.kind !== 'silent' && !(policy?.context?.kind === 'proximity' && policy.context.canPublish === false);
+  const transportAllowed = () => joined && transportAuthorityAllowed();
   // Denial geometry and personalized server scope stay independent of transport cache.
   const authorityKey = value => JSON.stringify([value?.selfId,value?.roomId,value?.context?.kind,value?.context?.group,value?.context?.canPublish,proximityAuthority(value)]);
   function peerCurrent(p) { return transportAllowed() && !p.closed && peers.get(p.id) === p && p.authority === authorityKey(policy) && policyPeers(policy).some(info => info.id === p.id && info.memberId === p.info.memberId && peerDirection(info) === peerDirection(p.info)); }
@@ -275,6 +277,7 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     const request = refreshRequest; refreshRequest = null; if (request) { request.retired = true; request.cancel?.(); }
   }
   function pauseMedia(reason = '') {
+    for (const pending of pendingJoinSignals) pending.retired = true;
     retireIce(); closePeers();
     for (const kind of KINDS) stopDevice(kind, reason);
   }
@@ -350,6 +353,11 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
   }
   // An early candidate belongs to a peer identity and authority, not merely a remote-chosen ID.
   const candidateKey = (id, connectionId) => JSON.stringify([authorityKey(policy),id,policyPeers(policy).find(info => info.id === id)?.memberId,connectionId]);
+  function pendingJoinSignalCurrent(pending, next = policy) {
+    const info = policyPeers(next).find(info => info.id === pending.from);
+    return !pending.retired && !disposed && pending.generation === generation && pending.actorId === actorId && pending.admissionId === admissionId && sameContext() && next?.enabled === true &&
+      pending.authority === authorityKey(next) && pending.iceScope === next?.iceScope && info && info.memberId === pending.memberId && peerDirection(info) === pending.direction;
+  }
   function failure(p, error) {
     if (!peerCurrent(p)) return;
     p.status = 'failed'; p.error = String(error?.message || error || 'Connection failed').slice(0, 200); emit();
@@ -434,6 +442,9 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
       retireIce();for (const kind of KINDS) stopDevice(kind); closePeers(); notice = 'Room access ended. Join an authorized room again to reconnect.'; checkVisibility(); emit(); return true;
     }
     if (disposed || !next || next.roomId !== roomId || !sameContext() || (actorId && next.selfId !== actorId)) return false;
+    // Remember revocation when it happens, even if the same authority is later
+    // restored before the consent response arrives (including legacy peer ABA).
+    for (const pending of pendingJoinSignals) if (!pendingJoinSignalCurrent(pending, next)) pending.retired = true;
     if (hasProximityScope(next)) proximityProtocolSeen = true;
     const previousDenial = publishingDenied(policy) ? denialReason(policy.context) : null;
     const authorityChanged = authorityKey(next) !== authorityKey(policy);
@@ -540,8 +551,14 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     try {
       if (!policy) await refreshPolicy(true);
       if (disposed || epoch !== generation || !sameContext() || !policy || policyError || localSilent || awaitingPolicy || policy.context?.kind === 'silent') return false;
+      const consentOwner = {selfId:policy.selfId,memberId:policy.proximityMembership?.memberId};
       const consent = await writeConsent(true);
-      if (!consent || disposed || epoch !== generation || !sameContext()) return false;
+      if (disposed || epoch !== generation || !sameContext()) return false;
+      // The response confirms this gesture, but never replaces a newer pushed
+      // policy. An explicit denial or another identity is not a join grant.
+      if (consent?.enabled !== true || consent.roomId !== roomId || consent.selfId !== consentOwner.selfId || consentOwner.selfId !== policy?.selfId || consentOwner.memberId !== policy?.proximityMembership?.memberId || (consentOwner.memberId && consent.proximityMembership?.memberId !== consentOwner.memberId)) {
+        notice = 'The server did not confirm this media join. Join audio again when ready.'; return false;
+      }
       joined = true; await refreshPolicy(true); if (epoch !== generation || !sameContext()) return false;
       if (transportAllowed() && policy?.iceScope) {
         const context = iceContext();
@@ -624,9 +641,30 @@ export function createMediaSession({ api, getState, onChange = () => {}, env = g
     } finally { if (pendingStreams[kind] === stream) pendingStreams[kind] = null; }
   }
   async function onSignal(event) {
+    // Policy SSE can authorize the remote offerer before our consent POST's
+    // acknowledgement reaches this tab. Retain bounded, already-authorized
+    // signals until this exact deliberate join succeeds; never start transport
+    // from a push alone. Candidates have a separate budget so they cannot evict
+    // the offer needed to interpret them.
+    if (!joined && joining && activeJoin && transportAuthorityAllowed() && event?.roomId === roomId && event.from && event.connectionId && signalCurrent(event)) {
+      const kind = event.description?.type === 'offer' && event.from < policy.selfId ? 'offer' : !event.description && event.candidate ? 'candidate' : null;
+      if (!kind || [...pendingJoinSignals].filter(pending => pending.kind === kind).length >= (kind === 'offer' ? 20 : 64)) return;
+      const info = policyPeers(policy).find(info => info.id === event.from);
+      const pending = {kind,from:event.from,generation,actorId,admissionId,authority:authorityKey(policy),iceScope:policy.iceScope,memberId:info.memberId,direction:peerDirection(info),retired:false};
+      pendingJoinSignals.add(pending);
+      try {
+        const granted = await activeJoin;
+        if (!granted || !pendingJoinSignalCurrent(pending)) return;
+        return await receiveSignal(event, pending);
+      }
+      finally { pendingJoinSignals.delete(pending); }
+    }
+    return receiveSignal(event);
+  }
+  async function receiveSignal(event, pendingJoin = null) {
     if (!transportAllowed() || !event || event.roomId !== roomId || !event.from || !event.connectionId || !signalCurrent(event)) return;
     const eventGeneration = generation, eventActor = actorId, eventAuthority = authorityKey(policy);
-    const eventCurrent = () => eventGeneration === generation && eventActor === actorId && eventAuthority === authorityKey(policy) && transportAllowed() && event.roomId === roomId && signalCurrent(event);
+    const eventCurrent = () => eventGeneration === generation && eventActor === actorId && eventAuthority === authorityKey(policy) && transportAllowed() && event.roomId === roomId && signalCurrent(event) && (!pendingJoin || pendingJoinSignalCurrent(pendingJoin));
     await refreshPolicy(true);
     if (!eventCurrent()) return;
     if(policy?.iceScope){const context=iceContext();try{await ice.ensure(context);}catch{if(iceCurrent(context))iceFailed('ICE configuration unavailable. Devices and connections were stopped; retry explicitly.');return;}if(!iceCurrent(context)||!eventCurrent())return;}

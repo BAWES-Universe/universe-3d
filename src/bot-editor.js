@@ -118,7 +118,7 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
   async function leaveDraft(s, resume) {
     if (!s?.draft) return true;
     if (s.mapSession) { s.error = 'Choose Done or Cancel to finish placing this resident.'; renderStatus(); return false; }
-    if (s.record && (dirty(s) || s.pendingOperation)) { s.leaveConfirm = true; s.leaveAction = resume; renderStatus(); return false; }
+    if (s.record && (dirty(s) || s.pendingOperation)) { s.leaveConfirm = true; s.leaveAction = resume; s.leaveTicket = {}; renderStatus(); return false; }
     if (s.record) return !s.pendingOperation;
     // A Create already requested by the user may settle, but leaving never starts
     // or retries a POST. Preserve its exact receipt after an ambiguous failure.
@@ -147,12 +147,22 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     recovery.hidden = !s?.conflict && !(s?.draft && !s.canManage);
     recovery.replaceChildren();
     if (s?.conflict) recovery.append(button('Reload saved version', () => reloadSelected(), { class: 'resident-secondary' }), hint('Reload replaces this draft. You can review and copy your text first.'));
-    if(s?.draft&&!s.canManage)recovery.append(button('Download draft',()=>{if(!active(s))return;const url=URL.createObjectURL(new Blob([JSON.stringify({format:'universe-resident-draft',roomId:s.room.id,config:s.draft},null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='resident-draft.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}),button('Discard draft and close',()=>{if(!active(s)||busy(s))return;if(s.pendingOperation){setError(s,new Error('The last save has not been acknowledged. Keep this draft until you can retry the same operation.'));return;}if(!s.record)newDrafts.delete(s.room.id);clearDraft(s);close();}),hint('Your management access changed. Saving is disabled; keep a copy or leave this editor.'));
-    if (s?.leaveConfirm) { recovery.hidden = false; recovery.append(hint('Save your changes before leaving?'), row(button('Save changes', async () => { if (await save()) { const resume = s.leaveAction; s.leaveConfirm = false; s.leaveAction = null; renderStatus(); resume?.(); } }, { class: 'resident-primary', 'data-testid': 'bot-confirm-save' }), button('Discard changes', () => { const resume = s.leaveAction; if (reset()) { s.leaveConfirm = false; s.leaveAction = null; renderStatus(); resume?.(); } }, { class: 'resident-secondary', 'data-testid': 'bot-confirm-discard' })), button('Keep editing', () => { s.leaveConfirm = false; renderStatus(); }, { class: 'resident-secondary' })); }
+    if(s?.draft&&!s.canManage)recovery.append(button('Download draft',()=>{if(!active(s))return;const url=URL.createObjectURL(new Blob([JSON.stringify({format:'universe-resident-draft',roomId:s.room.id,config:s.draft},null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='resident-draft.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}),button('Discard draft and close',()=>{if(!active(s)||busy(s))return;if(s.pendingOperation){setError(s,new Error('The last save has not been acknowledged. Keep this draft until you can retry the same operation.'));return;}if(!s.record)newDrafts.delete(s.room.id);clearDraft(s);close();},{hidden:!!s.leaveConfirm}),hint('Your management access changed. Saving is disabled; keep a copy or leave this editor.'));
+    if (s?.leaveConfirm) {
+      const ticket=s.leaveTicket;
+      recovery.hidden = false;
+      recovery.append(hint('Save your changes before leaving?'), row(button('Save changes', async () => {
+        const saved=await save();
+        if(saved&&active(s)&&s.leaveConfirm&&s.leaveTicket===ticket){const resume=s.leaveAction;s.leaveConfirm=false;s.leaveAction=null;s.leaveTicket=null;renderStatus();resume?.();}
+      }, { class: 'resident-primary', disabled: !s.canManage||busy(s)||s.conflict, 'data-testid': 'bot-confirm-save' }), button('Discard changes', () => {
+        const resume=s.leaveAction;if(reset()){s.leaveConfirm=false;s.leaveAction=null;s.leaveTicket=null;renderStatus();resume?.();}
+      }, { class: 'resident-secondary', disabled: busy(s)||!!s.pendingOperation, 'data-testid': 'bot-confirm-discard' })), button('Keep editing', () => {s.leaveConfirm=false;s.leaveAction=null;s.leaveTicket=null;renderStatus();}, { class: 'resident-secondary' }));
+    }
     const localDraftNotice = 'Draft kept in this tab · Reloading or signing out clears it';
     status.textContent = !s ? 'Choose a room to manage its residents.' : s.loading ? 'Loading this room’s residents…' : s.saving ? 'Saving to the room…' : s.deleting ? 'Deleting resident…' : s.commanding ? 'Sending local command…' : s.error ? `Your draft is still here.${!s.record ? ` ${localDraftNotice}.` : ' Nothing has been silently discarded.'}` : s.draft ? dirty(s) ? (s.record ? 'Unsaved preview · Save resident to apply, or Cancel changes' : `Not created yet · Choose Create resident to save · ${localDraftNotice}`) : s.info || 'All changes saved to this room' : newDrafts.has(s.room.id) ? localDraftNotice : s.info || 'Disabled residents stay here and can be edited.';
+    if(s?.leaveConfirm&&!s.error&&!s.saving)status.textContent='Your changes stay in this draft until you choose.';
     status.classList.toggle('is-dirty', dirty(s));
-    saveButton.hidden = !s?.draft; resetButton.hidden = !s?.draft;
+    saveButton.hidden = !s?.draft||!!s.leaveConfirm; resetButton.hidden = !s?.draft||!!s.leaveConfirm;
     saveButton.disabled = !s?.canManage || busy(s) || s?.conflict || (!dirty(s) && !s?.pendingOperation);
     saveButton.textContent = s?.saving ? 'Saving…' : s?.record ? 'Save resident' : 'Create resident';
     resetButton.disabled = busy(s) || !dirty(s);
@@ -362,26 +372,30 @@ export function createBotEditor({ getRoom = () => null, getActorId = () => null,
     const moving = s.mapMode === 'spawn', adding = s.mapMode === 'add';
     const body = el('div', { class: 'resident-map-body' },
       el('strong', { text: moving ? `Move ${s.draft.name}` : adding ? 'Add route waypoints' : `Move waypoint ${Number(s.mapMode.slice(9)) + 1}` }),
-      hint(moving ? 'Click clear ground to set a home, or drag the resident. This is a preview until you save.' : adding ? 'Click the floor to add numbered stops in order. Drag a point to adjust it. This is a preview until you save.' : 'Click clear ground to move this point, or drag it. This is a preview until you save.'),
-      row(button('Move resident', () => beginMapMode('spawn'), { 'aria-pressed': String(moving) }), button('Add waypoints', () => beginMapMode('add'), { 'aria-pressed': String(adding), disabled: s.draft.waypoints.length >= 64 })),
-      el('div', { class: 'resident-map-points' }, s.draft.waypoints.map((_, index) => button(String(index + 1), () => beginMapMode(`waypoint:${index}`), { 'aria-label': `Select waypoint ${index + 1}`, 'aria-pressed': String(s.mapMode === `waypoint:${index}`) }))),
-      button('Remove selected point', () => { const index = Number(s.mapMode.slice(9)); if (!s.draft.waypoints[index]) return; s.mapSession.history.push(mapSnapshot(s.draft)); s.draft.waypoints.splice(index, 1); if (!s.draft.waypoints.length) s.draft.behavior = 'idle'; s.mapMode = 'add'; renderDetail(); renderStatus(); preview(s); }, { class: 'resident-map-remove', disabled: !s.mapMode.startsWith('waypoint:'), 'data-testid': 'bot-map-remove' }),
+      hint('Tap clear ground · Preview until resident is saved'),
       ...(s.error ? [el('p', { class: 'resident-error', role: 'alert', text: s.error })] : []));
+    const target=el('select', { 'aria-label': 'Route target', onchange:event=>beginMapMode(event.target.value) },
+      el('option', { value:'spawn', text:'Move resident' }),el('option', { value:'add', text:'Add waypoints', disabled:s.draft.waypoints.length>=64 }),
+      s.draft.waypoints.map((_,index)=>el('option', { value:`waypoint:${index}`, text:`Waypoint ${index+1}` })));
+    target.value=s.mapMode;
+    const controls=el('div', { class:'resident-map-controls' },target,
+      button('Remove point', () => { const index = Number(s.mapMode.slice(9)); if (!s.draft.waypoints[index]) return; s.mapSession.history.push(mapSnapshot(s.draft)); s.draft.waypoints.splice(index, 1); if (!s.draft.waypoints.length) s.draft.behavior = 'idle'; s.mapMode = 'add'; renderDetail(); renderStatus(); preview(s); }, { class: 'resident-map-remove', disabled: !s.mapMode.startsWith('waypoint:'), 'data-testid': 'bot-map-remove' }));
+    const points=el('div', { class: 'resident-map-points', 'aria-label':'Route waypoints' }, s.draft.waypoints.map((_, index) => button(String(index + 1), () => beginMapMode(`waypoint:${index}`), { 'aria-label': `Select waypoint ${index + 1}`, 'aria-pressed': String(s.mapMode === `waypoint:${index}`) })));
     // Completion must never require discovering the scrollable settings above.
     // These handlers still operate on the same draft; Done does not save it.
     const actions = el('div', { class: 'resident-map-actions' },
       button('Cancel', cancelMapMode, { class: 'resident-secondary', 'data-testid': 'bot-map-cancel' }),
       button('Undo', () => { const previous = s.mapSession.history.pop(); if (!previous) return; Object.assign(s.draft, previous); s.error = ''; renderDetail(); renderStatus(); preview(s); }, { disabled: !s.mapSession.history.length, 'data-testid': 'bot-map-undo' }),
       button('Done', finishMapMode, { class: 'resident-primary', title: 'Return to resident details. Save separately to keep changes.', 'data-testid': 'bot-map-done' }));
-    mapToolbar.append(body, actions);
-    if (focused) [...mapToolbar.querySelectorAll('button')].find(node => !node.disabled && (focused.testid ? node.dataset.testid === focused.testid : focused.label ? node.getAttribute('aria-label') === focused.label : node.textContent === focused.text))?.focus({ preventScroll: true });
+    mapToolbar.append(body, controls, points, actions);
+    if (focused) [...mapToolbar.querySelectorAll('button,select')].find(node => !node.disabled && (focused.testid ? node.dataset.testid === focused.testid : focused.label ? node.getAttribute('aria-label') === focused.label : node.textContent === focused.text))?.focus({ preventScroll: true });
   }
   function handleEscape() {
     const s = session;
     if (s?.planGesture) { s.planGesture = null; s.planPreview = null; renderPlan(); preview(s); return true; }
     if (cancelMapMode()) return true;
     if (s?.deleteConfirm) { s.deleteConfirm = false; renderDeleteConfirmation(); return true; }
-    if (s?.leaveConfirm) { s.leaveConfirm = false; renderStatus(); return true; }
+    if (s?.leaveConfirm) {s.leaveConfirm=false;s.leaveAction=null;s.leaveTicket=null;renderStatus();return true;}
     close(); return true;
   }
   function renderPlan() {

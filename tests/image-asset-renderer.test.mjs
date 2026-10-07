@@ -103,6 +103,37 @@ test('immutable-version pool deduplicates pending decode and GPU texture, refcou
   pending.resolve(resource); const [first, second] = await Promise.all([a, b]); assert.equal(first.texture, second.texture); assert.equal(pool.getStats().leases, 2);
   first.dispose(); assert.equal(resource.disposed, 0); second.dispose(); second.dispose(); assert.equal(resource.disposed, 1); assert.equal(pool.getStats().entries, 0); pool.dispose();
 });
+for (const previewReady of [false, true]) test(`same-task ${previewReady ? 'ready' : 'loading'} preview transfer preserves one authenticated PNG load and immediate revocation`, async () => {
+  const fixture = renderFixture(), decoded = deferred(), decoding = deferred(), resource = fakeResource(); let fetches = 0, requestSignal;
+  const loader = createAuthenticatedImageLoader({origin: 'https://room.example', fetchImage: async (_url, options) => { fetches++; requestSignal = options.signal; assert.equal(options.cache, 'no-store'); return new Response(fixture.bytes, {headers: {'content-type': 'image/png'}}); }, decodeTexture: () => { decoding.resolve(); return decoded.promise; }});
+  const pool = createImageTexturePool({loadTexture: loader}), preview = makeView(fixture, pool.acquire);
+  assert.equal(fetches, 0, 'View construction must not dispatch network work'); await decoding.promise;
+  if (previewReady) { decoded.resolve(resource); await preview.ready; }
+  const placed = makeView({...fixture, instance: {...fixture.instance, id: 'placed-image'}}, pool.acquire);
+  preview.dispose();
+  assert.equal(pool.getStats().entries, 1); assert.equal(pool.getStats().leases, 1); assert.equal(requestSignal.aborted, false); assert.equal(resource.disposed, 0);
+  decoded.resolve(resource); await placed.ready; await preview.ready;
+  assert.equal(fetches, 1); assert.equal(placed.getState().status, 'ready'); assert.equal(placed.acceptUV({u: .75, v: .25}), true); assert.equal(placed.acceptUV({u: .25, v: .25}), false);
+  const revoked = placed.update({...fixture, instance: {...fixture.instance, id: 'placed-image'}, context: {...renderContext, canRead: false, authorityEpoch: 2}});
+  assert.equal(pool.getStats().entries, 0); assert.equal(pool.getStats().leases, 0); assert.equal(resource.disposed, 1); assert.equal(placed.acceptUV({u: .75, v: .25}), false);
+  await revoked; placed.dispose(); pool.dispose(); assert.equal(resource.disposed, 1);
+});
+test('immediate view disposal cancels the acquired lease before any authenticated network work', async () => {
+  const fixture = renderFixture(); let fetches = 0;
+  const loader = createAuthenticatedImageLoader({origin: 'https://room.example', fetchImage: async () => { fetches++; return new Response(fixture.bytes, {headers: {'content-type': 'image/png'}}); }, decodeTexture: async () => fakeResource()});
+  const pool = createImageTexturePool({loadTexture: loader}), view = makeView(fixture, pool.acquire); view.dispose();
+  assert.equal(pool.getStats().entries, 0); assert.equal(pool.getStats().leases, 0); await view.ready; await settle(); assert.equal(fetches, 0); pool.dispose();
+});
+test('synchronous loader failures remain promised error states rather than escaping construction', async () => {
+  const view = makeView(renderFixture(), () => { throw Error('Synchronous decoder failure'); });
+  assert.equal(view.getState().status, 'loading'); await view.ready; assert.equal(view.getState().status, 'error'); assert.match(view.getState().error.message, /Synchronous decoder failure/); view.dispose();
+});
+test('reentrant authority loss during loading cancels acquisition before a new loader runs', async () => {
+  const fixture = renderFixture(); let view, invalidate = false, calls = 0;
+  view = makeView(fixture, async () => { calls++; return fakeResource(); }, {onState: state => { if (invalidate && state.status === 'loading') view.update({...fixture, context: {...renderContext, canRead: false, authorityEpoch: 2}}); }});
+  await view.ready; invalidate = true; await view.update({...renderFixture({versionId: 'v2'}), context: renderContext});
+  assert.equal(calls, 1); assert.equal(view.getState().status, 'revoked'); assert.equal(view.acceptUV({u: .75, v: .25}), false); view.dispose();
+});
 test('one cancelled pool consumer does not cancel another; final cancellation cancels request and late resources', async () => {
   const fixture = renderFixture(), pending = deferred(), resource = fakeResource(), aSignal = new AbortController(), bSignal = new AbortController(); let underlying;
   const pool = createImageTexturePool({loadTexture: ({signal}) => { underlying = signal; return pending.promise; }});

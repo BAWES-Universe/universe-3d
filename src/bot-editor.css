@@ -1159,3 +1159,29 @@
   .resident-map-toolbar .resident-hint { margin-bottom: 4px; }
   .resident-map-toolbar button { font-size: 12px; }
 }
+
+/* Pin route selection with the task actions, outside the scrolling explanation. */
+.resident-map-controls { display:flex; flex:none; gap:8px; margin-top:8px; }
+.resident-map-controls select { flex:1; min-width:0; min-height:48px; padding:8px; border:1px solid var(--resident-line); border-radius:12px; background:var(--resident-ink); }
+.resident-map-controls .resident-map-remove { flex:none; margin:0; }
+.resident-map-points { flex:none; }
+.resident-map-body .resident-hint { margin:0 0 6px; }
+@media (max-height: 500px) and (min-width: 601px) {
+  .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel { bottom:90px; max-height:calc(100dvh - 108px); }
+  .resident-map-toolbar { padding:12px; }
+  .resident-map-body > strong { font-size:15px; margin-bottom:3px; }
+  .resident-map-controls { margin-top:4px; }
+}
+/* Narrow landscape uses the native target selector instead of a second strip.
+   Keep the tray beside the canvas and above the dock, with every action pinned. */
+@media (max-height: 500px) and (max-width: 767px) and (orientation: landscape) {
+  .resident-editor[data-map-mode]:not([data-map-mode=""]) .resident-panel {
+    inset:auto 8px 90px auto;
+    width:min(264px, calc(100vw - 24px));
+    max-height:calc(100dvh - 108px);
+  }
+  .resident-map-points { display:none; }
+  .resident-map-controls .resident-map-remove:disabled { display:none; }
+  .resident-map-actions { grid-template-columns:1.25fr 1fr 1fr; gap:4px; }
+  .resident-map-actions button { white-space:nowrap; }
+}
