@@ -1,0 +1,27 @@
+/** Native panel controls, deterministic fault injection; no live services. */
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {launch} from '../scripts/browser.mjs';
+import {source} from './bot-editor-fixture.mjs';
+const output=await build({stdin:{contents:source,resolveDir:process.cwd()},bundle:true,format:'iife',write:false,outfile:'/tmp/resident-leave.js'});
+const browser=await launch(),p=await browser.newPage({viewport:{width:390,height:844},hasTouch:true,isMobile:true}),checks=[],errors=[];
+const out='evidence/resident-leave-decision';await mkdir(out,{recursive:true});p.on('pageerror',e=>errors.push(e.message));
+const button=name=>p.getByRole('button',{name,exact:true}),field=p.locator('[data-bot-field=name]');
+const check=name=>{checks.push(name);console.log('PASS',name);};
+const settle=()=>p.waitForFunction(()=>!editor.isSaving());
+async function dirty(name){await p.evaluate(()=>setup());await button('Edit Moss').tap();await field.fill(name);await button('Close residents').tap();}
+async function single(){assert(await p.getByTestId('bot-confirm-save').isVisible());assert(await p.getByTestId('bot-save').isHidden());assert(await p.getByTestId('bot-reset').isHidden());}
+try{
+ await p.route('https://resident-leave.test/',r=>r.fulfill({contentType:'text/html',body:'<style>body{margin:0;background:#191425}:root{--u-surface-raised:#251d32;--u-primary:#765394;--u-secondary:#3a2a48;--u-secondary-border:#735480}</style>'}));
+ await p.goto('https://resident-leave.test/');await p.addStyleTag({content:output.outputFiles.find(f=>f.path.endsWith('.css')).text});await p.addScriptTag({content:output.outputFiles.find(f=>f.path.endsWith('.js')).text});
+ await dirty('Exact local draft');await single();await button('Keep editing').tap();assert.equal(await field.inputValue(),'Exact local draft');assert(await p.getByTestId('bot-save').isVisible());check('Leave decision replaces ordinary footer; Keep editing retains draft');
+ await button('Close residents').tap();await p.evaluate(()=>manual=true);await p.getByTestId('bot-confirm-save').tap();await p.waitForFunction(()=>pending.length===1);await single();assert(await p.getByTestId('bot-confirm-save').isDisabled());assert(await p.getByTestId('bot-confirm-discard').isDisabled());await button('Keep editing').tap();await p.evaluate(()=>accept());await settle();assert(await p.getByTestId('bot-editor').isVisible());assert.equal(await field.inputValue(),'Exact local draft');assert.equal(await p.evaluate(()=>logs.closed),0);check('Keep editing during submitted save cancels only pending navigation');
+ await dirty('Unknown receipt');await p.evaluate(()=>uncertainNext=true);await p.getByTestId('bot-confirm-save').tap();await settle();await single();assert(await p.getByTestId('bot-confirm-discard').isDisabled());const operation=await p.evaluate(()=>logs.requests.filter(r=>r.args.method).at(-1).args.body.clientOperationId);await p.getByTestId('bot-confirm-save').tap();await p.getByTestId('bot-editor').waitFor({state:'hidden'});assert.equal(await p.evaluate(()=>logs.requests.filter(r=>r.args.method).at(-1).args.body.clientOperationId),operation);check('Lost receipt disables discard; explicit retry uses identical operation and closes once');
+ await dirty('Conflicted draft');await p.evaluate(()=>failNext={status:409,code:'BOT_REVISION_CONFLICT',message:'Fixture revision conflict'});await p.getByTestId('bot-confirm-save').tap();await settle();await single();assert(await p.getByTestId('bot-confirm-save').isDisabled());assert.equal(await field.inputValue(),'Conflicted draft');await button('Keep editing').tap();assert(await p.getByTestId('bot-save').isVisible());assert(await p.getByTestId('bot-save').isDisabled());check('Conflict keeps exact draft and requires deliberate recovery');
+ await dirty('Permission lost');await p.evaluate(()=>editor.updateAuthority(false));await single();assert(await p.getByTestId('bot-confirm-save').isDisabled());assert(await button('Discard draft and close').isHidden());assert.equal(await field.inputValue(),'Permission lost');await p.screenshot({path:out+'/permission-loss-decision.png'});await button('Keep editing').tap();assert(await button('Download draft').isVisible());check('Permission loss retains one decision group and draft export');
+ await dirty('Close then cancel');await button('Keep editing').tap();await button('Back to residents').tap();await single();await p.getByTestId('bot-confirm-discard').tap();assert(await p.getByTestId('bot-create').isVisible());assert.equal(await p.evaluate(()=>database.alpha[0].name),'Moss');check('Back uses the same single save/discard boundary');
+ await dirty('Saved on room switch');await button('Keep editing').tap();await p.evaluate(()=>editor.setRoom(room('beta')));await single();await p.getByTestId('bot-confirm-save').tap();await p.waitForFunction(()=>editor.getIdentity().roomId==='beta');assert.equal(await p.evaluate(()=>database.alpha[0].name),'Saved on room switch');check('Save resumes requested room switch only after success');
+ assert.deepEqual(errors,[]);
+}catch(error){checks.push({failure:error.stack});console.error(error);process.exitCode=1;await p.screenshot({path:out+'/failure.png'}).catch(()=>{});}
+finally{await writeFile(out+'/results.json',JSON.stringify({checks,errors,scope:'Native resident controls with deterministic synthetic protocol faults; renderer journeys are separate'},null,2));await browser.close();}
