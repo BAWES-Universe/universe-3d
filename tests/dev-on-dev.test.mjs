@@ -278,3 +278,15 @@ test('adding build identity preserves synthetic persistent accounts, rooms and a
     await app.listen(0); assert.deepEqual(snapshot(), before);
   } finally { if (app) await app.close(); rmSync(root, { recursive: true, force: true }); }
 });
+test('PR image validation uses pinned matching base and no publish/deploy authority', () => {
+  const verify = readFileSync(new URL('../.github/workflows/verify.yml', import.meta.url), 'utf8').split('\n  dev-image:')[1];
+  const live = readFileSync(new URL('../.github/workflows/dev-on-dev.yml', import.meta.url), 'utf8');
+  assert(verify); assert(!verify.includes('secrets.')); assert(!verify.includes('packages: write'));
+  assert(!verify.includes('environment:')); assert(!verify.includes('docker push')); assert(!verify.includes('docker login'));
+  assert(verify.includes('deploy/on-dev/Dockerfile')); assert(verify.includes('container-smoke.sh "$IMAGE_ID"'));
+  const base = /BASE_IMAGE: (node:[^\n]+)/;
+  assert.equal(verify.match(base)[1], live.match(base)[1]);
+  const smoke = readFileSync(new URL('../deploy/on-dev/container-smoke.sh', import.meta.url), 'utf8');
+  assert(smoke.includes('--network none')); assert(smoke.includes('--tmpfs /data:')); assert(smoke.includes('--user 1000:1000'));
+  assert(smoke.includes('--pull never')); assert(!smoke.includes('/var/run/docker.sock')); assert(!smoke.includes('docker pull'));
+});

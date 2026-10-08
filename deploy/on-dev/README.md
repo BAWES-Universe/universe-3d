@@ -228,7 +228,8 @@ installed. A lost/suppressed webhook likewise needs an explicit reconciliation.
 - `.github/workflows/dev-on-dev.yml`: seven jobs, pinned actions, narrow privileges
 - `github.mjs`: live label selection and durable deployment markers
 - `source.mjs`: exact source binding and conservative runtime/storage fingerprint
-- `Dockerfile`, `publish.sh`, `image-smoke.sh`: build/publish/smoke isolation
+- `Dockerfile`, `publish.sh`, `image-smoke.sh`, `container-smoke.sh`: build/publish/smoke isolation
+- `.github/workflows/verify.yml` `dev-image` job: credential-free actual Docker build/smoke on PR/push runners, without publishing or live access
 - `coolify.mjs`: bounded API surface, app/storage/configuration checks, public probes
 - `switch.mjs`: serialized state machine, persistent receipts and failure recovery
 - `inspect.mjs`: read-only setup evidence
@@ -240,3 +241,7 @@ Run `node --test tests/dev-on-dev.test.mjs`, `npm run check`, `npm test`,
 The delivery README/evidence gives exact results and untested stages. The existing
 container-file check models the root recipe; the delivery additionally checks
 the new recipe's context and runtime files. Neither substitutes for Docker.
+The PR/push `dev-image` job closes that image-execution gap on GitHub's disposable
+Docker-enabled runner: it builds this actual recipe from a pinned base and invokes
+the same isolated smoke helper used after publication. Its result still does not
+prove GHCR publication or live Coolify deployment.
