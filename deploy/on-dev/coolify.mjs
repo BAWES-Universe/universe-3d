@@ -14,16 +14,16 @@ export function validateTarget(app, storage) {
   requireGate(String(app.ports_exposes) === '4190' && empty(app.ports_mappings), 'PORT_CONFIGURATION_CHANGED');
   requireGate(app.destination_type === 'App\\Models\\StandaloneDocker' && app.destination_id != null
     && app.additional_servers_count === 0, 'SINGLE_STANDALONE_SERVER_REQUIRED');
-  requireGate(app.settings?.is_consistent_container_name_enabled === true && app.settings.is_auto_deploy_enabled === false
-    && app.settings.is_preview_deployments_enabled === false, 'SINGLE_DEPLOYMENT_WRITER_REQUIRED');
-  requireGate(empty(app.custom_docker_run_options) && empty(app.pre_deployment_command) && empty(app.post_deployment_command), 'CUSTOM_EXECUTION_REVIEW_REQUIRED');
-  requireGate(app.health_check_enabled === true && (app.custom_healthcheck_found === true
+  requireGate(app.settings?.is_consistent_container_name_enabled === true, 'SINGLE_DEPLOYMENT_WRITER_REQUIRED');
+  const hardening = '--cap-drop=ALL --ulimit nproc=512:512 --ulimit nofile=4096:4096';
+  requireGate(String(app.custom_docker_run_options || '').trim().replace(/\s+/g, ' ') === hardening, 'HARDENING_CONFIGURATION_CHANGED');
+  requireGate(empty(app.pre_deployment_command) && empty(app.post_deployment_command), 'CUSTOM_EXECUTION_REVIEW_REQUIRED');
+  requireGate(app.health_check_enabled === false || (app.custom_healthcheck_found === true
     || app.health_check_type === 'cmd' && app.health_check_command === 'node scripts/healthcheck.mjs'), 'HEALTH_CONFIGURATION_CHANGED');
   requireGate(Array.isArray(storage?.persistent_storages) && Array.isArray(storage.file_storages), 'STORAGE_RESPONSE_UNKNOWN');
   requireGate(storage.persistent_storages.length === 1 && storage.file_storages.length === 0, 'UNEXPECTED_STORAGE_OVERLAY');
   const volume = storage.persistent_storages[0];
-  requireGate(volume.name === VOLUME && volume.mount_path === '/data' && empty(volume.host_path)
-    && volume.is_preview_suffix_enabled === false, 'DATA_VOLUME_CHANGED');
+  requireGate(volume.name === VOLUME && volume.mount_path === '/data' && empty(volume.host_path), 'DATA_VOLUME_CHANGED');
   const config = Object.fromEntries(configKeys.map(key => [key, app[key] ?? null]));
   const settings = Object.fromEntries(Object.entries(app.settings).filter(([key]) => !['id', 'created_at', 'updated_at', 'application_id'].includes(key)));
   const mounts = { name: volume.name, mountPath: volume.mount_path, hostPath: volume.host_path || null,
@@ -33,7 +33,7 @@ export function validateTarget(app, storage) {
     applicationUuid: APP, dataVolume: VOLUME, mountPath: '/data', status: app.status,
     runningDigestVerified: false };
 }
-export function coolify({ base, token, expectedVersion, fetcher = fetch, wait = ms => new Promise(r => setTimeout(r, ms)), now = Date.now } = {}) {
+export function coolify({ base, token, fetcher = fetch, wait = ms => new Promise(r => setTimeout(r, ms)), now = Date.now } = {}) {
   const origin = new URL(base);
   requireGate(origin.protocol === 'https:' && !origin.username && !origin.password && origin.pathname === '/' && !origin.search && !origin.hash, 'INVALID_COOLIFY_ORIGIN');
   requireGate(token, 'COOLIFY_TOKEN_MISSING');
@@ -62,9 +62,10 @@ export function coolify({ base, token, expectedVersion, fetcher = fetch, wait = 
   async function inspect() { return validateTarget(await request(applicationPath), await request(`${applicationPath}/storages`)); }
   return {
     inspect,
-    async verifyVersion() {
-      requireGate(typeof expectedVersion === 'string' && /^[a-zA-Z0-9.+_-]{1,80}$/.test(expectedVersion), 'REVIEWED_COOLIFY_VERSION_REQUIRED');
-      requireGate(await request('/api/v1/version') === expectedVersion, 'COOLIFY_VERSION_REVIEW_REQUIRED');
+    async version() {
+      const version = await request('/api/v1/version');
+      requireGate(typeof version === 'string' && /^[a-zA-Z0-9.+_-]{1,80}$/.test(version), 'COOLIFY_VERSION_UNKNOWN');
+      return version; // Record it; actual API responses and pin readback are the gates.
     },
     async assertIdle() {
       for (let skip = 0; skip <= 10000; skip += 100) {
@@ -121,11 +122,12 @@ export function publicSite({ fetcher = fetch, now = Date.now, wait = ms => new P
         let health;
         try { health = await read('/api/health'); } catch { await wait(3000); continue; }
         if (health.ok === true && health.persistence === 'sqlite' && health.build?.revision === selected.sha
-          && health.build?.tree === selected.tree && health.build?.compatibility === selected.compatibility
+          && health.build?.tree === selected.tree
           && health.build?.controllerRevision === selected.controllerSha && health.build?.runId === selected.runId && health.build?.buildAttempt === selected.buildAttempt) {
-          requireGate(await this.access() === accessBefore, 'ACCESS_POLICY_CHANGED');
+          const accessAfter = await this.access();
+          if (accessBefore !== null) requireGate(accessAfter === accessBefore, 'ACCESS_POLICY_CHANGED');
           requireGate((await read('/', false)).includes('/main.js'), 'PUBLIC_STATIC_SMOKE_FAILED');
-          return { revision: health.build.revision, tree: health.build.tree, runId: health.build.runId, buildAttempt: health.build.buildAttempt, ok: true };
+          return { revision: health.build.revision, tree: health.build.tree, runId: health.build.runId, buildAttempt: health.build.buildAttempt, accessPolicyCompared: accessBefore !== null, ok: true };
         }
         await wait(3000);
       }

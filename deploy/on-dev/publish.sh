@@ -6,19 +6,18 @@ jq -e --arg repository "$GITHUB_REPOSITORY" --arg sha "$SOURCE_SHA" --arg contro
   --arg run "$GITHUB_RUN_ID" --arg attempt "$BUILD_ATTEMPT" '
   .schemaVersion == 1 and .repository == $repository and .sha == $sha and .controllerSha == $controller and
   .runId == $run and .buildAttempt == $attempt and .platform == "linux/amd64" and
-  (.tree | test("^[a-f0-9]{40}$")) and (.compatibility | test("^[a-f0-9]{64}$")) and
+  (.tree | test("^[a-f0-9]{40}$")) and
   (.imageId | test("^sha256:[a-f0-9]{64}$")) and (.archiveSha256 | test("^[a-f0-9]{64}$"))' input/source.json >/dev/null
 test "$(sha256sum input/image.tar | cut -d ' ' -f 1)" = "$(jq -r .archiveSha256 input/source.json)"
 docker load --input input/image.tar
 id=$(jq -r .imageId input/source.json)
 tree=$(jq -r .tree input/source.json)
-compatibility=$(jq -r .compatibility input/source.json)
 docker image inspect "$id" | jq -e --arg id "$id" --arg sha "$SOURCE_SHA" --arg tree "$tree" \
-  --arg controller "$CONTROLLER_SHA" --arg compatibility "$compatibility" --arg run "$GITHUB_RUN_ID" '
+  --arg controller "$CONTROLLER_SHA" --arg run "$GITHUB_RUN_ID" '
   length == 1 and .[0].Id == $id and .[0].Architecture == "amd64" and .[0].Os == "linux" and .[0].Config.User == "node:node" and
   .[0].Config.Labels["org.opencontainers.image.source"] == "https://github.com/BAWES-Universe/universe-3d" and
   .[0].Config.Labels["org.opencontainers.image.revision"] == $sha and .[0].Config.Labels["net.bawes.source-tree"] == $tree and
-  .[0].Config.Labels["net.bawes.controller-sha"] == $controller and .[0].Config.Labels["net.bawes.compatibility"] == $compatibility and
+  .[0].Config.Labels["net.bawes.controller-sha"] == $controller and
   .[0].Config.Labels["net.bawes.run-id"] == $run' >/dev/null
 mkdir -m 0700 "$DOCKER_CONFIG"
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT

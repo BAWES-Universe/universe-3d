@@ -55,21 +55,12 @@ export function github({ token, fetcher = fetch } = {}) {
   }
   return { request, pages, desired,
     stillWanted: async want => identity(await desired()) === identity(want),
-    async assertUnlocked() {
-      const deployments = await pages(`deployments?environment=${ENVIRONMENT}`);
-      for (const deployment of deployments.filter(d => d.task === 'universe-3d-on-dev')) {
-        const statuses = await request(path(`deployments/${deployment.id}/statuses?per_page=1`));
-        // A crash before the first status also remains a lock. An owner can mark
-        // an investigated failure inactive; deleting history is unnecessary.
-        requireGate(statuses.length && ['success', 'inactive'].includes(statuses[0].state), 'RECOVERY_REVIEW_REQUIRED');
-      }
-    },
     async begin(selected, before) {
       const deployment = await request(path('deployments'), { method: 'POST', body: {
         ref: selected.sha, task: 'universe-3d-on-dev', auto_merge: false, required_contexts: [],
         environment: ENVIRONMENT, transient_environment: false, production_environment: false,
         description: 'Serialized Universe 3D dev image switch',
-        payload: { schemaVersion: 1, pin: selected.pin, revision: selected.sha, compatibility: selected.compatibility,
+        payload: { schemaVersion: 1, pin: selected.pin, revision: selected.sha,
           runId: selected.runId, buildAttempt: selected.buildAttempt, controllerSha: selected.controllerSha,
           previousConfiguredPin: before.configuredPin, runningDigestVerified: false }
       } });
@@ -79,7 +70,7 @@ export function github({ token, fetcher = fetch } = {}) {
     status: (id, state, runUrl) => request(path(`deployments/${id}/statuses`), { method: 'POST', body: {
       state, auto_inactive: false, environment: ENVIRONMENT, log_url: runUrl,
       description: state === 'success' ? 'Digest selected; health and served revision verified' :
-        state === 'inactive' ? 'No runtime switch performed' : 'Owner review required unless this run completes',
+        state === 'inactive' ? 'No runtime switch performed' : 'Read the deployment receipt before reconciling again',
       ...(state === 'success' ? { environment_url: 'https://3d.dev.bawes.net' } : {})
     } })
   };

@@ -7,8 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { REPOSITORY, IMAGE, APP, VOLUME, ORIGIN, GateError, validateSelected } from '../deploy/on-dev/contracts.mjs';
 import { choose, github } from '../deploy/on-dev/github.mjs';
 import { validateTarget, configuredPin, coolify, publicSite } from '../deploy/on-dev/coolify.mjs';
-import { switchDev, checkBaseline } from '../deploy/on-dev/switch.mjs';
-import { compatibility } from '../deploy/on-dev/source.mjs';
+import { switchDev } from '../deploy/on-dev/switch.mjs';
+import { prepareSource } from '../deploy/on-dev/source.mjs';
 import { readBuildInfo } from '../server/build-info.mjs';
 import { createGameServer } from '../server/app.mjs';
 
@@ -23,6 +23,7 @@ const fixture = () => ({
   app: { uuid: APP, build_pack: 'dockerimage', fqdn: ORIGIN, ports_exposes: '4190', ports_mappings: null,
     destination_type: 'App\\Models\\StandaloneDocker', destination_id: 5, additional_servers_count: 0,
     health_check_enabled: true, health_check_path: '/api/health', health_check_type: 'cmd', health_check_command: 'node scripts/healthcheck.mjs', custom_healthcheck_found: false, status: 'running:healthy',
+    custom_docker_run_options: '--cap-drop=ALL --ulimit nproc=512:512 --ulimit nofile=4096:4096',
     docker_registry_image_name: IMAGE, docker_registry_image_tag: D1.replace(':', '-'),
     settings: { is_consistent_container_name_enabled: true, is_auto_deploy_enabled: false, is_preview_deployments_enabled: false } },
   storage: { persistent_storages: [{ uuid: 'volume-uuid', name: VOLUME, mount_path: '/data', host_path: null, is_preview_suffix_enabled: false }], file_storages: [] }
@@ -54,7 +55,7 @@ test('removal selects next eligible held label, removal of all returns main', ()
 test('immutable image attribution rejects tags, other registry/repo and malformed identity', () => {
   assert.equal(validateSelected(selected), selected);
   for (const patch of [{ pin: `${IMAGE}:latest` }, { digest: 'latest' }, { repository: 'fork/repo' },
-    { controllerSha: 'main' }, { runId: 'x' }, { compatibility: 'unknown' }]) assert.throws(() => validateSelected({ ...selected, ...patch }));
+    { controllerSha: 'main' }, { runId: 'x' }, { buildAttempt: 'x' }]) assert.throws(() => validateSelected({ ...selected, ...patch }));
 });
 test('API-only prior pin is explicitly configured evidence, never running digest proof', () => {
   const { app, storage } = fixture(); const result = validateTarget(app, storage);
@@ -67,7 +68,6 @@ for (const [description, change] of [
   ['multiple servers', f => { f.app.additional_servers_count = 1; }],
   ['missing server count', f => { delete f.app.additional_servers_count; }],
   ['rolling updates', f => { f.app.settings.is_consistent_container_name_enabled = false; }],
-  ['external auto deployment', f => { f.app.settings.is_auto_deploy_enabled = true; }],
   ['volume name', f => { f.storage.persistent_storages[0].name = 'empty-new-volume'; }],
   ['mount path', f => { f.storage.persistent_storages[0].mount_path = '/other'; }],
   ['bind mount', f => { f.storage.persistent_storages[0].host_path = '/host'; }],
@@ -84,9 +84,9 @@ function mockIO({ failAt, wantedResponses = [true], health = buildHealth(), alre
   const act = (name, value) => { calls.push(name); if (failAt === name) throw new GateError(`FAIL_${name}`); return value; };
   let i = 0;
   const io = { now: () => 1_800_000_000_000, save: receipt => receipts.push(structuredClone(receipt)),
-    github: { assertUnlocked: async () => act('unlocked'), stillWanted: async () => act('wanted', wantedResponses[Math.min(i++, wantedResponses.length - 1)]),
+    github: { stillWanted: async () => act('wanted', wantedResponses[Math.min(i++, wantedResponses.length - 1)]),
       begin: async () => act('begin', 42), status: async (_id, state) => { act(`status_${state}`); statuses.push(state); } },
-    coolify: { verifyVersion: async () => act('version'), inspect: async () => act('inspect', validateTarget(f.app, f.storage)), assertIdle: async () => act('idle'),
+    coolify: { version: async () => act('version', '4.4.2'), inspect: async () => act('inspect', validateTarget(f.app, f.storage)), assertIdle: async () => act('idle'),
       setImage: async digest => { act('patch'); f.app.docker_registry_image_tag = digest.replace(':', '-'); },
       start: async () => act('start', 'deployment-id'), waitFor: async () => act('poll', 'finished') },
     site: { health: async () => act('health', health), access: async () => act('access', 'access-hash'),
@@ -114,33 +114,19 @@ test('label removal after durable lock exits inactive with no mutation', async (
 });
 test('label removal after image write never starts withdrawn image and freezes', async () => {
   const m = mockIO({ wantedResponses: [true, true, true, false] }); await assert.rejects(run(m), gate('WITHDRAWN_AFTER_IMAGE_WRITE'));
-  assert(!m.calls.includes('start')); assert(m.statuses.includes('failure')); assert.equal(m.receipts.at(-1).outcome, 'RECOVERY_REVIEW_REQUIRED');
+  assert(!m.calls.includes('start')); assert(m.statuses.includes('failure')); assert.equal(m.receipts.at(-1).outcome, 'DEPLOYMENT_UNVERIFIED');
 });
 test('label change during deployment records supersession honestly', async () => {
   const m = mockIO({ wantedResponses: [true, true, true, true, false] }); assert.equal((await run(m)).outcome, 'DEPLOYED_BUT_SUPERSEDED');
 });
-for (const stage of ['unlocked', 'version', 'idle', 'inspect', 'health', 'access', 'begin', 'status_in_progress', 'patch', 'start', 'poll', 'verify', 'status_success']) {
+for (const stage of ['version', 'idle', 'inspect', 'begin', 'status_in_progress', 'patch', 'start', 'poll', 'verify', 'status_success']) {
   test(`failure at ${stage} is never success and never retries a mutation`, async () => {
     const m = mockIO({ failAt: stage }); await assert.rejects(run(m));
-    assert(['BLOCKED', 'RECOVERY_REVIEW_REQUIRED'].includes(m.receipts.at(-1).outcome));
+    assert(['BLOCKED', 'DEPLOYMENT_UNVERIFIED'].includes(m.receipts.at(-1).outcome));
     assert(m.calls.filter(c => c === 'patch').length <= 1); assert(m.calls.filter(c => c === 'start').length <= 1);
     assert.equal(m.receipts.at(-1).automaticRollback, false);
   });
 }
-test('schema/migration mismatch blocks routine release before first write', async () => {
-  const m = mockIO({ health: buildHealth({ compatibility: 'f'.repeat(64) }) });
-  await assert.rejects(run(m), gate('COMPATIBILITY_REVIEW_REQUIRED')); assert(!m.calls.includes('patch'));
-});
-test('first rollout needs exact explicit owner attestation rather than old digest assumption', async () => {
-  const before = validateTarget(...Object.values(fixture()));
-  const baseline = { schemaVersion: 1, configuredPin: before.configuredPin, sourceRevision: B, compatibility: C,
-    ownerVerifiedBackup: true, ownerVerifiedRunningDigest: true, verifiedAt: '2026-10-08T10:00:00Z' };
-  assert.equal(checkBaseline({ ok: true, persistence: 'sqlite' }, selected, before, baseline), 'owner-attested-initial-baseline');
-  assert.throws(() => checkBaseline(buildHealth({ compatibility: 'f'.repeat(64) }), selected, before, baseline), gate('COMPATIBILITY_REVIEW_REQUIRED'));
-  for (const patch of [{ configuredPin: selected.pin }, { compatibility: 'x' }, { ownerVerifiedBackup: false }, { ownerVerifiedRunningDigest: false }]) {
-    assert.throws(() => checkBaseline({ ok: true, persistence: 'sqlite' }, selected, before, { ...baseline, ...patch }), gate('BASELINE_ACTIVATION_REQUIRED'));
-  }
-});
 test('real HTTP transport restricts writes to two image fields and one target', async () => {
   const calls = [], f = fixture();
   const api = coolify({ base: 'https://coolify.example.test', token: 'mock-token', fetcher: async (url, options) => {
@@ -171,16 +157,6 @@ test('polling validates receipt identity and bounded timeout', async () => {
     fetcher: async () => Response.json({ deployment_uuid: 'x', status: 'in_progress' }) });
   await assert.rejects(timed.waitFor('x', 10000), gate('DEPLOYMENT_TIMEOUT'));
 });
-test('GitHub durable unresolved marker blocks next run, successful/inactive allow it', async () => {
-  for (const state of ['in_progress', 'failure', 'error', 'success', 'inactive', null]) {
-    const api = github({ token: 'mock', fetcher: async url => {
-      if (url.includes('/statuses')) return Response.json(state ? [{ state }] : []);
-      return Response.json([{ id: 1, task: 'universe-3d-on-dev' }]);
-    } });
-    if (['success', 'inactive'].includes(state)) await api.assertUnlocked();
-    else await assert.rejects(api.assertUnlocked(), gate('RECOVERY_REVIEW_REQUIRED'));
-  }
-});
 test('GitHub selection paginates all labels and rejects fork without reading its source', async () => {
   const urls = [];
   const api = github({ token: 'mock', fetcher: async url => {
@@ -210,34 +186,9 @@ test('build metadata loads explicit public fields and serves exact revision from
     assert.equal(readBuildInfo(join(root, 'missing.json')), null);
     writeFileSync(join(root, 'build.json'), JSON.stringify(selected)); const buildInfo = readBuildInfo(join(root, 'build.json'));
     const app = createGameServer({ buildInfo }); const address = await app.listen(0);
-    try { const health = await (await fetch(`http://127.0.0.1:${address.port}/api/health`)).json(); assert.equal(health.build.revision, A); assert.equal(health.build.compatibility, C); }
+    try { const health = await (await fetch(`http://127.0.0.1:${address.port}/api/health`)).json(); assert.equal(health.build.revision, A); }
     finally { await app.close(); }
     writeFileSync(join(root, 'build.json'), JSON.stringify({ ...selected, sha: 'main' })); assert.throws(() => readBuildInfo(join(root, 'build.json')));
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-test('runtime storage gate catches format/SQL/dependency changes, permits frontend-only change', () => {
-  const root = mkdtempSync(join(tmpdir(), 'universe-schema-'));
-  const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
-  const commit = () => { git('add', '.'); git('-c', 'user.name=test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'fixture'); return git('rev-parse', 'HEAD'); };
-  try {
-    git('init', '-q'); mkdirSync(join(root, 'server')); mkdirSync(join(root, 'src'));
-    writeFileSync(join(root, 'server/store.mjs'), 'import { version } from "../src/protocol.js"; const sql="CREATE TABLE users (id TEXT)";');
-    writeFileSync(join(root, 'src/protocol.js'), 'export const version=1;');
-    writeFileSync(join(root, 'server/capabilities.json'), '{"format":1}');
-    writeFileSync(join(root, 'package.json'), '{}'); writeFileSync(join(root, 'package-lock.json'), '{}');
-    writeFileSync(join(root, 'src/ui.js'), 'export const text="hello";');
-    const first = compatibility(root, commit()); writeFileSync(join(root, 'src/ui.js'), 'export const text="friends";');
-    assert.equal(compatibility(root, commit()).hash, first.hash);
-    writeFileSync(join(root, 'src/protocol.js'), 'export const version=2;');
-    assert.notEqual(compatibility(root, commit()).hash, first.hash);
-    writeFileSync(join(root, 'src/protocol.js'), 'export const version=1;');
-    writeFileSync(join(root, 'server/capabilities.json'), '{"format":2}');
-    assert.notEqual(compatibility(root, commit()).hash, first.hash);
-    writeFileSync(join(root, 'server/capabilities.json'), '{"format":1}');
-    writeFileSync(join(root, 'server/extra.mjs'), 'const sql="ALTER TABLE users ADD name TEXT";');
-    assert.notEqual(compatibility(root, commit()).hash, first.hash);
-    rmSync(join(root, 'server/extra.mjs')); writeFileSync(join(root, 'package-lock.json'), '{"changed":true}');
-    assert.notEqual(compatibility(root, commit()).hash, first.hash);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test('workflow trust boundaries, serialized switch, artifact IDs and always receipt stay explicit', () => {
@@ -255,11 +206,6 @@ test('served revision from an earlier build attempt cannot pass a rerun', async 
   const site = publicSite({ now: () => clock, wait: async ms => { clock += ms; }, fetcher: async () =>
     Response.json(buildHealth({ revision: A, runId: '123', buildAttempt: '1' })) });
   await assert.rejects(site.verify({ ...selected, buildAttempt: '2' }, 'ignored', 5000), gate('SERVED_REVISION_NOT_VERIFIED'));
-});
-test('installed Coolify version changes fail before mutations', async () => {
-  const api = coolify({ base: 'https://coolify.example.test', token: 'mock', expectedVersion: '4.0.0-reviewed',
-    fetcher: async () => new Response('4.0.0-different') });
-  await assert.rejects(api.verifyVersion(), gate('COOLIFY_VERSION_REVIEW_REQUIRED'));
 });
 test('adding build identity preserves synthetic persistent accounts, rooms and asset bytes across restart', async () => {
   const root = mkdtempSync(join(tmpdir(), 'universe-persist-')), database = join(root, 'universe.sqlite');
@@ -289,4 +235,54 @@ test('PR image validation uses pinned matching base and no publish/deploy author
   const smoke = readFileSync(new URL('../deploy/on-dev/container-smoke.sh', import.meta.url), 'utf8');
   assert(smoke.includes('--network none')); assert(smoke.includes('--tmpfs /data:')); assert(smoke.includes('--user 1000:1000'));
   assert(smoke.includes('--pull never')); assert(!smoke.includes('/var/run/docker.sock')); assert(!smoke.includes('docker pull'));
+});
+test('existing host hardening and inert preview-suffix/health settings are preserved', () => {
+  const f = fixture(); f.app.health_check_enabled = false; f.app.health_check_type = 'http';
+  f.app.settings.is_auto_deploy_enabled = true; f.storage.persistent_storages[0].is_preview_suffix_enabled = true;
+  assert.equal(validateTarget(f.app, f.storage).configuredPin, `${IMAGE}@${D1}`);
+  for (const options of ['', '--privileged', '--cap-drop=ALL --cap-add=SYS_ADMIN', '--cap-drop=ALL --ulimit nproc=999999:999999']) {
+    assert.throws(() => validateTarget({ ...f.app, custom_docker_run_options: options }, f.storage), gate('HARDENING_CONFIGURATION_CHANGED'));
+  }
+});
+test('Coolify version is recorded while API/target behavior remains validated', async () => {
+  const api = coolify({ base: 'https://coolify.example.test', token: 'mock', fetcher: async () => new Response('4.4.3') });
+  assert.equal(await api.version(), '4.4.3');
+});
+test('healthy legacy or different backend build can use normal dev deployment without attestation', async () => {
+  for (const health of [{ ok: true, persistence: 'sqlite' }, buildHealth({ compatibility: 'different' })]) {
+    const m = mockIO({ health }); assert.equal((await run(m)).outcome, 'DEPLOYMENT_VERIFIED');
+  }
+});
+test('whole-app source preparation permits backend/migrations and blocks explicitly destructive releases', () => {
+  const root = mkdtempSync(join(tmpdir(), 'universe-whole-app-'));
+  const source = join(root, 'source'), trusted = join(root, 'trusted'); mkdirSync(source);
+  const git = (...args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8' }).trim();
+  const commit = () => { git('add', '.'); git('-c', 'user.name=test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'fixture'); return git('rev-parse', 'HEAD'); };
+  try {
+    git('init', '-q'); for (const dir of ['server', '.github', 'deploy/on-dev']) mkdirSync(join(source, dir), { recursive: true });
+    writeFileSync(join(source, '.github/trusted'), 'authority'); writeFileSync(join(source, 'deploy/on-dev/trusted'), 'authority');
+    writeFileSync(join(source, '.dockerignore'), '**'); writeFileSync(join(source, 'deploy/release-safety.json'), '{"destructiveDataChange":false}');
+    writeFileSync(join(source, 'server/store.mjs'), 'export const version=1;'); const controllerSha = commit();
+    git('worktree', 'add', '--detach', trusted, controllerSha);
+    writeFileSync(join(source, 'server/store.mjs'), 'export const version=2; const migration="CREATE TABLE IF NOT EXISTS example (id TEXT)";');
+    let sha = commit(); const args = { source, trusted, controllerSha, sha, runId: '42', buildAttempt: '1', output: join(root, 'source.json') };
+    assert.equal(prepareSource(args).sha, sha);
+    writeFileSync(join(source, 'deploy/release-safety.json'), '{"destructiveDataChange":true}'); sha = commit();
+    assert.throws(() => prepareSource({ ...args, sha }), gate('EXPLICIT_DATA_LOSS_APPROVAL_REQUIRED'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a broken prior app can be repaired by ordinary reconciliation', async () => {
+  const m = mockIO({ failAt: 'health' }); m.f.app.status = 'exited';
+  assert.equal((await run(m)).outcome, 'DEPLOYMENT_VERIFIED');
+  assert(m.calls.includes('patch')); assert.equal(m.receipts.at(-1).previousPublicHealth, false);
+});
+test('known incomplete owner setup is not mistaken for an unavailable old app', async () => {
+  const m = mockIO(); m.io.site.access = async () => { throw new GateError('OWNER_SETUP_INCOMPLETE'); };
+  await assert.rejects(run(m), gate('OWNER_SETUP_INCOMPLETE')); assert(!m.calls.includes('patch'));
+});
+test('same-image unhealthy response takes the normal restart path', async () => {
+  const health = buildHealth({ revision: A, runId: '123' }); health.ok = false;
+  const m = mockIO({ already: true, health });
+  assert.equal((await run(m)).outcome, 'DEPLOYMENT_VERIFIED'); assert(m.calls.includes('start'));
 });

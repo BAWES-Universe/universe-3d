@@ -1,7 +1,7 @@
 name: Verify standalone game
 on:
   push:
-    branches-ignore: [release/mvp-open-signup]
+    branches: [main]
   pull_request:
   workflow_call:
     outputs:

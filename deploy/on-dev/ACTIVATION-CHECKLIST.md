@@ -1,19 +1,13 @@
-# Activation sign-off (blank; no approval implied)
+# Finish the existing dev route
 
-- [ ] Publication approved; release history and adaptation reviewed on main
-- [ ] Main protection, workflow/file authority and GitHub environments verified
-- [ ] Old preview controller disabled; one operational writer agreed
-- [ ] Exact installed Coolify version and API contract reviewed
-- [ ] Existing UUID/volume preserved; standalone/no extra servers/no rolling overlap
-- [ ] Retained image or exact Node command health check verified
-- [ ] Inline Dockerfile empty and hidden runtime environment verified by owner
-- [ ] Actual current container digest/source/mounts checked, not inferred from API
-- [ ] Recoverable SQLite/WAL/assets backup and rollback limitations understood
-- [ ] Narrowest available team token scope approved; no shared-team root token
-- [ ] Initial baseline verified, timestamped and separately approved
-- [ ] First Actions run proves image build, anonymous pull, smoke and live revision
-- [ ] Actual deployed digest/mounts and account/room/asset continuity rechecked
-- [ ] Two-person browser session and normal friend entry tested
-- [ ] Initial baseline removed; routine label-deployment authorization agreed
+- [ ] Reviewed source and CI on main; old preview controller remains disabled
+- [ ] Existing app, volume, DB/asset paths and cap-drop/ulimits preserved
+- [ ] One routine deployment writer and intended stop-before-start confirmed
+- [ ] Fresh consistent backup, readable restore copy and ongoing backup route confirmed
+- [ ] Existing approved credential route or minimal one-time secure setup completed
+- [ ] Single universe-3d-dev environment and enable flag configured by authorized owner
+- [ ] Controlled first deployment: revision/health, account/room/assets and friend entry verified
 
-No check above was completed against live deployment by the preparation task.
+No setting, credential, real backup, restore or deployment is performed by this
+checklist. Routine approved backend/migration changes then follow the same normal
+build → test → deploy route. Destructive data operations require explicit approval.

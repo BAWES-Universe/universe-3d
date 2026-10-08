@@ -10,11 +10,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      initial_activation:
-        description: Owner-approved first rollout, using a fresh reviewed baseline
-        type: boolean
-        default: false
 permissions:
   contents: read
 env:
@@ -100,7 +95,7 @@ jobs:
           ref: ${{ needs.decide.outputs.sha }}
           path: source
           persist-credentials: false
-      - name: Verify migration sources and prepare exact source attribution
+      - name: Prepare exact source attribution and reject declared data-loss releases
         env:
           SOURCE_DIR: source
           TRUSTED_DIR: trusted
@@ -114,13 +109,12 @@ jobs:
           mkdir output
           cp source/deploy-build.json output/source.json
           tree=$(jq -r .tree output/source.json)
-          compatibility=$(jq -r .compatibility output/source.json)
           docker build --platform linux/amd64 --file trusted/deploy/on-dev/Dockerfile \
             --build-arg "BASE_IMAGE=$BASE_IMAGE" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$SOURCE_SHA" \
             --label "net.bawes.source-tree=$tree" --label "net.bawes.controller-sha=$CONTROLLER_SHA" \
-            --label "net.bawes.compatibility=$compatibility" --label "net.bawes.run-id=$GITHUB_RUN_ID" \
+            --label "net.bawes.run-id=$GITHUB_RUN_ID" \
             --tag "universe-on-dev:$SOURCE_SHA" source
           id=$(docker image inspect "universe-on-dev:$SOURCE_SHA" --format '{{.Id}}')
           docker save "$id" --output output/image.tar
@@ -196,7 +190,7 @@ jobs:
     needs: [decide, publish, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: ${{ inputs.initial_activation && 'universe-3d-initial-activation' || 'universe-3d-dev' }}
+    environment: universe-3d-dev
     concurrency:
       group: universe-3d-dev-switch
       cancel-in-progress: false
@@ -224,9 +218,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           COOLIFY_BASE: ${{ secrets.UNIVERSE_DEV_COOLIFY_BASE }}
           COOLIFY_TOKEN: ${{ secrets.UNIVERSE_DEV_COOLIFY_TOKEN }}
-          COOLIFY_EXPECTED_VERSION: ${{ vars.UNIVERSE_DEV_COOLIFY_VERSION }}
-          INITIAL_ACTIVATION: ${{ inputs.initial_activation }}
-          UNIVERSE_DEV_INITIAL_BASELINE: ${{ vars.UNIVERSE_DEV_INITIAL_BASELINE }}
         run: node deploy/on-dev/switch.mjs
       - name: Save the durable receipt, including failures
         if: always()

@@ -24,7 +24,7 @@ export const identity = want => `${want.mainSha}:${want.pr || 'main'}:${want.sha
 export function validateSelected(selected) {
   requireGate(selected?.repository === REPOSITORY && SHA.test(selected.sha) && SHA.test(selected.tree)
     && SHA.test(selected.controllerSha) && DIGEST.test(selected.digest) && DIGEST.test(selected.imageId)
-    && /^[a-f0-9]{64}$/.test(selected.compatibility) && /^\d+$/.test(String(selected.runId))
+    && /^\d+$/.test(String(selected.runId))
     && /^[1-9]\d*$/.test(String(selected.buildAttempt)), 'INVALID_RELEASE');
   requireGate(selected.pin === `${IMAGE}@${selected.digest}`, 'WRONG_IMAGE');
   return selected;
