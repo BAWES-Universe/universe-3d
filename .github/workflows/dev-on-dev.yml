@@ -173,7 +173,7 @@ jobs:
           retention-days: 90
 
   smoke:
-    needs: [decide, publish]
+    needs: [decide, build, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -185,6 +185,7 @@ jobs:
           persist-credentials: false
       - name: Smoke the exact published digest using disposable data
         env:
+          BUILD_ATTEMPT: ${{ needs.build.outputs.build_attempt }}
           PIN: ${{ needs.publish.outputs.pin }}
           IMAGE_ID: ${{ needs.publish.outputs.image_id }}
           SOURCE_SHA: ${{ needs.decide.outputs.sha }}

@@ -19,7 +19,7 @@ done
 test "$healthy" = true
 # Server's own /api/health must expose the build identity; port 4190 is on fetch's
 # blocked-port list, so use node:http. This code is trusted workflow source.
-docker exec -e EXPECT_SHA="$SOURCE_SHA" -e EXPECT_RUN="$GITHUB_RUN_ID" "$name" node --input-type=module -e '
+docker exec -e EXPECT_SHA="$SOURCE_SHA" -e EXPECT_RUN="$GITHUB_RUN_ID" -e EXPECT_ATTEMPT="$BUILD_ATTEMPT" "$name" node --input-type=module -e '
   import http from "node:http";
   const get = path => new Promise((resolve,reject) => {
     const req=http.get("http://127.0.0.1:4190"+path,{signal:AbortSignal.timeout(5000)},res=>{
@@ -28,5 +28,5 @@ docker exec -e EXPECT_SHA="$SOURCE_SHA" -e EXPECT_RUN="$GITHUB_RUN_ID" "$name" n
     });req.on("error",reject);
   });
   const health=JSON.parse(await get("/api/health"));
-  if(process.getuid()!==1000 || health.ok!==true || health.build?.revision!==process.env.EXPECT_SHA || health.build?.runId!==process.env.EXPECT_RUN)process.exit(1);
+  if(process.getuid()!==1000 || health.ok!==true || health.build?.revision!==process.env.EXPECT_SHA || health.build?.runId!==process.env.EXPECT_RUN || health.build?.buildAttempt!==process.env.EXPECT_ATTEMPT)process.exit(1);
   if(!(await get("/")).includes("/main.js"))process.exit(2);'

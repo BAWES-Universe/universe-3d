@@ -4,6 +4,8 @@ import {spawn} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 
+const recipe=process.argv[2]||'Dockerfile';
+if(!['Dockerfile','deploy/on-dev/Dockerfile'].includes(recipe))throw Error('Unsupported container recipe');
 const root=resolve('.'),scratch=await mkdtemp(join(tmpdir(),'universe-container-files-'));
 const stages={build:join(scratch,'build'),runtime:join(scratch,'runtime')};
 const copies=[];
@@ -11,7 +13,7 @@ function run(command,args,cwd){return new Promise((yes,no)=>{const p=spawn(comma
 try{
  for(const path of Object.values(stages))await mkdir(path,{recursive:true});
  let stage;
- for(const raw of (await readFile(join(root,'Dockerfile'),'utf8')).split('\n')){
+ for(const raw of (await readFile(join(root,recipe),'utf8')).split('\n')){
   const from=raw.match(/^FROM\s+\S+\s+AS\s+(build|runtime)$/i);if(from){stage=from[1].toLowerCase();continue;}
   if(!raw.startsWith('COPY '))continue;
   const fields=raw.slice(5).trim().split(/\s+/),fromBuild=fields[0]==='--from=build';if(fromBuild)fields.shift();
@@ -29,6 +31,6 @@ try{
   }
  }
  const runtimeOutput=await run(process.execPath,[join(root,'scripts/verify-package.mjs'),stages.runtime],stages.runtime);
- const report={checkedAt:new Date().toISOString(),status:'passed',copies,runtimeOutput:JSON.parse(runtimeOutput),limits:['Copies exactly the declared source/build files; build dependencies are linked from the installed lockfile environment','Runtime has no node_modules and uses a temporary local-mode database','No Docker daemon, image build/run, container UID, network, TLS proxy or public-mode deployment was exercised']};
- await mkdir(join(root,'evidence'),{recursive:true});await writeFile(join(root,'evidence/container-files.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+ const report={checkedAt:new Date().toISOString(),status:'passed',recipe,copies,runtimeOutput:JSON.parse(runtimeOutput),limits:['Copies exactly the declared source/build files; build dependencies are linked from the installed lockfile environment','Runtime has no node_modules and uses a temporary local-mode database','No Docker daemon, image build/run, container UID, network, TLS proxy or public-mode deployment was exercised']};
+ await mkdir(join(root,'evidence'),{recursive:true});await writeFile(join(root,recipe==='Dockerfile'?'evidence/container-files.json':'evidence/on-dev-container-files.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 }finally{await rm(scratch,{recursive:true,force:true});}

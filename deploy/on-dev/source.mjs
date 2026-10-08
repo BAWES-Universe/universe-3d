@@ -12,7 +12,7 @@ const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], { enco
 export function compatibility(root, ref) {
   requireGate(SHA.test(ref), 'INVALID_SOURCE_REF');
   const files = git(root, 'ls-tree', '-r', '--name-only', ref).split('\n');
-  const protectedFiles = new Set(files.filter(path => path === 'server.mjs' || path.startsWith('server/') && !/\.md$/.test(path) || /\.sql$/.test(path)));
+  const protectedFiles = new Set(files.filter(path => ['scripts/healthcheck.mjs', 'scripts/operator-account.mjs', 'scripts/promote-owner.mjs'].includes(path) || path === 'server.mjs' || path.startsWith('server/') && !/\.md$/.test(path) || /\.sql$/.test(path)));
   requireGate(protectedFiles.has('server/store.mjs'), 'MIGRATION_SOURCES_MISSING');
   // Include shared runtime schema/geometry/protocol code transitively. Import
   // declarations in this repository are static; nonliteral dynamic imports in

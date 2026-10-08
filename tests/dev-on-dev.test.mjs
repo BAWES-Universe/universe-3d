@@ -28,7 +28,7 @@ const fixture = () => ({
   storage: { persistent_storages: [{ uuid: 'volume-uuid', name: VOLUME, mount_path: '/data', host_path: null, is_preview_suffix_enabled: false }], file_storages: [] }
 });
 const buildHealth = (patch = {}) => ({ ok: true, persistence: 'sqlite', build: { revision: B, tree: TREE, compatibility: C,
-  runId: '122', controllerRevision: B, ...patch } });
+  runId: '122', buildAttempt: '1', controllerRevision: B, ...patch } });
 const gate = code => error => error.code === code;
 
 for (const [description, change] of [
@@ -249,4 +249,32 @@ test('workflow trust boundaries, serialized switch, artifact IDs and always rece
   for (const job of [build, verify]) { assert(!job.includes('secrets.')); assert(!job.includes('packages: write')); assert(!job.includes('PACKAGE_TOKEN')); }
   const switchJob = workflow.split('\n  switch:')[1]; assert(!switchJob.includes('docker run')); assert(switchJob.includes('if: always()'));
   assert(readFileSync(new URL('../.dockerignore', import.meta.url), 'utf8').includes('!deploy-build.json'));
+});
+test('served revision from an earlier build attempt cannot pass a rerun', async () => {
+  let clock = 0;
+  const site = publicSite({ now: () => clock, wait: async ms => { clock += ms; }, fetcher: async () =>
+    Response.json(buildHealth({ revision: A, runId: '123', buildAttempt: '1' })) });
+  await assert.rejects(site.verify({ ...selected, buildAttempt: '2' }, 'ignored', 5000), gate('SERVED_REVISION_NOT_VERIFIED'));
+});
+test('installed Coolify version changes fail before mutations', async () => {
+  const api = coolify({ base: 'https://coolify.example.test', token: 'mock', expectedVersion: '4.0.0-reviewed',
+    fetcher: async () => new Response('4.0.0-different') });
+  await assert.rejects(api.verifyVersion(), gate('COOLIFY_VERSION_REVIEW_REQUIRED'));
+});
+test('adding build identity preserves synthetic persistent accounts, rooms and asset bytes across restart', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'universe-persist-')), database = join(root, 'universe.sqlite');
+  const { seedWorlds } = await import('../src/worlds.js');
+  let app;
+  try {
+    app = createGameServer({ database, seeds: seedWorlds }); await app.listen(0);
+    const user = app.store.createUser('Fixture account', '{}');
+    app.store.run('INSERT INTO accounts(username,email,user_id,salt,password_hash) VALUES(?,?,?,?,?)', 'fixture-account', 'fixture@example.test', user.id, 'fixture-salt', 'fixture-hash');
+    const room = app.store.get('SELECT id FROM rooms LIMIT 1');
+    app.store.run('INSERT INTO room_files(id,room_id,name,content_type,size,bytes,sha256,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+      'fixture-file', room.id, 'fixture.txt', 'text/plain', 5, Buffer.from('hello'), 'fixture-digest', user.id, 1);
+    const snapshot = () => ({ accounts: app.store.all('SELECT * FROM accounts'), rooms: app.store.all('SELECT * FROM rooms ORDER BY id'), files: app.store.all('SELECT * FROM room_files') });
+    const before = snapshot(); await app.close(); app = null;
+    app = createGameServer({ database, seeds: seedWorlds, buildInfo: { revision: A, tree: TREE, compatibility: C, controllerRevision: B, runId: '123', buildAttempt: '1' } });
+    await app.listen(0); assert.deepEqual(snapshot(), before);
+  } finally { if (app) await app.close(); rmSync(root, { recursive: true, force: true }); }
 });

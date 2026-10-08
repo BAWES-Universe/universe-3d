@@ -41,7 +41,7 @@ export async function switchDev({ selected, wanted, initialBaseline = null, runU
     receipt.baselineEvidence = checkBaseline(health, selected, before, initialBaseline);
     // A rerun can verify the same already-running exact build without restarting it.
     if (before.configuredPin === selected.pin && health.build?.revision === selected.sha
-      && health.build?.runId === selected.runId && health.build?.tree === selected.tree) {
+      && health.build?.runId === selected.runId && health.build?.buildAttempt === selected.buildAttempt && health.build?.tree === selected.tree) {
       requireGate(before.status === 'running:healthy', 'APPLICATION_NOT_HEALTHY');
       receipt.observed = await io.site.verify(selected, accessBefore);
       receipt.outcome = 'ALREADY_CURRENT'; save(); return receipt;
@@ -66,8 +66,8 @@ export async function switchDev({ selected, wanted, initialBaseline = null, runU
     requireGate(configured.configurationHash === before.configurationHash && configured.configuredPin === selected.pin, 'TARGET_DRIFT_AFTER_WRITE');
     // If the label/head changed after PATCH, do not start the withdrawn image.
     // Configuration may have moved, so freeze for review rather than guessing.
-    requireGate(await io.github.stillWanted(wanted), 'WITHDRAWN_AFTER_IMAGE_WRITE');
     await io.coolify.assertIdle();
+    requireGate(await io.github.stillWanted(wanted), 'WITHDRAWN_AFTER_IMAGE_WRITE');
     receipt.outcome = 'START_ATTEMPTED'; save();
     receipt.coolifyDeploymentId = await io.coolify.start(); save();
     receipt.deploymentStatus = await io.coolify.waitFor(receipt.coolifyDeploymentId); save();

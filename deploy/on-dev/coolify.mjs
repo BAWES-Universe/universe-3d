@@ -122,10 +122,10 @@ export function publicSite({ fetcher = fetch, now = Date.now, wait = ms => new P
         try { health = await read('/api/health'); } catch { await wait(3000); continue; }
         if (health.ok === true && health.persistence === 'sqlite' && health.build?.revision === selected.sha
           && health.build?.tree === selected.tree && health.build?.compatibility === selected.compatibility
-          && health.build?.controllerRevision === selected.controllerSha && health.build?.runId === selected.runId) {
+          && health.build?.controllerRevision === selected.controllerSha && health.build?.runId === selected.runId && health.build?.buildAttempt === selected.buildAttempt) {
           requireGate(await this.access() === accessBefore, 'ACCESS_POLICY_CHANGED');
           requireGate((await read('/', false)).includes('/main.js'), 'PUBLIC_STATIC_SMOKE_FAILED');
-          return { revision: health.build.revision, tree: health.build.tree, runId: health.build.runId, ok: true };
+          return { revision: health.build.revision, tree: health.build.tree, runId: health.build.runId, buildAttempt: health.build.buildAttempt, ok: true };
         }
         await wait(3000);
       }

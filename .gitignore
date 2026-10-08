@@ -29,3 +29,6 @@ public/assets/woka-*.png
 
 # Private operator planning drafts
 OPERATOR-HANDOFF-PROMPT.md
+
+# Generated public build identity, supplied only by the trusted on-dev builder
+/deploy-build.json
