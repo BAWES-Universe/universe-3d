@@ -1,7 +1,7 @@
 /** Real browser WebRTC + actual public guest HTTP/SSE. Capture devices are synthetic. */
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,copyFile,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {build} from 'esbuild';
@@ -21,13 +21,15 @@ await build({stdin:{contents:`import {mountMedia} from './src/media.js';import '
 const api=async(path,o={})=>{const response=await fetch(path,{method:o.method||'GET',headers:{'Content-Type':'application/json'},...(o.body?{body:JSON.stringify(o.body)}:{})});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.message),{status:response.status,data:value});return value;};
 const actor=await api('/api/session',{method:'POST',body:{name:'Synthetic guest'}});const joined=await api('/api/rooms/commons/join',{method:'POST',body:{}});window.state={user:actor.user,room:joined.room,position:{x:joined.arrival.x,z:joined.arrival.z},admissionId:joined.arrival.admissionId,ready:true};window.media=mountMedia({root:document.querySelector('main'),api,getState:()=>state,toast:console.log});
 const stream=new EventSource('/api/events');for(const type of ['media-policy','media-signal','presence'])stream.addEventListener(type,event=>media.onEvent({type,data:JSON.parse(event.data)}));window.ready=true;`,resolveDir:resolve('.'),sourcefile:'native-media-fixture.js',loader:'js'},bundle:true,format:'esm',outfile:join(dir,'fixture.js')});
-await writeFile(join(dir,'index.html'),'<!doctype html><link rel="stylesheet" href="/fixture.css"><style>main{position:fixed;bottom:16px;left:16px;right:16px}</style><main></main><script type="module" src="/fixture.js"></script>');
+await copyFile(new URL('../public/universe-tokens.css',import.meta.url),join(dir,'universe-tokens.css'));
+await writeFile(join(dir,'index.html'),'<!doctype html><link rel="stylesheet" href="/universe-tokens.css"><link rel="stylesheet" href="/fixture.css"><style>body{margin:0;background:var(--u-ink);font:14px Arial}main.universe-media{position:fixed;bottom:16px;left:16px;right:16px}</style><main></main><script type="module" src="/fixture.js"></script>');
 const app=createGameServer({database,seeds,dist:dir,runtimeConfig:{...config,allowedOrigins:[base]},...DEFAULT_PROXIMITY_CONFIG});await app.listen(port);
 const browser=await chromium.launch({executablePath:await embedded.executablePath(),headless:true,args:['--no-sandbox','--no-zygote','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
 const contexts=[],pages=[],result={
  syntheticCapture:true,nativePeerConnection:true,nativeTransportConnected:false,remoteAudioVideoVerified:false,
  observationLimitMs:20000,peers:[],lifecycle:[],errors:[],
  limits:['Chromium synthetic microphone/camera capture; real public guest HTTP/SSE and native WebRTC.',
+  'Native mountMedia component fixture; this does not exercise the full 3D scene.',
   'Host-only ICE. No STUN/TURN, external provider, physical microphone/speaker, phone, or network handover is verified.']
 };
 // Observe native objects without changing capture, signaling, transport, or stats.
@@ -51,15 +53,29 @@ function instrumentNativeMedia(){
  };
  window.readMediaEvidence=async()=>{
   const trackInfo=track=>({id:track.id,kind:track.kind,label:track.label,readyState:track.readyState,enabled:track.enabled,muted:track.muted});
+  const geometry=element=>{
+   const box=element.getBoundingClientRect();
+   return {boundingRect:{x:box.x,y:box.y,top:box.top,right:box.right,bottom:box.bottom,left:box.left,width:box.width,height:box.height},
+    visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}),
+    inViewport:box.width>0&&box.height>0&&box.bottom>0&&box.top<innerHeight&&box.right>0&&box.left<innerWidth,
+    fullyInViewport:box.width>0&&box.height>0&&box.top>=0&&box.bottom<=innerHeight&&box.left>=0&&box.right<=innerWidth};
+  };
+  const elementInfo=element=>{
+   const quality=element.getVideoPlaybackQuality?.();
+   return {tag:element.tagName.toLowerCase(),muted:element.muted,paused:element.paused,ended:element.ended,
+    readyState:element.readyState,currentTime:element.currentTime,videoWidth:element.videoWidth??null,videoHeight:element.videoHeight??null,
+    ...geometry(element),tracks:element.srcObject?.getTracks().map(trackInfo)||[],
+    playbackQuality:quality?{creationTime:quality.creationTime,totalVideoFrames:quality.totalVideoFrames,droppedVideoFrames:quality.droppedVideoFrames,corruptedVideoFrames:quality.corruptedVideoFrames}:null,
+    playbackError:element.error?.message??null,playButtonVisible:!element.closest('.media-tile').querySelector('.media-play').hidden};
+  };
   const status=media.getStatus();
   const remoteTrackIds=new Set(status.peers.flatMap(peer=>Object.values(peer.streams).flatMap(stream=>stream.getTracks().map(track=>track.id))));
   const remoteElements=[...document.querySelectorAll('.media-peers audio,.media-peers video')]
-   .filter(element=>element.srcObject?.getTracks().some(track=>remoteTrackIds.has(track.id)))
-   .map(element=>({tag:element.tagName.toLowerCase(),muted:element.muted,paused:element.paused,ended:element.ended,
-    readyState:element.readyState,currentTime:element.currentTime,videoWidth:element.videoWidth??null,videoHeight:element.videoHeight??null,
-    visible:element.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}),
-    inViewport:(()=>{const box=element.getBoundingClientRect();return box.width>0&&box.height>0&&box.bottom>0&&box.top<innerHeight&&box.right>0&&box.left<innerWidth;})(),tracks:element.srcObject.getTracks().map(trackInfo),
-    playbackError:element.error?.message??null,playButtonVisible:!element.closest('.media-tile').querySelector('.media-play').hidden}));
+   .filter(element=>element.srcObject?.getTracks().some(track=>remoteTrackIds.has(track.id))).map(elementInfo);
+  const fixtureLayout={viewport:{width:innerWidth,height:innerHeight},
+   host:{position:getComputedStyle(document.querySelector('main')).position,...geometry(document.querySelector('main'))},
+   peers:geometry(document.querySelector('.media-peers')),
+   selfCamera:[...document.querySelectorAll('.media-self-camera video')].map(elementInfo)};
   const connections=await Promise.all(rtcConnections.map(async(pc,index)=>{
    const row={index,connectionState:pc.connectionState,iceConnectionState:pc.iceConnectionState,
     iceGatheringState:pc.iceGatheringState,signalingState:pc.signalingState,
@@ -85,11 +101,11 @@ function instrumentNativeMedia(){
   const audioPacketsReceived=connections.some(pc=>pc.connectionState==='connected'&&pc.inbound.audio.some(rtp=>rtp.packetsReceived>0&&rtp.bytesReceived>0));
   const videoFramesDecoded=connections.some(pc=>pc.connectionState==='connected'&&pc.inbound.video.some(rtp=>rtp.bytesReceived>0&&rtp.framesDecoded>0));
   const remoteAudioPlaying=remoteElements.some(element=>element.tag==='audio'&&!element.paused&&!element.muted&&element.readyState>=2&&element.tracks.some(track=>track.kind==='audio'&&live(track)));
-  const remoteVideoDecoded=remoteElements.some(element=>element.tag==='video'&&element.visible&&element.inViewport&&!element.paused&&element.readyState>=2&&element.videoWidth>0&&element.videoHeight>0&&element.tracks.some(track=>track.kind==='video'&&live(track)));
+  const remoteVideoDecoded=remoteElements.some(element=>element.tag==='video'&&element.visible&&element.inViewport&&element.fullyInViewport&&!element.paused&&!element.ended&&element.readyState>=2&&element.videoWidth>0&&element.videoHeight>0&&element.playbackQuality?.totalVideoFrames>element.playbackQuality?.droppedVideoFrames&&element.tracks.some(track=>track.kind==='video'&&live(track)));
   return {actorId:state.user.id,visibility:{state:document.visibilityState,hidden:document.hidden,focused:document.hasFocus()},
    joined:status.joined,joining:status.joining,iceTransport:status.iceTransport,iceServerCount:status.policy?.iceServers?.length??null,
    devices:Object.fromEntries(Object.entries(status.devices).map(([kind,device])=>[kind,{status:device.status,error:device.error,tracks:device.stream?.getTracks().map(trackInfo)||[]} ])),
-   captureTracks:capturedTracks.map(trackInfo),rtcDiagnostics,connections,remoteElements,
+   captureTracks:capturedTracks.map(trackInfo),rtcDiagnostics,connections,remoteElements,fixtureLayout,
    attachedMediaElementCount:[...document.querySelectorAll('audio,video')].filter(element=>element.srcObject).length,
    peers:status.peers.map(peer=>({id:peer.id,status:peer.status,candidateCount:peer.candidateCount,receivedBytes:peer.receivedBytes,sentBytes:peer.sentBytes,error:peer.error,
     remoteTracks:Object.fromEntries(Object.entries(peer.streams).map(([kind,stream])=>[kind,stream.getTracks().map(trackInfo)]))})),
@@ -147,11 +163,28 @@ try{
  }
  assert.notEqual(await pages[0].evaluate(()=>state.user.id),await pages[1].evaluate(()=>state.user.id),'Guests need separate real server identities');
  await joinAndCapture();
+ // The real media CSS positions tiles above its host. Assert the fixture host's
+ // placement before interpreting a failed viewport predicate as a product issue.
+ for(const page of pages)await page.waitForFunction(()=>{
+  const video=document.querySelector('.media-self-camera video');
+  return video&&!video.paused&&video.videoWidth>0&&video.videoHeight>0&&video.getVideoPlaybackQuality().totalVideoFrames>0;
+ });
+ result.fixtureLayout=(await readPeers()).map(peer=>peer.fixtureLayout);
+ for(const layout of result.fixtureLayout){
+  assert.equal(layout.host.position,'fixed','Fixture host must override the component relative-position rule');
+  assert.equal(layout.host.fullyInViewport,true,'Fixture media dock must be wholly inside the viewport');
+  assert.equal(layout.peers.fullyInViewport,true,'Fixture call participants area must be wholly inside the viewport');
+  assert.equal(layout.selfCamera.length,1,'Native self-camera tile must exist');
+  assert.equal(layout.selfCamera[0].visible&&layout.selfCamera[0].fullyInViewport,true,'Native self-camera video must be visibly inside the viewport');
+ }
+ result.fixtureLayoutVerified=true;
+ for(let index=0;index<pages.length;index++)await pages[index].screenshot({path:`evidence/guest-conversations/native-media-layout-guest-${index+1}.png`});
  const observed=await observeMedia();
  result.peers=observed.peers;result.observation={elapsedMs:observed.elapsedMs,samples:observed.samples};
  result.nativeTransportConnected=result.peers.length===2&&result.peers.every(peer=>peer.verification.transportConnected);
  result.remoteAudioVideoVerified=result.peers.length===2&&result.peers.every(peer=>peer.verification.remoteAudioVideoVerified);
  result.mediaOutcome=result.remoteAudioVideoVerified?'bidirectional-synthetic-media-verified':result.nativeTransportConnected?'transport-connected-media-unverified':'transport-and-media-unverified';
+ for(let index=0;index<pages.length;index++)await pages[index].screenshot({path:`evidence/guest-conversations/native-media-outcome-guest-${index+1}.png`});
  await leaveAndVerify('first leave');
  // Rejoining is a new explicit gesture, but must not restart any old capture.
  for(const page of pages){
