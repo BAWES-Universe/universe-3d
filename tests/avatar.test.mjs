@@ -48,3 +48,18 @@ test('garment surfaces face outward, keeping front details occluded from behind'
 test('hats tuck high hair geometry without changing the saved hairstyle',()=>{
  const engine=new NullEngine(),scene=new Scene(engine),rig=createAvatarRig(scene,{...copy(),hairStyle:'bun'});rig.root.computeWorldMatrix(true);const bare=rig.root.getHierarchyBoundingVectors(true).max.y;rig.setAppearance({...copy(),hairStyle:'bun',hat:'cap'});rig.root.computeWorldMatrix(true);const capped=rig.root.getHierarchyBoundingVectors(true).max.y;assert(capped<bare-.10);assert.equal(rig.appearance.hairStyle,'bun');rig.setAppearance({...rig.appearance,hat:'none'});assert.equal(rig.root.getHierarchyBoundingVectors(true).max.y,bare);rig.dispose();engine.dispose();
 });
+
+
+test('head bounds follow appearance, elevation, rotation and the actual seated pose',()=>{
+ const engine=new NullEngine(),scene=new Scene(engine),rig=createAvatarRig(scene,{...copy(),hairStyle:'bald',hat:'none',body:{height:'petite',build:'balanced'}});
+ const top=()=>rig.getHeadGeometry().mesh.getBoundingInfo().boundingBox.maximumWorld.y;
+ const petite=top();rig.setAppearance({...rig.appearance,body:{height:'tall',build:'balanced'}});assert(top()>petite+.3);
+ const bare=top();rig.setAppearance({...rig.appearance,hat:'beanie'});assert(top()>bare+.2);
+ const standing=top();rig.update({position:{x:3,y:1.4,z:-2},dt:0,time:0});assert(Math.abs(top()-standing-1.4)<1e-6);
+ rig.update({position:{x:3,y:1.4,z:-2},seated:true,seatHeight:.4,dt:0,time:0});assert(top()<standing+1.4-.3);
+ rig.update({position:{x:-4,y:2.2,z:6},heading:2,airborne:true,dt:.1,time:2});
+ const bounds=rig.getHeadGeometry().mesh.getBoundingInfo().boundingBox,head=rig.meshes.find(m=>m.name.endsWith('head-geometry')),matrix=head.getWorldMatrix(),vertices=head.getVerticesData('position');
+ assert(bounds.centerWorld.x<-3.5&&bounds.centerWorld.z>5.5);
+ for(let i=0;i<vertices.length;i+=3){const v=Vector3.TransformCoordinates(Vector3.FromArray(vertices,i),matrix);for(const axis of ['x','y','z'])assert(v[axis]>=bounds.minimumWorld[axis]-1e-6&&v[axis]<=bounds.maximumWorld[axis]+1e-6);}
+ rig.dispose();assert.equal(rig.getHeadGeometry(),null);engine.dispose();
+});

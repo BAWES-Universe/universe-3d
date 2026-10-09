@@ -245,16 +245,18 @@ export function mountExpress({ root, api, getState, project = () => null, before
         if (bubble.kind === 'think') node.append(el('span', 'express-thought-tail'));
         node.classList.toggle('express-self', bubble.userId === state().user?.id); rendered.set(bubble.id, node); layer.append(node);
       }
-      const person = actualPeople.get(bubble.userId), point = person && project({ ...person, y: 2.6 }, bubble);
+      const person = actualPeople.get(bubble.userId), point = person && project(person, bubble);
       const visible = point && point.visible !== false && Number.isFinite(point.x) && Number.isFinite(point.y);
       node.hidden = !visible; if (!visible) continue;
       const offset = offsets.get(bubble.userId) || 0;
+      // Fixed CSS-pixel clearance includes the tail, independent of camera zoom.
+      const clearance = bubble.kind === 'think' ? 20 : bubble.kind === 'say' ? 11 : 6;
       // Coordinates stay attached to the real avatar during orbit, pan and follow.
       const width = root.clientWidth || window.innerWidth, half = Math.min(node.offsetWidth / 2, width / 2 - 12);
       const x = Math.max(half + 8, Math.min(width - half - 8, point.x));
-      node.style.left = `${x}px`; node.style.top = `${point.y - offset}px`; node.style.setProperty('--tail-x', `${Math.max(12, Math.min(node.offsetWidth - 12, node.offsetWidth / 2 + point.x - x))}px`);
+      node.style.left = `${x}px`; node.style.top = `${point.y - offset - clearance}px`; node.style.setProperty('--tail-x', `${Math.max(12, Math.min(node.offsetWidth - 12, node.offsetWidth / 2 + point.x - x))}px`);
       node.classList.toggle('express-expiring', bubble.expiresAt - now() < 650);
-      offsets.set(bubble.userId, offset + node.offsetHeight + 9);
+      offsets.set(bubble.userId, offset + node.offsetHeight + clearance + 3);
     }
   }
   function update() { if (destroyed) return; syncScope(); bubbles.reconcile(people(), state().room?.id); draw(); if (opened) syncComposer(); }

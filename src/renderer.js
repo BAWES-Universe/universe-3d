@@ -41,7 +41,7 @@ export async function createRenderer(canvas,labels){
  const presentation=createWorldPresentation();
  const motionPreference=window.matchMedia('(prefers-reduced-motion: reduce)');
  let ambienceTime=0;
- let drawnFrames=0,lastRenderDt=0,resizePending=false,labelsHiddenBeforePause=null;
+ let drawnFrames=0,projectionVersion=0,lastRenderDt=0,resizePending=false,labelsHiddenBeforePause=null;
  const engine=new Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true,alpha:false},false);
  resizeRenderBuffer(engine,canvas,WORLD_RENDER_PIXELS);
  const scene=new Scene(engine);scene.clearColor=new Color4(.065,.058,.096,1);scene.skipPointerMovePicking=true;
@@ -210,7 +210,7 @@ export async function createRenderer(canvas,labels){
  }
  function syncPeople(people){const seen=new Set();for(const p of people){seen.add(p.id);avatar(p);}for(const [id,a]of avatars)if(!seen.has(id)){a.rig.dispose();a.shadow.dispose();a.el.remove();avatars.delete(id);}}
 
- function updateCamera(){const p=rig.getPosition(),s=rig.getState();camera.position.set(p.x,p.y,p.z);camera.setTarget(new Vector3(s.target.x,.6+(s.targetY||0),s.target.z));camera.getViewMatrix(true);camera.unfreezeProjectionMatrix();const projection=camera.getProjectionMatrix(true);const shift=projectionShift(framing.offset,canvas.clientWidth,canvas.clientHeight);projection.setRowFromFloats(2,projection.m[8]+shift.x,projection.m[9]+shift.y,projection.m[10],projection.m[11]);camera.freezeProjectionMatrix(projection);scene.updateTransformMatrix(true);}
+ function updateCamera(){projectionVersion++;const p=rig.getPosition(),s=rig.getState();camera.position.set(p.x,p.y,p.z);camera.setTarget(new Vector3(s.target.x,.6+(s.targetY||0),s.target.z));camera.getViewMatrix(true);camera.unfreezeProjectionMatrix();const projection=camera.getProjectionMatrix(true);const shift=projectionShift(framing.offset,canvas.clientWidth,canvas.clientHeight);projection.setRowFromFloats(2,projection.m[8]+shift.x,projection.m[9]+shift.y,projection.m[10],projection.m[11]);camera.freezeProjectionMatrix(projection);scene.updateTransformMatrix(true);}
  function updateFraming(dt){
   const s=rig.getState();if(s.framingMode==='manual'){framing={...framing,status:'manual',offset:framingTransition.step(null,dt,{manual:true})};return;}
   const {panels,hud}=measurePanelOcclusion(canvas),points=[],anchor=s.follow?s.player:s.target;
@@ -224,6 +224,23 @@ export async function createRenderer(canvas,labels){
  }
  function project(v){return Vector3.Project(v,Matrix.Identity(),scene.getTransformMatrix(),camera.viewport.toGlobal(engine.getRenderWidth(),engine.getRenderHeight()));}
  function screenPoint(x,z,y=0){if(presentation.isSuppressed())return{x:0,y:0,visible:false};const p=project(new Vector3(x,y,z));const sx=p.x*canvas.clientWidth/engine.getRenderWidth(),sy=p.y*canvas.clientHeight/engine.getRenderHeight();return {x:sx,y:sy,visible:p.z>=0&&p.z<=1&&sx>=0&&sx<=canvas.clientWidth&&sy>=0&&sy<=canvas.clientHeight};}
+ // Anchor overlays to the rendered rig, including remote interpolation and sitting.
+ function avatarScreenPoint(id){
+  const a=avatars.get(id);if(!a||presentation.isSuppressed())return null;
+  if(a.headProjection?.version!==projectionVersion){
+   const {mesh,positions}=a.rig.getHeadGeometry(),center=mesh.getBoundingInfo().boundingBox.centerWorld;
+   const point=screenPoint(center.x,center.z,center.y),m=mesh.getWorldMatrix().multiply(scene.getTransformMatrix()).m,halfHeight=canvas.clientHeight/2;
+   // Project cached local geometry once per avatar/frame, not once per stacked bubble.
+   // Box corners would leave extra air above rounded heads at close zoom.
+   let top=Infinity;
+   for(let i=0;i<positions.length;i+=3){const x=positions[i],y=positions[i+1],z=positions[i+2],w=x*m[3]+y*m[7]+z*m[11]+m[15];if(w>0)top=Math.min(top,(1-(x*m[1]+y*m[5]+z*m[9]+m[13])/w)*halfHeight);}
+   a.headProjection={version:projectionVersion,point:{...point,y:top}};
+  }
+  const point={...a.headProjection.point};
+  // Nameplates keep their existing position; only reserve their visible CSS pixels.
+  if(!labels.hidden&&a.el.style.visibility==='visible')point.y=Math.min(point.y,a.el.getBoundingClientRect().top-canvas.getBoundingClientRect().top);
+  return point;
+ }
  function positionLabel(el,v){const p=screenPoint(v.x,v.z,v.y);el.style.display='';el.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-100%)`;pendingLabels.push({el,visible:p.visible});}
  function resolveLabelVisibility(){
   const viewport=canvas.getBoundingClientRect(),obstacles=[];
@@ -321,7 +338,7 @@ export async function createRenderer(canvas,labels){
  const act=fn=>(...args)=>{fn(...args);updateCamera();};
  resize();window.addEventListener('resize',resize);
  function setBotPreview(bot){if(!bot){botPreview?.dispose();botPreview=null;botPreviewLabel?.remove();botPreviewLabel=null;return;}if(!botPreview){botPreview=createBotMapPreview(scene,bot,world);botPreviewLabel=label('resident-draft','Draft · '+bot.name,'player-label');}else{botPreview.set(bot);botPreviewLabel.textContent='Draft · '+bot.name;}}
- return {sync,syncPeople,render,setPresentationSuspended,pick,select,screenPoint,setGhost,setBotPreview,setImageContext,getImageStates,setImageStateListener(fn){imageStateListener=fn;notifyImageStates();},async retryImage(id){if(!imageContext.canRead)return false;const view=imageViews.get(id);if(!view)return false;const result=await view.retry();return result.status==='ready';},
+ return {sync,syncPeople,render,setPresentationSuspended,pick,select,screenPoint,avatarScreenPoint,setGhost,setBotPreview,setImageContext,getImageStates,setImageStateListener(fn){imageStateListener=fn;notifyImageStates();},async retryImage(id){if(!imageContext.canRead)return false;const view=imageViews.get(id);if(!view)return false;const result=await view.retry();return result.status==='ready';},
   setDestination(target){if(destination&&target&&Math.hypot(destination.position.x-target.x,destination.position.z-target.z)<.01)return;destination?.dispose();destination=marker('walk-destination',target,'#ffe6a4',.75);},
   setGuide(target){guide?.dispose();guide=marker('quest-marker',target,'#e9c74c',1.7);},
   setBuild(v){if(build===v)return;build=v;setGhost(null);sync(world);},

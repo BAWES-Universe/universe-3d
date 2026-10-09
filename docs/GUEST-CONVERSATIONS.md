@@ -10,6 +10,10 @@ This change restores account-free social participation in admitted public rooms.
 4. Audio / video opens the existing real WebRTC controls. **Join audio** opts into receiving/connecting; microphone, camera and screen sharing each need an explicit device action and browser permission. No device prompt is triggered by entering a room, forming a bubble, or sending text. Walk away to leave the bubble; **Leave audio** stops the media session.
 5. Click a resident to check its actual player-text availability. A resident out of reach offers **Walk to resident**. Owner/editor management remains a separate button with the original authorization.
 
+## Express bubble placement
+
+Say, Think and emote bubbles attach to the rendered head silhouette, including hats, body size, elevation, seating and interpolated remote motion. Their tails keep a small CSS-pixel gap above the visible head/nameplate across camera zoom and orbit; the existing nameplate position is unchanged. This removes the former duplicated 2.6-unit height offset. Head geometry and per-frame projection are cached, and stacked expressions reserve each tail's height.
+
 ## Defaults and explicit operator configuration
 
 The normal `server.mjs` entry now enables bounded native bubbles and Nearby text when `UNIVERSE_PROXIMITY_CONFIG` is absent. These are explicit 3D product values, not an assertion about 2D coordinate scale or deployed settings:
@@ -50,6 +54,8 @@ Real local HTTP/SQLite/SSE tests cover guest/guest text, typing, guest/account m
 
 ### Local acceptance result
 
-The full unit suite passed 2,142 tests with one existing skip and no failures. Independent review added guest quest persistence regressions and checked public/private and bot authorization boundaries.
+The full unit suite passed 2,143 tests with one existing skip and no failures. Independent review added guest quest persistence regressions and checked public/private and bot authorization boundaries.
 
 Native Chromium media diagnostics used synthetic audio/video devices, actual `RTCPeerConnection`, guest sessions, HTTP/SSE signaling and the authorized ICE response. Both sides acquired live enabled audio and video tracks. Both received host-only ICE configuration with zero ICE servers, gathered zero candidates, received zero media bytes and displayed the real failure state. No remote tracks were received. A local UDP self-test worked, while network-interface enumeration failed with `uv_interface_addresses` error 1 in this executor. This is consistent with a host-discovery environment restriction, but is not proof of production behavior. Successful calls across normal browsers and production TURN traversal remain acceptance gates; no network/security setting was relaxed.
+
+The placement follow-up passed 81 camera/appearance combinations, eight renderer scenarios, 20 Express component checks and five real bundled-shell checks. Guest and Express acceptance are included in the existing signup/core browser groups. Closing an already closed resident panel is inert, preserving focus during unrelated browser-history navigation.
