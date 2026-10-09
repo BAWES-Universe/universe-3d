@@ -1,7 +1,7 @@
 name: Verify standalone game
 on:
   push:
-    branches-ignore: [release/mvp-open-signup]
+    branches: [main]
   pull_request:
   workflow_call:
     outputs:
@@ -71,3 +71,44 @@ jobs:
       - run: node scripts/test-browser.mjs ${{ matrix.group }}
         env:
           UNIVERSE_LEGACY_SOURCE: ${{ github.workspace }}/.ci-legacy
+
+  dev-image:
+    # PR/push verification only: no publishing, environment, deployment token,
+    # shared data or live access. Candidate code runs on this disposable runner.
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # Same exact reviewed base as dev-on-dev.yml; equality is regression-tested.
+      BASE_IMAGE: node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+      SOURCE_SHA: ${{ github.sha }}
+      CONTROLLER_SHA: ${{ github.sha }}
+      BUILD_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Generate exact public build identity for this CI source
+        env:
+          SOURCE_DIR: .
+          TRUSTED_DIR: .
+          SOURCE_OUTPUT: deploy-build.json
+        run: node deploy/on-dev/source.mjs prepare
+      - name: Build the real on-dev Docker recipe locally on the runner
+        id: image
+        run: |
+          docker build --platform linux/amd64 --file deploy/on-dev/Dockerfile \
+            --build-arg "BASE_IMAGE=$BASE_IMAGE" --tag "universe-on-dev-ci:$SOURCE_SHA" .
+          id=$(docker image inspect "universe-on-dev-ci:$SOURCE_SHA" --format '{{.Id}}')
+          [[ "$id" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'image_id=%s\n' "$id" >> "$GITHUB_OUTPUT"
+      - name: Smoke exact local image without network or persistent data
+        env:
+          IMAGE_ID: ${{ steps.image.outputs.image_id }}
+        run: bash deploy/on-dev/container-smoke.sh "$IMAGE_ID"

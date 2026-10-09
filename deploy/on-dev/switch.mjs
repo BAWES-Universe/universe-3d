@@ -1,0 +1,109 @@
+import { writeFileSync, renameSync, readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import { REPOSITORY, APP, ORIGIN, SHA, DIGEST, validateSelected, identity, requireGate, GateError } from './contracts.mjs';
+import { github } from './github.mjs';
+import { coolify, publicSite } from './coolify.mjs';
+
+// Dependencies are injected: tests never contact GitHub, GHCR or Coolify.
+export async function switchDev({ selected, wanted, runUrl }, io) {
+  validateSelected(selected);
+  requireGate(selected.sha === wanted.sha && selected.controllerSha === wanted.mainSha, 'RELEASE_SELECTION_MISMATCH');
+  const receipt = { schemaVersion: 1, outcome: 'PREFLIGHT', repository: REPOSITORY, applicationUuid: APP,
+    url: ORIGIN, selected, wanted, runUrl, startedAt: new Date(io.now()).toISOString(),
+    runtimeDigestVerified: false, automaticRollback: false };
+  let lockId = null, mutationAttempted = false;
+  const save = () => io.save(receipt);
+  save();
+  try {
+    if (!await io.github.stillWanted(wanted)) { receipt.outcome = 'SUPERSEDED'; save(); return receipt; }
+    receipt.coolifyVersion = await io.coolify.version();
+    await io.coolify.assertIdle();
+    const before = await io.coolify.inspect();
+    receipt.before = before; save();
+    // A broken old app must not prevent deploying its fix. Pre-deploy public
+    // probes are evidence only; the candidate's exact revision/health must pass.
+    let health = null, accessBefore = null;
+    try { health = await io.site.health(); } catch {}
+    try { accessBefore = await io.site.access(); } catch (error) {
+      if (error.code === 'OWNER_SETUP_INCOMPLETE') throw error;
+    }
+    receipt.previousPublicHealth = health?.ok === true;
+    receipt.previousAccessObserved = accessBefore !== null;
+    // A rerun can verify the same already-running exact build without restarting it.
+    if (health?.ok === true && health.persistence === 'sqlite'
+      && before.configuredPin === selected.pin && health?.build?.revision === selected.sha
+      && health?.build?.runId === selected.runId && health?.build?.buildAttempt === selected.buildAttempt && health?.build?.tree === selected.tree) {
+      receipt.observed = await io.site.verify(selected, accessBefore);
+      receipt.outcome = 'ALREADY_CURRENT'; save(); return receipt;
+    }
+    requireGate(await io.github.stillWanted(wanted), 'SUPERSEDED_BEFORE_LOCK');
+    // Durable receipt BEFORE the first Coolify write. A later authorized run
+    // reconciles live configuration/queue/health instead of requiring a manual unlock.
+    lockId = await io.github.begin(selected, before);
+    receipt.githubDeploymentId = lockId; receipt.outcome = 'LOCKED'; save();
+    await io.github.status(lockId, 'in_progress', runUrl);
+    const fresh = await io.coolify.inspect();
+    requireGate(fresh.configurationHash === before.configurationHash && fresh.configuredPin === before.configuredPin, 'TARGET_DRIFT_BEFORE_WRITE');
+    await io.coolify.assertIdle();
+    if (!await io.github.stillWanted(wanted)) {
+      await io.github.status(lockId, 'inactive', runUrl);
+      receipt.outcome = 'SUPERSEDED'; save(); return receipt;
+    }
+    mutationAttempted = true; receipt.outcome = 'IMAGE_WRITE_ATTEMPTED'; save();
+    await io.coolify.setImage(selected.digest);
+    const configured = await io.coolify.inspect();
+    requireGate(configured.configurationHash === before.configurationHash && configured.configuredPin === selected.pin, 'TARGET_DRIFT_AFTER_WRITE');
+    // If the label/head changed after PATCH, do not start the withdrawn image.
+    // Configuration may have moved, so freeze for review rather than guessing.
+    await io.coolify.assertIdle();
+    requireGate(await io.github.stillWanted(wanted), 'WITHDRAWN_AFTER_IMAGE_WRITE');
+    receipt.outcome = 'START_ATTEMPTED'; save();
+    receipt.coolifyDeploymentId = await io.coolify.start(); save();
+    receipt.deploymentStatus = await io.coolify.waitFor(receipt.coolifyDeploymentId); save();
+    const after = await io.coolify.inspect();
+    requireGate(after.configurationHash === before.configurationHash && after.configuredPin === selected.pin, 'TARGET_NOT_VERIFIED_AFTER_DEPLOY');
+    receipt.after = after;
+    receipt.observed = await io.site.verify(selected, accessBefore);
+    // Selection can change during a slow deployment. Record the actual outcome,
+    // but don't report a withdrawn preview as current intent or roll data back.
+    receipt.stillDesired = await io.github.stillWanted(wanted);
+    receipt.outcome = receipt.stillDesired ? 'DEPLOYMENT_VERIFIED' : 'DEPLOYED_BUT_SUPERSEDED';
+    save();
+    await io.github.status(lockId, 'success', runUrl);
+    receipt.completedAt = new Date(io.now()).toISOString(); save();
+    return receipt;
+  } catch (error) {
+    receipt.outcome = mutationAttempted ? 'DEPLOYMENT_UNVERIFIED' : 'BLOCKED';
+    receipt.error = error instanceof GateError ? error.code : 'UNEXPECTED_CONTROLLER_ERROR';
+    receipt.coolifyMutationAttempted = mutationAttempted; save();
+    if (lockId) {
+      try { await io.github.status(lockId, mutationAttempted ? 'failure' : 'inactive', runUrl); }
+      catch { receipt.statusWriteUnconfirmed = true; save(); }
+    }
+    // No automatic rollback, stop, database restore, account bootstrap or volume
+    // writes. Image rollback cannot reverse startup migrations or user writes.
+    throw Object.assign(new GateError(receipt.error), { receipt });
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const env = process.env;
+  const receiptPath = env.RECEIPT_PATH || 'deployment-receipt.json';
+  const save = receipt => { writeFileSync(`${receiptPath}.tmp`, `${JSON.stringify(receipt, null, 2)}\n`); renameSync(`${receiptPath}.tmp`, receiptPath); };
+  try {
+    requireGate(env.GITHUB_REPOSITORY === REPOSITORY && env.UNIVERSE_DEV_ENABLED === 'true', 'CONTROLLER_DISABLED');
+    const selected = JSON.parse(readFileSync(env.RELEASE_PATH || 'release.json', 'utf8'));
+    const wanted = JSON.parse(readFileSync(env.WANTED_PATH || 'wanted.json', 'utf8'));
+    requireGate(selected.runId === env.GITHUB_RUN_ID && selected.sha === env.SOURCE_SHA
+      && selected.controllerSha === env.CONTROLLER_SHA, 'ARTIFACT_RUN_BINDING_MISMATCH');
+    const result = await switchDev({ selected, wanted,
+      runUrl: `https://github.com/${REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}` }, {
+      now: Date.now, save, github: github({ token: env.GH_TOKEN }),
+      coolify: coolify({ base: env.COOLIFY_BASE, token: env.COOLIFY_TOKEN }), site: publicSite()
+    });
+    console.log(result.outcome);
+  } catch (error) {
+    if (!error.receipt) save({ schemaVersion: 1, outcome: 'BLOCKED', error: error instanceof GateError ? error.code : 'INVALID_CONTROLLER_INPUT', runtimeDigestVerified: false });
+    console.error(error instanceof GateError ? error.code : 'INVALID_CONTROLLER_INPUT'); process.exitCode = 1;
+  }
+}

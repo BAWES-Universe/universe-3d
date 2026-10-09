@@ -1,0 +1,271 @@
+name: Universe 3D on-dev
+
+# Publish only after review. It is inert until owner setup sets the enable flag.
+# All authority comes from trusted main; candidate code runs without deployment
+# or registry-write credentials. One immutable image moves through this run.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [labeled, unlabeled, synchronize, closed, reopened, ready_for_review, converted_to_draft, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  IMAGE: ghcr.io/bawes-universe/universe-3d
+  # Same reviewed official Node 24 base as the existing MVP publishing workflow.
+  BASE_IMAGE: node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+  CONTROLLER_SHA: ${{ github.workflow_sha }}
+  UNIVERSE_DEV_ENABLED: ${{ vars.UNIVERSE_DEV_ENABLED }}
+jobs:
+  decide:
+    if: >-
+      vars.UNIVERSE_DEV_ENABLED == 'true' && vars.UNIVERSE_PREVIEW_ENABLED != 'OWNER_APPROVED' && github.repository == 'BAWES-Universe/universe-3d' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'push' ||
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.label.name == 'on-dev' || contains(github.event.pull_request.labels.*.name, 'on-dev'))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: universe-3d-dev-decide
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      sha: ${{ steps.decide.outputs.sha }}
+      pr: ${{ steps.decide.outputs.pr }}
+      wanted_artifact: ${{ steps.wanted.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node deploy/on-dev/decide.mjs
+      - id: wanted
+        if: steps.decide.outputs.sha != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: on-dev-wanted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wanted.json
+          if-no-files-found: error
+          retention-days: 90
+
+  verify:
+    needs: decide
+    if: needs.decide.outputs.sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check && npm test && npm run build && npm run verify && npm run verify:container-files
+
+  build:
+    needs: [decide, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      artifact: ${{ steps.artifact.outputs.artifact-id }}
+      build_attempt: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Prepare exact source attribution and reject declared data-loss releases
+        env:
+          SOURCE_DIR: source
+          TRUSTED_DIR: trusted
+          SOURCE_SHA: ${{ needs.decide.outputs.sha }}
+          SOURCE_OUTPUT: source/deploy-build.json
+        run: node trusted/deploy/on-dev/source.mjs prepare
+      - name: Build without registry-write or deployment credentials
+        env:
+          SOURCE_SHA: ${{ needs.decide.outputs.sha }}
+        run: |
+          mkdir output
+          cp source/deploy-build.json output/source.json
+          tree=$(jq -r .tree output/source.json)
+          docker build --platform linux/amd64 --file trusted/deploy/on-dev/Dockerfile \
+            --build-arg "BASE_IMAGE=$BASE_IMAGE" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "net.bawes.source-tree=$tree" --label "net.bawes.controller-sha=$CONTROLLER_SHA" \
+            --label "net.bawes.run-id=$GITHUB_RUN_ID" \
+            --tag "universe-on-dev:$SOURCE_SHA" source
+          id=$(docker image inspect "universe-on-dev:$SOURCE_SHA" --format '{{.Id}}')
+          docker save "$id" --output output/image.tar
+          archive=$(sha256sum output/image.tar | cut -d ' ' -f 1)
+          jq --arg id "$id" --arg archive "$archive" '. + {imageId:$id,archiveSha256:$archive}' output/source.json > output/complete.json
+          mv output/complete.json output/source.json
+      - id: artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: on-dev-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    needs: [decide, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      pin: ${{ steps.publish.outputs.pin }}
+      image_id: ${{ steps.publish.outputs.image_id }}
+      release_artifact: ${{ steps.release.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact }}
+          path: input
+          merge-multiple: true
+      - id: publish
+        env:
+          SOURCE_SHA: ${{ needs.decide.outputs.sha }}
+          BUILD_ATTEMPT: ${{ needs.build.outputs.build_attempt }}
+          PACKAGE_TOKEN: ${{ github.token }}
+          DOCKER_CONFIG: ${{ runner.temp }}/on-dev-publish-auth
+        run: bash deploy/on-dev/publish.sh
+      - id: release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: on-dev-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release.json
+          if-no-files-found: error
+          retention-days: 90
+
+  smoke:
+    needs: [decide, build, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Smoke the exact published digest using disposable data
+        env:
+          BUILD_ATTEMPT: ${{ needs.build.outputs.build_attempt }}
+          PIN: ${{ needs.publish.outputs.pin }}
+          IMAGE_ID: ${{ needs.publish.outputs.image_id }}
+          SOURCE_SHA: ${{ needs.decide.outputs.sha }}
+          DOCKER_CONFIG: ${{ runner.temp }}/on-dev-anonymous
+        run: bash deploy/on-dev/image-smoke.sh
+
+  switch:
+    needs: [decide, publish, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: universe-3d-dev
+    concurrency:
+      group: universe-3d-dev-switch
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.publish.outputs.release_artifact }}
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.decide.outputs.wanted_artifact }}
+          merge-multiple: true
+      - name: Reconcile, switch and verify the live served revision
+        env:
+          SOURCE_SHA: ${{ needs.decide.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+          COOLIFY_BASE: ${{ secrets.UNIVERSE_DEV_COOLIFY_BASE }}
+          COOLIFY_TOKEN: ${{ secrets.UNIVERSE_DEV_COOLIFY_TOKEN }}
+        run: node deploy/on-dev/switch.mjs
+      - name: Save the durable receipt, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: on-dev-deployment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deployment-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Summarize exact outcome
+        if: always()
+        run: |
+          if [ -f deployment-receipt.json ]; then
+            jq '{outcome,error,selectedPin:.selected.pin,observed,runtimeDigestVerified,automaticRollback}' deployment-receipt.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No receipt: do not report deployment success. Check deployment markers before retrying.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  receipt:
+    # Even a failed build/smoke has an attributable durable run receipt. This is
+    # separate from the richer switch receipt and cannot assert live success.
+    needs: [decide, verify, build, publish, smoke, switch]
+    if: always() && needs.decide.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Record stage results
+        env:
+          SOURCE_SHA: ${{ needs.decide.outputs.sha }}
+          PR: ${{ needs.decide.outputs.pr }}
+          DECIDE_RESULT: ${{ needs.decide.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}
+          SWITCH_RESULT: ${{ needs.switch.result }}
+        run: |
+          jq -n --arg source "$SOURCE_SHA" --arg controller "$CONTROLLER_SHA" --arg pr "$PR" \
+            --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg decide "$DECIDE_RESULT" --arg verify "$VERIFY_RESULT" --arg build "$BUILD_RESULT" \
+            --arg publish "$PUBLISH_RESULT" --arg smoke "$SMOKE_RESULT" --arg switch "$SWITCH_RESULT" \
+            '{schemaVersion:1,source:$source,controller:$controller,pr:$pr,runId:$run,runAttempt:$attempt,
+              stages:{decide:$decide,verify:$verify,build:$build,publish:$publish,smoke:$smoke,switch:$switch},
+              liveSuccessClaim:false,note:"Read on-dev-deployment receipt for exact runtime outcome; stage success alone is not deployment proof"}' > run-receipt.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: on-dev-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: run-receipt.json
+          if-no-files-found: error
+          retention-days: 90

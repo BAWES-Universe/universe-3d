@@ -1,6 +1,7 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGameServer } from './server/app.mjs';
+import { readBuildInfo } from './server/build-info.mjs';
 import { seedWorlds } from './src/worlds.js';
 import { readRuntimeConfig } from './server/runtime-config.mjs';
 import {readIceRelayConfig} from './server/media-ice.mjs';
@@ -11,7 +12,7 @@ const runtimeConfig=readRuntimeConfig(process.env,{root});
 const proximityConfig=readProximityRuntimeConfig(process.env);
 const siteAdmissionConfig=readSiteAdmissionConfig(process.env);
 process.umask(0o077);
-const app=createGameServer({database:runtimeConfig.database,dist:resolve(root,'dist'),seeds:seedWorlds,runtimeConfig,iceRelayConfig:readIceRelayConfig(process.env),siteAdmissionConfig,...proximityConfig});
+const app=createGameServer({buildInfo:readBuildInfo(resolve(root,'deploy-build.json')),database:runtimeConfig.database,dist:resolve(root,'dist'),seeds:seedWorlds,runtimeConfig,iceRelayConfig:readIceRelayConfig(process.env),siteAdmissionConfig,...proximityConfig});
 const address=await app.listen(runtimeConfig.port);
 const displayHost=runtimeConfig.host.includes(':')?`[${runtimeConfig.host}]`:runtimeConfig.host;
 console.log(runtimeConfig.mode==='public'?`Universe private preview listening on ${displayHost}:${address.port}; external TLS and operator provisioning required`:`Universe standalone is ready at http://${displayHost}:${address.port}`);

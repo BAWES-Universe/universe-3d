@@ -98,7 +98,8 @@ test('MVP publication is exact-branch, verified-SHA and publish-only', () => {
   }
   assert.match(verification, /workflow_call:/);
   assert.match(verification, /value: \$\{\{ jobs\.verify\.outputs\.tree \}\}/);
-  assert.equal((verification.match(/ref: \$\{\{ github\.sha \}\}/g) || []).length, 2);
+  // Verify, browser and credential-free dev-image jobs each pin the triggering SHA.
+  assert.equal((verification.match(/ref: \$\{\{ github\.sha \}\}/g) || []).length, 3);
   assert.match(workflow, /git -C source rev-parse HEAD\^\{tree\}/);
   assert.match(workflow, /artifact-ids: \$\{\{ needs\.build\.outputs\.artifact \}\}/);
 });

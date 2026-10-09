@@ -48,7 +48,7 @@ const MODERATE = ['owner', 'admin', 'moderator'];
 const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','🤔','🙌','😮','😊','💜','✅','🎸','💃','🕺','🏳️'];
 const STATUS = ['online','away','busy','dnd','invisible'];
 
-export function createGameServer({ database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers, siteAdmissionConfig = readSiteAdmissionConfig({UNIVERSE_REGISTRATION_MODE:runtimeConfig.registrationMode}), imagePhysicalSizeEnabled = runtimeConfig.imagePhysicalSizeEnabled ?? false } = {}) {
+export function createGameServer({ buildInfo = null, database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers, siteAdmissionConfig = readSiteAdmissionConfig({UNIVERSE_REGISTRATION_MODE:runtimeConfig.registrationMode}), imagePhysicalSizeEnabled = runtimeConfig.imagePhysicalSizeEnabled ?? false } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
@@ -297,7 +297,7 @@ export function createGameServer({ database = ':memory:', seeds = [], dist = res
       if (!path.startsWith('/api/')) return await serveStatic(req,res,path);
       if(!setup.active)imageProtocol.assertRequest(req);
       if(path==='/api/client-protocol'&&method==='GET')return send(res,200,imageProtocol.status());
-      if(path==='/api/health'&&method==='GET') return send(res,200,{ok:true,persistence:'sqlite',identity:'httpOnly-session',scope:runtimeConfig.mode==='public'?'standalone-private-preview':'standalone-local'});
+      if(path==='/api/health'&&method==='GET') return send(res,200,{ok:true,...(buildInfo?{build:buildInfo}:{}),persistence:'sqlite',identity:'httpOnly-session',scope:runtimeConfig.mode==='public'?'standalone-private-preview':'standalone-local'});
       if(path==='/api/access'&&method==='GET')return send(res,200,{...accessGate.publicPolicy(),openSignup:runtimeConfig.registrationMode==='open',openRegistration:runtimeConfig.registrationMode==='open',setupOnly:setup.active,inviteRegistration:siteAdmissionConfig.enabled,siteAdmission:siteAdmission.publicPolicy(session(req,false))});
       if(await openSignup.handle({req,res,path,method,url}))return;
       if(path==='/api/setup/me'&&method==='GET'){if(runtimeConfig.registrationMode!=='open')v.fail(404,'NOT_FOUND','API endpoint not found');const me=session(req);if(!store.user(me.user_id)?.account)v.fail(401,'AUTH_REQUIRED','Sign in to an account first');return send(res,200,{accountId:me.user_id,user:store.user(me.user_id),setupOnly:setup.active});}
