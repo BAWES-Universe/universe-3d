@@ -17,6 +17,10 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     CREATE TABLE IF NOT EXISTS quest_grants(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,attempt_id TEXT NOT NULL REFERENCES quest_attempts(id),rule TEXT NOT NULL,granted_at INTEGER NOT NULL,notice_claimed_at INTEGER,UNIQUE(attempt_id,rule));
   `);
   const bubbles=new Map();
+  // Quest progress is durable. Public guest participation stays outside this
+  // journal even when guests share ordinary conversation/media with accounts.
+  const durablePlayer=userId=>!store.isPublicGuest(userId)&&!!store.get('SELECT 1 FROM users WHERE id=?',userId);
+  const questPeer=peer=>peer.canSend&&peer.canReceive&&durablePlayer(peer.id);
   function preferences(userId) {
     store.run('INSERT OR IGNORE INTO quest_preferences(user_id) VALUES(?)',userId);
     const row=store.get('SELECT * FROM quest_preferences WHERE user_id=?',userId);
@@ -49,7 +53,7 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     return {id:'quest-'+hash(key),version:hash({kind,title,objective,target:target?.area||null}),kind,roomId,title,objective,target,reward:'A private '+({explore:'Explorer',build:'Builder',meet:'Connection'}[kind])+' stamp'};
   }
   function roomDefinitions(userId,roomId) {
-    if(!enabled||!roomId)return [];
+    if(!enabled||!roomId||!durablePlayer(userId))return [];
     const room=store.room(roomId,userId);store.authorize(roomId,userId);
     const p=presence.get(`${roomId}:${userId}`);if(!p||now()-p.lastSeen>=60000)return [];
     const result=[];
@@ -67,7 +71,7 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     }
     if(EDIT.includes(room.role)&&room.scene.objects.length<2000)result.push(definition('build',roomId,'Try building','Open Build, place a new object, and save the room. Moving an existing object does not count.'));
     const policy=media.policy(userId,roomId);
-    if(policy.enabled&&policy.context.kind==='proximity'&&policy.peers.some(peer=>peer.canSend&&peer.canReceive))result.push(definition('meet',roomId,'Meet someone','Exchange a 👋 wave with a real player in the same nearby conversation. Both waves must happen after you accept.'));
+    if(policy.enabled&&policy.context.kind==='proximity'&&policy.peers.some(questPeer))result.push(definition('meet',roomId,'Meet someone','Exchange a 👋 wave with a real player in the same nearby conversation. Both waves must happen after you accept.'));
     return result;
   }
   function currentTarget(row,currentRoomId) {
@@ -77,7 +81,7 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     if(row.kind==='build')return {available:EDIT.includes(room.role),reason:EDIT.includes(room.role)?null:'Editor access is required to finish',target:null,guidance:{phase:'build-and-save',instruction:'Place a new object in Build, then choose Save room.',detail:'Moving an existing object or leaving an unsaved draft does not count.'}};
     if(row.kind==='meet') {
       const policy=media.policy(row.user_id,row.room_id);
-      const ready=policy.enabled&&policy.context.kind==='proximity'&&policy.peers.some(p=>p.canSend&&p.canReceive);
+      const ready=policy.enabled&&policy.context.kind==='proximity'&&policy.peers.some(questPeer);
       if(!ready)return {available:false,reason:'Meet a real player nearby and both enable Connect, then exchange 👋 waves',target:null};
       reconcileRoom(row.room_id);
       let progress={completed:0,total:2,ownWave:false,otherWave:false};
@@ -138,7 +142,7 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     store.run('UPDATE quest_preferences SET tracked_attempt_id=NULL WHERE user_id=? AND tracked_attempt_id=?',row.user_id,row.id);return true;
   }
   function observeMovement(userId,roomId,old,next) {
-    if(!enabled||!old||old.roomId!==roomId||now()-old.lastSeen>=60000)return;
+    if(!enabled||!durablePlayer(userId)||!old||old.roomId!==roomId||now()-old.lastSeen>=60000)return;
     const room=store.room(roomId,userId);if(!canStand(room.scene,next.x,next.z))return;
     const rows=store.all("SELECT * FROM quest_attempts WHERE user_id=? AND room_id=? AND kind='explore' AND status='accepted'",userId,roomId),changed=[];
     store.transaction(()=>{for(const row of rows){const target=JSON.parse(row.target),area=room.scene.areas?.find(a=>a.id===target.areaId);if(!area||!['id','name','x','z','width','depth'].every(k=>area[k]===target.area[k])||inside(area,old)||!inside(area,next))continue;const obs=observation(userId,roomId,'area-entry',{areaId:area.id});if(complete(row,obs))changed.push(userId);}});notify(changed);
@@ -155,16 +159,16 @@ export function createQuestService({store,presence,media,emitUser,now,enabled=tr
     if(!enabled||!roomId)return;
     const active=new Set();
     for(const p of presence.values()) {
-      if(p.roomId!==roomId||now()-p.lastSeen>=60000)continue;
+      if(p.roomId!==roomId||now()-p.lastSeen>=60000||!durablePlayer(p.userId))continue;
       let policy;try{policy=media.policy(p.userId,roomId);}catch{continue;}
       if(!policy.enabled||policy.context.kind!=='proximity')continue;
-      for(const peer of policy.peers)if(peer.canSend&&peer.canReceive){const people=[p.userId,peer.id].sort(),key=roomId+':'+people.join(':');active.add(key);if(!bubbles.has(key))bubbles.set(key,{id:randomUUID(),roomId,people,greetings:new Map()});}
+      for(const peer of policy.peers)if(questPeer(peer)){const people=[p.userId,peer.id].sort(),key=roomId+':'+people.join(':');active.add(key);if(!bubbles.has(key))bubbles.set(key,{id:randomUUID(),roomId,people,greetings:new Map()});}
     }
     for(const [key,bubble] of bubbles)if(bubble.roomId===roomId&&!active.has(key))bubbles.delete(key);
   }
   function disconnected(userId,roomId) {for(const [key,bubble]of bubbles)if(bubble.people.includes(userId)&&(!roomId||bubble.roomId===roomId))bubbles.delete(key);}
   function observeWave(userId,roomId,emoji) {
-    if(!enabled||emoji!=='👋')return;reconcileRoom(roomId);const changed=[];
+    if(!enabled||emoji!=='👋'||!durablePlayer(userId))return;reconcileRoom(roomId);const changed=[];
     store.transaction(()=>{for(const bubble of bubbles.values()) {
       if(bubble.roomId!==roomId||!bubble.people.includes(userId))continue;
       const active=store.all("SELECT * FROM quest_attempts WHERE room_id=? AND kind='meet' AND status='accepted' AND user_id IN (?,?)",roomId,...bubble.people);if(!active.length)continue;

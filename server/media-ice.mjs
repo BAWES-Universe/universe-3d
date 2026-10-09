@@ -1,3 +1,4 @@
+import {sessionPrincipal} from './public-guests.mjs';
 import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 import {isIP} from 'node:net';
 import * as v from './validation.mjs';
@@ -56,7 +57,7 @@ export async function readIceBody(req){
 export function createMediaIce({config=readIceRelayConfig({}),store,presence,media,now}){
   if(!secrets.has(config))failConfig();
   const sessions=new Map(),rates=new Map();
-  const liveSession=token=>store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
+  const liveSession=token=>sessionPrincipal(store,token,now());
   function prune(){
     for(const[token,row]of sessions){const s=liveSession(token),p=presence.get(`${row.roomId}:${row.userId}`);if(!s||s.current_room_id!==row.roomId||!p||now()-p.lastSeen>=60000||!store.canSeeRoom(store.roomRow(row.roomId),row.userId))sessions.delete(token);}
     for(const[k,b]of rates)if(now()-b.start>=RATE_MS)rates.delete(k);

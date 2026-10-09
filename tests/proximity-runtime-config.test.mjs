@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readProximityRuntimeConfig} from '../server/proximity-runtime-config.mjs';
+import {readProximityRuntimeConfig,DEFAULT_PROXIMITY_CONFIG} from '../server/proximity-runtime-config.mjs';
 import {proximityFixture} from './fixtures/proximity-config.mjs';
 
 // Every number below comes from a synthetic fixture, not deployed/source policy.
@@ -9,12 +9,12 @@ const on = () => ({membership:{...proximityFixture}, text:{enabled:true}});
 const read = config => readProximityRuntimeConfig({UNIVERSE_PROXIMITY_CONFIG:JSON.stringify(config)});
 const invalid = callback => assert.throws(callback, /^Error: Invalid UNIVERSE_PROXIMITY_CONFIG:/);
 
-test('absent variable and explicit off omit both factory options', () => {
-  assert.deepEqual(readProximityRuntimeConfig({}), {});
+test('absent variable enables bounded native bubbles; explicit off omits both factory options', () => {
+  assert.deepEqual(readProximityRuntimeConfig({}), DEFAULT_PROXIMITY_CONFIG);
   assert.deepEqual(read(off()), {});
   assert(Object.isFrozen(read(off())));
   const env = Object.create({UNIVERSE_PROXIMITY_CONFIG:JSON.stringify(on())});
-  assert.deepEqual(readProximityRuntimeConfig(env), {});
+  assert.deepEqual(readProximityRuntimeConfig(env), DEFAULT_PROXIMITY_CONFIG);
 });
 
 test('reader requires a provided environment and never reads ambient process configuration', () => {
@@ -22,7 +22,7 @@ test('reader requires a provided environment and never reads ambient process con
   const saved = process.env.UNIVERSE_PROXIMITY_CONFIG;
   try {
     process.env.UNIVERSE_PROXIMITY_CONFIG = JSON.stringify(on());
-    assert.deepEqual(readProximityRuntimeConfig({}), {});
+    assert.deepEqual(readProximityRuntimeConfig({}), DEFAULT_PROXIMITY_CONFIG);
     assert.deepEqual(read(off()), {});
   } finally {
     if (saved === undefined) delete process.env.UNIVERSE_PROXIMITY_CONFIG;

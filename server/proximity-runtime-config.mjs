@@ -2,11 +2,21 @@ import {validateProximityMembershipConfig} from './proximity-authority.mjs';
 import {validateProximityTextConfig} from './proximity-text.mjs';
 
 const ENV_KEY = 'UNIVERSE_PROXIMITY_CONFIG';
+// Explicit native 3D product defaults, not inferred deployment/2D coordinates.
+// Keep the default bubble within the available direct peer-to-peer transport.
+export const DEFAULT_PROXIMITY_CONFIG = Object.freeze({
+  proximityMembershipConfig: validateProximityMembershipConfig({enabled:true,
+    membershipCeiling:4,p2pThreshold:4,downgradeDelayMs:20000,
+    minimumDistanceSource:4,groupRadiusSource:3,sourceUnitsPerWorldUnit:1,
+    coordinateLimitWorld:100000,memberTtlMs:60000,maxRooms:32,
+    maxMembersPerRoom:128,maxAccounts:512,maxMemberships:1024,maxSessionsPerMember:8}),
+  proximityTextConfig: Object.freeze({enabled:true}),
+});
 const fail = message => { throw new Error(`Invalid ${ENV_KEY}: ${message}`); };
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function parse(text) {
-  if (typeof text !== 'string' || !text.trim()) fail('must contain a JSON object; remove the variable to leave both features off');
+  if (typeof text !== 'string' || !text.trim()) fail('must contain a JSON object; remove the variable to use native defaults');
   let value;
   // JSON.parse errors may contain the operator's input. Never surface them.
   try { value = JSON.parse(text); } catch { fail('must contain valid JSON'); }
@@ -36,7 +46,7 @@ function enabled(config, name) {
  */
 export function readProximityRuntimeConfig(env) {
   if (!record(env)) fail('an explicit environment object is required');
-  if (!Object.hasOwn(env, ENV_KEY)) return Object.freeze({});
+  if (!Object.hasOwn(env, ENV_KEY)) return DEFAULT_PROXIMITY_CONFIG;
   const config = parse(env[ENV_KEY]);
   if (!record(config) || Object.keys(config).length !== 2 || !Object.hasOwn(config, 'membership') || !Object.hasOwn(config, 'text')) fail('the object must contain exactly membership and text');
   const membershipEnabled = enabled(config.membership, 'membership');

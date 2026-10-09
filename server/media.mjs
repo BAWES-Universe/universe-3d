@@ -46,7 +46,6 @@ export function createMediaPolicy({store,presence,emitUser,now,proximityMembersh
   }
   const awayProjection=(source,conversationActive=false)=>({protocol:'media-away-v1',source,conversationActive,liveSessionActive:false,liveSessionSupported:false});
   function policy(userId,roomId,acceptedSession) {
-    if(store.isPublicGuest?.(userId))return {selfId:userId,roomId,enabled:false,context:{kind:'none',label:'Guest exploration',canPublish:false,reason:'Create an account or sign in to connect'},peers:[],iceServers:[],awayPrivacy:awayProjection('unavailable')};
     if(!roomId)return {selfId:userId,roomId:null,enabled:false,context:{kind:'none',label:'Outside a room',canPublish:false,reason:'Join a room first'},peers:[],iceServers:[],awayPrivacy:awayProjection('unavailable')};
     store.authorize(roomId,userId);const p=presence.get(`${roomId}:${userId}`);
     const scope=membership?(refreshFrame?.roomId===roomId?(acceptedSession?refreshFrame.batch.policyForSession(acceptedSession):refreshFrame.batch.policyForAccount(userId)):(acceptedSession?membership.policy(acceptedSession):membership.policyForAccount(userId,roomId))):null;

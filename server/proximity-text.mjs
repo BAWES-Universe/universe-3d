@@ -1,3 +1,4 @@
+import {sessionPrincipal} from './public-guests.mjs';
 import {createHash, randomUUID} from 'node:crypto';
 import * as v from './validation.mjs';
 import {createProximityTyping,PROXIMITY_TYPING} from './proximity-typing.mjs';
@@ -45,7 +46,7 @@ export function createProximityText({store,media,connections,sse,now,typingTimer
   const receipts=new Map(),rates=new Map(),batches=new WeakSet();let closed=false,contextRevision=0,refreshRevision=0,requestOrder=0;
   const typing=createProximityTyping({store,connections,sse,now,timers:typingTimers,authority:{begin,capture,current,contextFor,order:()=>requestOrder}});
   const active=client=>!client.res.destroyed&&!client.res.writableEnded;
-  const live=token=>store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
+  const live=token=>sessionPrincipal(store,token,now());
   function guarded(fn){try{if(closed)v.fail(503,'PROXIMITY_TEXT_UNAVAILABLE');return fn();}catch(error){if(error.status)throw error;v.fail(503,'PROXIMITY_TEXT_AUTHORITY_UNAVAILABLE');}finally{typing.flush();}}
   function rotate(client,key=null){typing.retireClient(client);client.proximityText={epoch:randomUUID(),key,startedAt:now(),count:0};}
   function retire(token){refreshRevision++;for(const client of connections.get(token)??[])rotate(client);prune();typing.flush();}
