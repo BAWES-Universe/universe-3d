@@ -2,6 +2,7 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 const groups={
+ guestconversations:['conversation-controls.browser.mjs','resident-chat.browser.mjs','public-guest-conversations.full.mjs','public-guest-media.browser.mjs'],
  editorflows:['editor-flow-journey.full.mjs','editor-handoff-safety.full.mjs','resident-leave-decision.browser.mjs','editor-transactions.browser.mjs','editor-image.browser.mjs','editor-save-reconciliation.browser.mjs','editor-collaboration.browser.mjs','bot-editor.browser.mjs','resident-editing-ux.browser.mjs','resident-map-tray.full.mjs'],
  publicguests:['public-guests.full.mjs','public-guest-entry.full.mjs'],
  livefeedback:['jump-input.full.mjs','native-seat-matrix.full.mjs','world-input-multipointer.browser.mjs','live-media-layout.browser.mjs','live-layout.full.mjs','quests-guidance.full.mjs','quest-area-layout.full.mjs','resident-map-tray.full.mjs','enlarged-control-text.full.mjs','live-feedback-motion.full.mjs','wall-building.full.mjs'],

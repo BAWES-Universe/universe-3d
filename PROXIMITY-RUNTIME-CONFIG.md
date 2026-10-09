@@ -1,15 +1,15 @@
-# Optional all-member proximity and Nearby text
+# Native proximity and Nearby text
 
 `server.mjs` accepts one optional environment variable,
 `UNIVERSE_PROXIMITY_CONFIG`, containing an explicit JSON object. This is a source
-configuration contract. No deployed values, source defaults, capacity assessment,
-operator configuration or provisioning are supplied by this document.
+configuration contract. Absent configuration selects bounded native defaults described
+in [guest conversations](docs/GUEST-CONVERSATIONS.md). No deployed settings,
+capacity assessment or provisioning are inferred.
 
 ## Off, enabled, and disabled are distinct contracts
 
-- **Variable absent:** both optional features stay off. The process omits both
-  factory options, preserving the legacy media path and persistent room chat.
-  This does not disable legacy proximity media.
+- **Variable absent:** native four-person bubbles and Nearby text are enabled.
+  Device consent remains off. These defaults apply to public guests and accounts.
 - **Explicit off:** use exactly
   `{"membership":{"enabled":false},"text":{"enabled":false}}`. The process
   again omits both factory options. A disabled feature may contain only
@@ -36,7 +36,7 @@ an invalid enabled-factory configuration and is not passed through by the reader
 
 ## Required membership policy
 
-Every field below must be explicitly supplied when membership is enabled. All
+Every field below must be explicitly supplied for a custom enabled membership policy. All
 numbers are JSON numbers. The bounds describe current validation, not recommended
 operator settings. Obtain the actual policy, coordinate scale, limits and timings
 for the intended environment before enabling it; do not copy test values.

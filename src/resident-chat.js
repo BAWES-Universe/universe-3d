@@ -1,0 +1,24 @@
+import './resident-chat.css';
+/** Player conversation surface. Capability comes from the server, never a mock. */
+export function mountResidentChat({root,api,getState,onOpenChange=()=>{},onManage=null,onApproach=null}) {
+ let generation=0,bot=null,roomId=null,busy=false,returnFocus=null;
+ root.classList.add('resident-chat');root.hidden=true;root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-labelledby','resident-chat-title');
+ root.innerHTML='<section><header><h2 id="resident-chat-title"></h2><button type="button" class="resident-chat-close" aria-label="Close resident chat">Close</button></header><p class="resident-chat-status" role="status"></p><div class="resident-chat-log" role="log" aria-live="polite"></div><form><label for="resident-chat-input">Message this resident</label><textarea id="resident-chat-input" maxlength="2000" rows="2" disabled></textarea><button type="submit" disabled>Send</button></form><button type="button" class="resident-chat-approach" hidden>Walk to resident</button><button type="button" class="resident-chat-manage" hidden>Manage resident</button><p class="resident-chat-note">Text only. Replies are AI-generated. This conversation stays in this open panel; it is not saved to your profile.</p></section>';
+ const status=root.querySelector('.resident-chat-status'),log=root.querySelector('.resident-chat-log'),input=root.querySelector('textarea'),send=root.querySelector('[type=submit]'),manage=root.querySelector('.resident-chat-manage'),approach=root.querySelector('.resident-chat-approach');
+ function controls(available){const disabled=!available||busy,wasFocused=document.activeElement===input||document.activeElement===send;input.disabled=send.disabled=disabled;if(disabled&&wasFocused&&!root.hidden)root.querySelector('.resident-chat-close').focus({preventScroll:true});}
+ function close(){generation++;root.hidden=true;bot=null;input.value='';log.replaceChildren();onOpenChange(false);if(returnFocus?.isConnected&&!root.contains(returnFocus))returnFocus.focus({preventScroll:true});returnFocus=null;}
+ function current(ticket){return ticket===generation&&bot&&getState().ready&&getState().room?.id===roomId;}
+ async function open(next){if(root.hidden)returnFocus=document.activeElement;const ticket=++generation;bot=next;roomId=getState().room?.id;busy=false;approach.hidden=true;log.replaceChildren();input.value='';controls(false);root.querySelector('h2').textContent=next.name;root.hidden=false;status.textContent='Checking resident availability…';manage.hidden=!onManage||!getState().botPermissions?.canManage;onOpenChange(true);root.querySelector('.resident-chat-close').focus();
+  try{const result=await api(`/api/rooms/${roomId}/bots/${next.id}/chat`);if(!current(ticket))return;status.textContent=result.available?'Ready for text chat. Bot voice is not supported.':result.reason;controls(result.available);if(result.available)input.focus();}
+  catch(error){if(current(ticket)){status.textContent=error.message;approach.hidden=!onApproach||error.data?.code!=='BOT_OUT_OF_RANGE';}}
+ }
+ function line(name,text){const row=document.createElement('p'),label=document.createElement('strong');label.textContent=name+': ';row.append(label,document.createTextNode(text));log.append(row);log.scrollTop=log.scrollHeight;}
+ root.querySelector('form').onsubmit=async event=>{event.preventDefault();if(busy||send.disabled||!input.value.trim())return;const ticket=generation,message=input.value,selected=bot;busy=true;controls(false);status.textContent='Waiting for a reply…';
+  try{const result=await api(`/api/rooms/${roomId}/bots/${selected.id}/chat`,{method:'POST',body:{requestId:crypto.randomUUID(),message}});if(!current(ticket))return;line(getState().user.name,message);line(result.name,result.text);input.value='';status.textContent='Text reply received.';}
+  catch(error){if(current(ticket))status.textContent=error.message;}
+  finally{if(current(ticket)){busy=false;controls(true);input.focus();}}
+ };
+ approach.onclick=()=>{const target=bot;close();if(target)onApproach?.(target);};root.querySelector('.resident-chat-close').onclick=close;manage.onclick=()=>{const id=bot?.id;close();if(id)onManage?.(id);};
+ root.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Escape'&&!event.isComposing){event.preventDefault();close();}if(event.key==='Tab'){const focus=[...root.querySelectorAll('button,textarea')].filter(n=>!n.disabled&&!n.hidden&&n.getClientRects().length),first=focus[0],last=focus.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}});root.addEventListener('keyup',event=>event.stopPropagation());
+ return{open,close,isOpen:()=>!root.hidden,update(){if(!root.hidden&&(!getState().ready||getState().room?.id!==roomId))close();}};
+}

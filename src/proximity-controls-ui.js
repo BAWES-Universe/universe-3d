@@ -23,12 +23,18 @@ function button(text, action, glyph) {
 const attr = (node,key,value) => { const text = String(value); if (node.getAttribute(key) !== text) node.setAttribute(key,text); };
 const setText = (node,text) => { if (node.textContent !== text) node.textContent = text; };
 const unavailable = (node, yes) => attr(node,'aria-disabled', String(!!yes));
-export function mountProximityControls({root, controller, onReturnFocus = () => {}, interval = 500}) {
+export function mountProximityControls({root, controller, onReturnFocus = () => {}, onChat = null, onMedia = null, getApproach = () => null, onApproach = () => {}, interval = 500}) {
   if (!root || !controller) throw new TypeError('Controls need root and controller');
   root.classList.add('proximity-controls'); root.setAttribute('role','region'); root.setAttribute('aria-label','Nearby conversation controls'); root.hidden = true;
   const summary = element('p', 'proximity-summary'); summary.tabIndex = -1;
   const detail = element('span','proximity-summary-detail');
   const count = element('strong','proximity-count'); summary.append(count,detail);
+  const conversation = element('div','proximity-conversation-actions');
+  const chat = button('Bubble chat', () => onChat?.()); chat.node.dataset.control = 'chat';
+  const call = button('Audio / video', () => onMedia?.()); call.node.dataset.control = 'call';
+  const approach = button('Walk closer', () => { const person = getApproach(); if (person) onApproach(person); }); approach.node.dataset.control = 'approach';
+  if (onChat) conversation.append(chat.node); if (onMedia) conversation.append(call.node);
+  conversation.append(approach.node);
   const invitations = element('div','proximity-invitations');
   const strip = element('div','proximity-control-strip');
   const lock = button('Lock', () => controller.lock(!controller.snapshot().context?.locked), 'unlock');
@@ -75,7 +81,13 @@ export function mountProximityControls({root, controller, onReturnFocus = () => 
   const feedback = element('div','proximity-feedback');
   const refresh = button('Refresh', () => controller.refresh()); refresh.node.dataset.control = 'refresh';
   feedback.append(status,refresh.node);
-  root.append(summary,invitations,strip,feedback);
+  const advanced = element('details','proximity-advanced');
+  const more = element('summary','proximity-control','More'); more.setAttribute('aria-label','More bubble controls');
+  advanced.append(more,strip);
+  if(onChat||onMedia){conversation.append(advanced);root.append(summary,conversation,invitations,feedback);}
+  else root.append(summary,invitations,strip,feedback);
+  chat.node.title='Live bubble text. No microphone or camera needed.';
+  call.node.title='Open call controls. Mic and camera stay off until you choose.';
   const rows = new Map(); let destroyed = false;
   function focusFallback() { if (!root.hidden) summary.focus({preventScroll:true}); else onReturnFocus(); }
   function hide(node, value) { if (value && !node.hidden && node.contains(document.activeElement)) { node.hidden = true; focusFallback(); } else node.hidden = value; }
@@ -85,9 +97,15 @@ export function mountProximityControls({root, controller, onReturnFocus = () => 
     const visible = s.available && (!!c?.memberId || s.stopUnconfirmed);
     const hadFocus = root.contains(document.activeElement); root.hidden = !visible;
     if (!visible) { renderedFollow = null; cancelFollow(); if (hadFocus) onReturnFocus(); return; }
-    setText(count,c.bubbleId ? `${c.participants.length} nearby` : 'Nearby');
+    setText(count,c.bubbleId ? `With ${c.participants.filter(p=>p.accountId!==c.accountId).map(p=>p.name).join(', ') || 'people nearby'}` : 'Nearby');
     count.title = c.participants.map(p => p.name).join(', ');
-    setText(detail,c.bubbleId ? [c.locked ? 'Locked' : 'Open', c.full ? 'Full' : ''].filter(Boolean).join(' · ') : 'Outside a conversation');
+    setText(detail,c.bubbleId ? [c.locked ? 'Locked' : '', c.full ? 'Full' : ''].filter(Boolean).join(' · ') : 'Walk near someone and stop');
+    hide(conversation,!onChat && !onMedia);
+    unavailable(chat.node,!s.canAct || !c.bubbleId); unavailable(call.node,!s.canAct);
+    const person = !c.bubbleId ? getApproach() : null;
+    hide(approach.node,!person); setText(approach.label,person ? `Walk to ${person.name}` : 'Walk closer');
+    hide(strip,!c.bubbleId && !s.canStop && !s.invitations.length);hide(advanced,strip.hidden);if(strip.hidden)advanced.open=false;
+
     const lockName = c.locked ? 'Unlock' : 'Lock'; setText(lock.label,lockName);
     attr(lock.node,'aria-label',`${lockName} nearby conversation`); attr(lock.node,'aria-pressed',String(c.locked));
     const glyph = c.locked ? 'lock' : 'unlock'; if (lock.node.dataset.glyph !== glyph) { lock.node.querySelector('svg').replaceWith(icon(glyph)); lock.node.dataset.glyph = glyph; }
