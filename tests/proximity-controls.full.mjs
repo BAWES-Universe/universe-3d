@@ -70,13 +70,14 @@ async function settledAtWall(page){
  }));
 }
 
-async function readyControls(page,count=2){await page.waitForFunction(count=>{const s=__universe.getProximityControls();return s.canAct&&!s.operation&&s.context?.participants.length===count;},count,{timeout:20000});}
+async function readyControls(page,count=2){await page.waitForFunction(count=>{const s=__universe.getProximityControls();return s.canAct&&!s.operation&&s.context?.participants.length===count;},count,{timeout:20000});const more=page.locator('.proximity-advanced > summary');if(await more.isVisible()&&!await more.evaluate(node=>node.parentElement.open))await more.click();}
 async function gameplay(page){await page.bringToFront();await page.locator('#game').focus();await frames(page,3);}
 async function nativeInvite(leader,follower,leaderName){await readyControls(leader);await leader.getByRole('button',{name:'Follow me',exact:true}).click();await follower.waitForFunction(name=>__universe.getProximityControls().invitations.some(invitation=>invitation.leaderName===name),leaderName);}
 async function nativeAccept(follower,leaderName){await acceptButton(follower,leaderName).click();await follower.waitForFunction(()=>!!__universe.getProximityControls().motion);await gameplay(follower);await follower.waitForFunction(()=>__universe.getFollowMotion().armed);}
 async function nativeStop(page){
  const start=requests.length,label=pages.find(entry=>entry.page===page).label;
  if((await controls(page)).canStop){
+  const more=page.locator('.proximity-advanced > summary');if(await more.isVisible()&&!await more.evaluate(node=>node.parentElement.open))await more.click();
   // A role locator retains its node during click actionability checks; expiry
   // can relabel it Invite before pointerdown. Native Escape in this strip is
   // cancellation even if that label changes before the key is dispatched.

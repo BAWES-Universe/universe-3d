@@ -92,6 +92,15 @@ try{
   if(route.request().url().startsWith(base+'/'))return route.continue();
   externalRequests.push(route.request().url());return route.abort();
  });
+ await check('Closing an already closed panel preserves another surface focus and sends no close callback',async()=>{
+  const outside=page.locator('#outside');await outside.focus();
+  await page.evaluate(()=>{panel.close();panel.close();});
+  assert.equal(await isFocused(outside),true);assert.deepEqual(await page.evaluate(()=>fixture.changes),[]);
+  await open();await close().click();await outside.focus();
+  const changes=await page.evaluate(()=>fixture.changes);
+  await page.evaluate(()=>{panel.close();panel.update();panel.close();});
+  assert.equal(await isFocused(outside),true);assert.deepEqual(await page.evaluate(()=>fixture.changes),changes);
+ });
  await check('Unavailable provider displays the server reason and cannot submit; guests have no management affordance',async()=>{
   await page.evaluate(()=>fixture.availability={available:false,reason:'No resident provider is configured.'});
   await open();
