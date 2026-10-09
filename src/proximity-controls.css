@@ -49,7 +49,7 @@
 
 /* Conversation comes first; follow and lock controls stay on their own row. */
 .proximity-conversation-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:5px; margin-bottom:6px; }
-.proximity-conversation-actions .proximity-control { background:var(--u-surface-flat,#14121e); }
+.proximity-conversation-actions > .proximity-control { background:var(--u-surface-flat,#14121e); }
 .proximity-conversation-actions [data-control=chat] { background:var(--u-primary,#8629fc); }
 
 .proximity-count { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
