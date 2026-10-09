@@ -1,0 +1,7 @@
+.resident-chat { position:absolute;inset:0;z-index:65;display:grid;place-items:center;background:#100f1888;color:var(--u-text-soft,#fff);font:14px/1.5 Roboto,Arial,sans-serif; }
+.resident-chat[hidden] { display:none; }
+.resident-chat section { width:min(430px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box;padding:20px;border-radius:22px;background:var(--u-surface-flat,#14121e);box-shadow:0 20px 60px #0005; }
+.resident-chat header { display:flex;align-items:center;justify-content:space-between;gap:10px; }.resident-chat h2 {margin:0;font-size:20px;}
+.resident-chat button { min-height:44px;border:0;border-radius:24px;padding:8px 16px;background:var(--u-primary,#8629fc);color:white;cursor:pointer; }.resident-chat button:disabled{opacity:.5;cursor:default;}
+.resident-chat form {display:grid;gap:8px;}.resident-chat textarea{box-sizing:border-box;width:100%;resize:vertical;min-height:64px;border:1px solid #777;border-radius:10px;padding:10px;background:#242131;color:white;font:inherit;}
+.resident-chat-log{max-height:32dvh;overflow:auto;overflow-wrap:anywhere;}.resident-chat-note{font-size:11px;color:#c4bfd0;}.resident-chat-manage{margin-top:10px;}

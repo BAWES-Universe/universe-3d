@@ -84,7 +84,7 @@ async function nearbyContext(base, cookie) {
 }
 
 for (const [label, config, membershipOn, textOn] of [
-  ['absent', undefined, false, false],
+  ['absent', undefined, true, true],
   ['explicit off', off, false, false],
   ['membership only', {...enabled, text:{enabled:false}}, true, false],
   ['both explicitly enabled', enabled, true, true],

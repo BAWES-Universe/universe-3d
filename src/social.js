@@ -251,7 +251,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     const id = user().id || '';
     if (lastUser !== id) {
       typing.reset();
-      lastUser = id; cache.clear(); unread.clear(); drafts.clear(); sendOperations.clear(); selectedPeer = null; chatMode = 'room'; edit = null;
+      lastUser = id; cache.clear(); unread.clear(); drafts.clear(); sendOperations.clear(); selectedPeer = null; chatMode = user().ephemeralGuest ? 'nearby' : 'room'; edit = null;
       localWorlds = null; conversations = []; conversationsLoaded = false; mountedKey = '';
     }
     publishNearbyUnread();
@@ -502,8 +502,10 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     }), { class: 'button social-btn social-btn-quiet', 'aria-label': `Show ${emoji} emote` }));
     return row;
   }
+  function openNearby() { chatMode = 'nearby'; activeTab = 'chat'; root.hidden = false; nearby.markRead(); resetView(); focusPanel(); }
   function openDm(peer) {
     if (!peer?.id || peer.id === user().id) return;
+    if (user().ephemeralGuest || peer.ephemeralGuest) { openNearby(); return; }
     selectedPeer = { ...peer }; chatMode = 'dm'; activeTab = 'chat'; root.hidden = false;
     if (isPanelReadable()) unread.delete(channelKey());
     resetView();
@@ -544,13 +546,13 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
   }
   function buildChannelToolbar() {
     const toolbar = el('nav', {class:'social-toolbar', 'aria-label':'Conversations'});
-    for (const [mode,label] of [['room','Room'],['inbox','Direct']]) toolbar.append(button(label, () => {
+    for (const [mode,label] of (user().ephemeralGuest ? [] : [['room','Room'],['inbox','Direct']])) toolbar.append(button(label, () => {
       chatMode = mode; if (isPanelReadable() && mode === 'room') unread.delete(channelKey()); resetView();
     }, {class:'button social-btn social-btn-small', 'aria-label':mode === 'room' ? 'Open room chat' : 'Open direct messages', 'aria-pressed':String(chatMode === mode || mode === 'inbox' && chatMode === 'dm')}));
     appendNearbyMode(toolbar); return toolbar;
   }
   function appendNearbyMode(toolbar) {
-    if (!nearby.snapshot().available) return;
+    if (!nearby.snapshot().available && !user().ephemeralGuest) return;
     toolbar.append(button('Nearby', () => {
       edit = null; chatMode = 'nearby'; if (isPanelReadable()) nearby.markRead(); resetView();
     }, { class: 'button social-btn social-btn-small social-nearby-mode', 'aria-label': 'Nearby', 'aria-pressed': String(chatMode === 'nearby') }));
@@ -560,7 +562,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     const state = nearby.snapshot();
     typing.sync();
     publishNearbyUnread();
-    if (!state.available && chatMode === 'nearby') { chatMode = 'room'; resetView(); return; }
+    if (!state.available && chatMode === 'nearby' && !user().ephemeralGuest) { chatMode = 'room'; resetView(); return; }
     if (activeTab === 'chat') {
       const toolbar = panel.querySelector('.social-toolbar');
       const mode = toolbar?.querySelector('.social-nearby-mode');
@@ -620,7 +622,7 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     if (!nearbyElements || activeTab !== 'chat' || chatMode !== 'nearby') return;
     const state = nearby.snapshot(), stay = state.selected, c = state.context, nodes = nearbyElements;
     const ended = !!stay?.endedAt, isLive = !!stay && stay.id === state.activeId;
-    let status = state.navigating ? 'Changing rooms · sending paused' : !state.ready ? 'Room unavailable · sending paused' : state.connection === 'unavailable' ? 'Nearby unavailable · membership could not be verified' : state.connection !== 'connected' ? state.connection === 'connecting' ? 'Connecting Nearby · sending paused' : 'Connection lost · sending paused' : c?.reason === 'authority-unavailable' ? 'Nearby unavailable · membership could not be verified' : c?.reason === 'muted' ? 'Muted · you can read Nearby, but cannot send' : c?.recipientCount ? `${c.recipientCount} nearby recipient${c.recipientCount === 1 ? '' : 's'} · live now` : 'Alone · move near someone to start a bubble';
+    let status = state.navigating ? 'Changing rooms · sending paused' : !state.ready ? 'Room unavailable · sending paused' : !state.available ? 'Nearby chat is disabled on this server. Ask the host to enable it.' : state.connection === 'unavailable' ? 'Nearby unavailable · membership could not be verified' : state.connection !== 'connected' ? state.connection === 'connecting' ? 'Connecting Nearby · sending paused' : 'Connection lost · sending paused' : c?.reason === 'authority-unavailable' ? 'Nearby unavailable · membership could not be verified' : c?.reason === 'muted' ? 'Muted · you can read Nearby, but cannot send' : c?.recipientCount ? `${c.recipientCount} nearby recipient${c.recipientCount === 1 ? '' : 's'} · live now` : 'Alone · move near someone to start a bubble';
     if (ended) status = `Ended stay · read-only. ${status}`;
     nodes.status.textContent = status;
     nodes.status.dataset.canSend = String(isLive && !ended && !!c?.canSend && state.ready && !state.navigating && state.connection === 'connected');
@@ -936,5 +938,5 @@ export function mountSocial({ root, api, getState, onNavigate = () => {}, onExpl
     root.replaceChildren(); root.classList.remove('social-shell');
   }
   render();
-  return { render, onEvent, destroy, setTab, openDm, resetNearbyConnection: reason => { typing.reset({preserveClock: ['travelling', 'access-changed', 'arrival-unconfirmed'].includes(reason)}); nearby.resetConnection(reason); }, getNearbyStatus: () => nearby.snapshot() };
+  return { render, onEvent, destroy, setTab, openDm, openNearby, resetNearbyConnection: reason => { typing.reset({preserveClock: ['travelling', 'access-changed', 'arrival-unconfirmed'].includes(reason)}); nearby.resetConnection(reason); }, getNearbyStatus: () => nearby.snapshot() };
 }

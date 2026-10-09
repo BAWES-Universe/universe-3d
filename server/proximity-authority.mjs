@@ -1,3 +1,4 @@
+import {sessionPrincipal,sessionPrincipals,hasRoomSession} from './public-guests.mjs';
 import {randomUUID} from 'node:crypto';
 import {createBubbleModel} from './proximity/membership.mjs';
 import {integer,invariant,validateConfig} from './proximity/policy.mjs';
@@ -54,7 +55,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
   function clearRoom(roomId){transaction++;controls.forgetRoom(roomId);model.forgetRoom(roomId);admissions.delete(roomId);contexts.delete(roomId);scopes.delete(roomId);for(const[token,grant]of grants)if(grant.roomId===roomId)grants.delete(token);}
   function liveActor(accepted,at){
     if(!accepted||typeof accepted.token_hash!=='string')v.fail(401,'AUTH_REQUIRED');
-    const current=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',accepted.token_hash,at);
+    const current=sessionPrincipal(store,accepted.token_hash,at);
     if(!current||current.user_id!==accepted.user_id||current.current_room_id!==accepted.current_room_id)v.fail(401,'AUTH_REQUIRED');
     if(!current.current_room_id)v.fail(403,'JOIN_REQUIRED');
     try{store.authorize(current.current_room_id,current.user_id);}catch(error){if(!error.status){clearRoom(current.current_room_id);onInvalidate(current.current_room_id);}throw error;}
@@ -72,11 +73,11 @@ export function createProximityMembershipAuthority({config:input,store,presence,
       const members=[];
       for(const[key,p]of presence){
         if(p.roomId!==roomId||key!==`${roomId}:${p.userId}`)continue;
-        const accountId=p.userId,user=store.get('SELECT id,status FROM users WHERE id=?',accountId);
-        if(!user||store.isPublicGuest?.(accountId)||!store.canSeeRoom(row,accountId))continue;
+        const accountId=p.userId,user=store.user(accountId);
+        if(!user||!store.canSeeRoom(row,accountId))continue;
         integer(p.lastSeen,'lastSeen');invariant(p.lastSeen<=at,'FUTURE_PRESENCE');
         if(at-p.lastSeen>=config.memberTtlMs)continue;
-        const sessions=store.all('SELECT token_hash FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? LIMIT ?',roomId,accountId,at,config.maxSessionsPerMember+1);
+        const sessions=store.isPublicGuest(accountId)?sessionPrincipals(store,{roomId,userId:accountId,at}).slice(0,config.maxSessionsPerMember+1):store.all('SELECT token_hash FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? LIMIT ?',roomId,accountId,at,config.maxSessionsPerMember+1);
         // An over-cap or unadmitted account is excluded, never a room-wide DoS.
         if(!sessions.length||sessions.length>config.maxSessionsPerMember)continue;
         const tokens=new Set(sessions.map(s=>s.token_hash));
@@ -88,7 +89,7 @@ export function createProximityMembershipAuthority({config:input,store,presence,
         const admissionId=continuous?previous.admissionId:`${epoch}:admission:${integer(++sequence,'sequence',1)}`;
         next.set(accountId,{admissionId,tokens,lastSeen:p.lastSeen});nextContexts.set(accountId,context);
         const mediaConsent=[...tokens].some(token=>{const g=grants.get(token);return g?.roomId===roomId&&g.accountId===accountId&&g.admissionId===admissionId;});
-        members.push({accountId,admissionId,name:store.get('SELECT name FROM users WHERE id=?',accountId)?.name??'Player',x:p.x,z:p.z,moving:p.moving,lastSeenMs:p.lastSeen,status,context:{kind:context.kind==='proximity'?'proximity':'silent'},mediaConsent,canPublish:context.canPublish===true,followLeaderId:null});
+        members.push({accountId,admissionId,name:user.name??'Player',x:p.x,z:p.z,moving:p.moving,lastSeenMs:p.lastSeen,status,context:{kind:context.kind==='proximity'?'proximity':'silent'},mediaConsent,canPublish:context.canPublish===true,followLeaderId:null});
       }
       const trustedMembers=controls.syncAdmissions(roomId,next,members,at);
       const result=model.syncRoom({roomId,members:trustedMembers,nowMs:at,sfuAvailable:false});
@@ -124,13 +125,13 @@ export function createProximityMembershipAuthority({config:input,store,presence,
   }
   function assertAdmission(accepted,roomId){
     const at=time();v.id(roomId,'roomId');
-    const s=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',accepted?.token_hash,at);
+    const s=sessionPrincipal(store,accepted?.token_hash,at);
     if(!s||s.user_id!==accepted.user_id)v.fail(401,'AUTH_REQUIRED');store.authorize(roomId,s.user_id);
-    const count=store.get('SELECT COUNT(*) AS n FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? AND token_hash!=?',roomId,s.user_id,at,s.token_hash).n;
+    const count=sessionPrincipals(store,{roomId,userId:s.user_id,at,exceptToken:s.token_hash}).length;
     if(count>=config.maxSessionsPerMember)v.fail(429,'PROXIMITY_SESSION_LIMIT');
     const pairs=new Map();
     for(const p of presence.values()){
-      if(store.isPublicGuest?.(p.userId)||at-p.lastSeen>=config.memberTtlMs||!store.get('SELECT 1 FROM sessions WHERE current_room_id=? AND user_id=? AND expires_at>? AND token_hash!=?',p.roomId,p.userId,at,s.token_hash))continue;
+      if(at-p.lastSeen>=config.memberTtlMs||!hasRoomSession(store,p.userId,p.roomId,at,s.token_hash))continue;
       let allowed=false;try{allowed=store.canSeeRoom(store.roomRow(p.roomId),p.userId);}catch{}if(allowed)pairs.set(`${p.roomId}:${p.userId}`,{roomId:p.roomId,accountId:p.userId});
     }
     pairs.set(`${roomId}:${s.user_id}`,{roomId,accountId:s.user_id});

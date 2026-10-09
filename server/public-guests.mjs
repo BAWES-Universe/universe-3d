@@ -4,7 +4,7 @@ import {fail} from './validation.mjs';
 export const PUBLIC_GUEST_TTL_MS=24*60*60*1000;
 export const PUBLIC_GUEST_LIMIT=512;
 export const publicGuestsEnabled=config=>config.mode==='public'&&config.registrationMode==='open'&&config.setupOnly===false;
-export function requireGuestAccount(){fail(403,'GUEST_ACCOUNT_REQUIRED','Create an account or sign in to save, create or connect. You can keep exploring public rooms as a guest.');}
+export function requireGuestAccount(){fail(403,'GUEST_ACCOUNT_REQUIRED','Create an account or sign in to save or create. You can keep exploring and talking in public rooms as a guest.');}
 
 // Process-local visitors never enter the SQLite user/account/session tables.
 // A restart forgets every guest; registered-account persistence is unchanged.
@@ -67,7 +67,8 @@ export function publicGuestPerson(person,selfId){
 // Fail closed for future routes too. Each allowed write is ephemeral or resolves
 // an already-saved action. Normal room/admission checks still apply.
 export function assertPublicGuestRequest(method,path){
- if(method==='POST'&&(path==='/api/presence'||path==='/api/logout'||/^\/api\/rooms\/[A-Za-z0-9_-]+\/(?:join|leave|actions\/resolve)$/.test(path)))return;
+ if(['GET','POST'].includes(method)&&/^\/api\/rooms\/[A-Za-z0-9_-]+\/bots\/[A-Za-z0-9_-]+\/chat$/.test(path))return;
+ if(method==='POST'&&(['/api/presence','/api/logout','/api/media/state','/api/media/ice','/api/media/signal','/api/proximity-controls/action','/api/proximity-text/messages','/api/proximity-text/typing'].includes(path)||/^\/api\/rooms\/[A-Za-z0-9_-]+\/(?:join|leave|actions\/resolve|expression|emote)$/.test(path)))return;
  if(method==='GET'&&(
   ['/api/session','/api/users','/api/worlds','/api/universes','/api/discover','/api/memberships','/api/invitations','/api/stars','/api/conversations','/api/quests','/api/media','/api/proximity-controls','/api/proximity-text','/api/events'].includes(path)||
   /^\/api\/(?:universes|worlds)\/[A-Za-z0-9_-]+$/.test(path)||

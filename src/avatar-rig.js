@@ -32,7 +32,7 @@ export function createAvatarRig(scene,input,options={}){
   const root=new TransformNode(`avatar-${options.id||'preview'}`,scene);
   root.metadata={type:'native-3d-avatar',forwardAxis:'+Z',catalog:'universe-original-v1'};
   const material=sharedMaterial(scene);
-  let appearance,appearanceHash,body,head,armL,armR,legL,legR,shinL,shinR,meshes=[],parts=[],phase=0,clock=0,gait=0,lastHeading=0,disposed=false;
+  let appearance,appearanceHash,body,head,headGeometry,armL,armR,legL,legR,shinL,shinR,meshes=[],parts=[],phase=0,clock=0,gait=0,lastHeading=0,disposed=false;
   const shadowGenerator=options.shadowGenerator||options.shadows;
   const scale=Number.isFinite(options.scale)?options.scale:1;
   function build(value){
@@ -193,7 +193,7 @@ export function createAvatarRig(scene,input,options={}){
     }
     // Merge in local coordinates, then attach to the correct joint. This preserves
     // all volume and coloration without dozens of tiny draw calls per person.
-    for(const [parent,pieces]of groups){if(!pieces.length)continue;const merged=Mesh.MergeMeshes(pieces,true,true,undefined,false,false);merged.name=parent.name+'-geometry';merged.parent=parent;merged.material=material;merged.isPickable=false;merged.useVertexColors=true;merged.hasVertexAlpha=false;merged.metadata={type:'avatar-mesh',joint:parent.name};meshes.push(merged);shadowGenerator?.addShadowCaster?.(merged);}
+    for(const [parent,pieces]of groups){if(!pieces.length)continue;const merged=Mesh.MergeMeshes(pieces,true,true,undefined,false,false);merged.name=parent.name+'-geometry';merged.parent=parent;merged.material=material;merged.isPickable=false;merged.useVertexColors=true;merged.hasVertexAlpha=false;merged.metadata={type:'avatar-mesh',joint:parent.name};meshes.push(merged);if(parent===head)headGeometry={mesh:merged,positions:merged.getVerticesData(VertexBuffer.PositionKind)};shadowGenerator?.addShadowCaster?.(merged);}
   }
   build(input);
   function update({position,velocity,heading,moving,running=false,seated=false,seatHeight=.61,airborne=false,waving=false,dt=1/60,time}={}){
@@ -221,7 +221,9 @@ export function createAvatarRig(scene,input,options={}){
     head.rotation.x=-.018*gait+Math.sin(clock*1.3)*.012*(1-gait);head.rotation.z=Math.sin(clock*.8)*.015*(1-gait);
   }
   update({dt:0});
-  return{root,get meshes(){return meshes;},get appearance(){return normalizeAppearance(appearance);},get heading(){return lastHeading;},update,
+  // The merged head includes hair and hats, and inherits the live pose and scale.
+  function getHeadGeometry(){if(disposed)return null;headGeometry.mesh.computeWorldMatrix(true);return headGeometry;}
+  return{root,getHeadGeometry,get meshes(){return meshes;},get appearance(){return normalizeAppearance(appearance);},get heading(){return lastHeading;},update,
     setAppearance(value){if(appearanceKey(value)!==appearanceHash){build(value);update({dt:0});}},
     dispose(){if(disposed)return;disposed=true;for(const m of meshes)shadowGenerator?.removeShadowCaster?.(m);root.dispose(false,false);meshes=[];parts=[];},
   };

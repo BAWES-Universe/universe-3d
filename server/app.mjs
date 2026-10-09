@@ -1,3 +1,4 @@
+import {createPublicResidentChat} from './public-resident-chat.mjs';
 import {publicGuestsEnabled,assertPublicGuestRequest,requireGuestAccount,sessionPrincipal,sessionPrincipals,moveSession,deleteSession,hasRoomSession,publicGuestPerson} from './public-guests.mjs';
 import {readPresenceMotion} from './presence-motion.mjs';
 import {createImageClientProtocol,IMAGE_RELOAD_MESSAGE} from './image-client-protocol.mjs';
@@ -48,7 +49,7 @@ const MODERATE = ['owner', 'admin', 'moderator'];
 const EMOJI = ['👍','❤️','😂','🎉','👋','✨','🔥','💯','👏','🤔','🙌','😮','😊','💜','✅','🎸','💃','🕺','🏳️'];
 const STATUS = ['online','away','busy','dnd','invisible'];
 
-export function createGameServer({ buildInfo = null, database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers, siteAdmissionConfig = readSiteAdmissionConfig({UNIVERSE_REGISTRATION_MODE:runtimeConfig.registrationMode}), imagePhysicalSizeEnabled = runtimeConfig.imagePhysicalSizeEnabled ?? false } = {}) {
+export function createGameServer({ buildInfo = null, database = ':memory:', seeds = [], dist = resolve('dist'), runtimeConfig = readRuntimeConfig({}), host = runtimeConfig.host, clock = Date.now, questsEnabled = true, residentTurnOptions, publicResidentChatProvider, iceRelayConfig = readIceRelayConfig({}), proximityMembershipConfig, proximityTextConfig, proximityTypingTimers, siteAdmissionConfig = readSiteAdmissionConfig({UNIVERSE_REGISTRATION_MODE:runtimeConfig.registrationMode}), imagePhysicalSizeEnabled = runtimeConfig.imagePhysicalSizeEnabled ?? false } = {}) {
   // The reusable test/server factory never inherits ambient deployment env.
   // The process entry point alone parses it and passes this explicit contract.
   if(host!==runtimeConfig.host)throw new Error('Configure the bind address through runtimeConfig');
@@ -67,7 +68,7 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
   const presence = new Map();
   const rates = new Map();
   const sessionRoles=new Map();
-  let closed = false, residentTurns=null, proximityControls=null;
+  let closed = false, residentTurns=null, publicResidentChat=null, proximityControls=null;
   const now = () => clock();
   try{imageProtocol=createImageClientProtocol({store,enabled:imagePhysicalSizeEnabled,onChange:status=>{
     for(const clients of connections.values())for(const client of clients){if(!streamCapabilities.get(client.res)&&imageProtocol.isRequired())retireIncompatibleStream(client.res);else rawSse(client.res,'client-protocol',status);}
@@ -117,7 +118,7 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
   function getPresence(roomId) { return [...presence.values()].filter(p => p.roomId === roomId && now() - p.lastSeen < 60000); }
   function guestPresence(roomId,selfId){const row=store.roomRow(roomId);return getPresence(roomId).filter(p=>hasRoomSession(store,p.userId,roomId,now())&&store.canSeeRoom(row,p.userId)).map(p=>publicGuestPerson(p,selfId));}
   function snapshot(roomId,userId) { const guest=store.isPublicGuest(userId),visible=guest?guestPresence(roomId,userId):null;return { room:store.room(roomId,userId),members:guest?visible:store.members(roomId),presence:guest?visible:getPresence(roomId),bots:bots.snapshot(roomId),botPermissions:bots.capabilities(roomId,userId),messages:guest?[]:store.messages(roomId,userId) }; }
-  function broadcastPresence(roomId) { if (roomId) { bots.reconcileRoom(roomId);emitRoom(roomId,'presence',{roomId,presence:getPresence(roomId)}); media.refresh(roomId,batch=>proximityControls?.refresh(roomId,batch)); proximityText?.refresh(roomId); quests.reconcileRoom(roomId); } }
+  function broadcastPresence(roomId) { if (roomId) { publicResidentChat?.reconcile(); bots.reconcileRoom(roomId);emitRoom(roomId,'presence',{roomId,presence:getPresence(roomId)}); media.refresh(roomId,batch=>proximityControls?.refresh(roomId,batch)); proximityText?.refresh(roomId); quests.reconcileRoom(roomId); } }
   function putPresence(userId,roomId,fields = {}) {
     store.authorize(roomId,userId);
     const key = `${roomId}:${userId}`, old = presence.get(key) || {};
@@ -128,7 +129,7 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
   }
   function leave(token,userId) {
     arrivals.retire(token);
-    ice.retire(token);proximityText?.retire(token);proximityControls?.retire(token);
+    ice.retire(token);proximityText?.retire(token);proximityControls?.retire(token);publicResidentChat?.retire(token);
     const old = sessionPrincipal(store,token,now(),false)?.current_room_id;
     moveSession(store,token,null);
     images.sessionChanged(token);residentTurns?.sessionChanged(token);
@@ -173,7 +174,7 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
       if(resolved.action.target!==roomId||input.entry!==undefined&&input.entry!==resolved.action.entry)v.fail(409,'DESTINATION_MISMATCH','The saved action has a different destination. Open it again.');
       entry=resolved.action.entry;
     }
-    store.authorize(roomId,s.user_id);if(!store.isPublicGuest(s.user_id))media.assertAdmission(s,roomId);
+    store.authorize(roomId,s.user_id);media.assertAdmission(s,roomId);
     const explicitTravel=input.mode==='travel'||entry!==undefined||!!input.sourceAction;
     const preserve=input.mode==='resume'&&s.current_room_id===roomId;
     const sibling=hasRoomSession(store,s.user_id,roomId,now(),s.token_hash);
@@ -235,7 +236,9 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
   const files=createRoomFileService({store,now,send,session});
   const images=createRoomImageAssets({store,session,now,emitRoom,isPhysicalSizeEnabled:()=>imageProtocol?.isEnabled()===true,assertCompatible:req=>imageProtocol?.assertRequest(req)});
 
+
   function policyChanged(reason,force={}) {
+    publicResidentChat.reconcile();
     residentTurns?.policyChanged();
     const affected=new Set(),revoked=new Set();
     for(const s of sessionPrincipals(store,{joined:true})){
@@ -253,8 +256,8 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
     for(const roomId of affected)broadcastPresence(roomId);
     for(const id of new Set(sessionPrincipals(store).map(s=>s.user_id)))emitUser(id,'catalog',{reason});
   }
-  const bots=createBotService({store,presence,body,send,session,emitRoom,now,onChanged:(roomId,botId)=>residentTurns?.botChanged(roomId,botId),residentTest:()=>residentTurns?.catalog()??unavailableResidentTest()});
-  try{if(residentTurnOptions!==undefined)residentTurns=createResidentTurnService({store,bots,session,body,send,now,options:residentTurnOptions});}catch(error){bots.close();store.close();throw error;}
+  const bots=createBotService({store,presence,body,send,session,emitRoom,now,onChanged:(roomId,botId)=>{residentTurns?.botChanged(roomId,botId);publicResidentChat?.reconcile();},residentTest:()=>residentTurns?.catalog()??unavailableResidentTest()});
+  try{publicResidentChat=createPublicResidentChat({store,bots,presence,arrivals,session,body,send,now,provider:publicResidentChatProvider});if(residentTurnOptions!==undefined)residentTurns=createResidentTurnService({store,bots,session,body,send,now,options:residentTurnOptions});}catch(error){bots.close();store.close();throw error;}
   const hierarchy=createHierarchyService({store,now,body,send,changed:policyChanged,emitUser});
   const personalAreas=createPersonalAreaService({store,presence,body,send,session,emitRoom,emitUser,now});
   const actionAuthority=createActionAuthority({store,presence,body,send,now,captureFence:arrivals.captureFence,checkFence:arrivals.checkFence});
@@ -344,8 +347,6 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
         }
         const empty={ '/api/invitations':'invitations','/api/memberships':'memberships','/api/stars':'rooms','/api/conversations':'conversations' };
         if(method==='GET'&&empty[path])return send(res,200,{[empty[path]]:[]});
-        if(method==='GET'&&path==='/api/proximity-controls')return send(res,200,{protocol:'proximity-controls-v1',available:false,reason:'disabled',accountRequired:true});
-        if(method==='GET'&&path==='/api/proximity-text')return send(res,200,{protocol:'proximity-text-v1',available:false,canSend:false,reason:'disabled',accountRequired:true});
       }
       if(await images.handle(req,res))return;
       imageProtocol.assertRequest(req);
@@ -353,6 +354,7 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
       imageProtocol.assertRequest(req);
       if(await actionAuthority.handle({req,res,path,method,userId,session:s}))return;
       imageProtocol.assertRequest(req);
+      if(await publicResidentChat.handle({req,res,path,method,userId}))return;
       if(residentTurns&&await residentTurns.handle({req,res,path,method,userId}))return;
       imageProtocol.assertRequest(req);
       if(!residentTurns&&/^\/api\/rooms\/[A-Za-z0-9_-]+\/bots\/[A-Za-z0-9_-]+\/turns(?:\/|$)/.test(path)){store.authorize(path.split('/')[3],userId);if(!bots.capabilities(path.split('/')[3],userId).canManage)v.fail(403,'BOT_FORBIDDEN');v.fail(503,'RESIDENT_PROVIDER_UNAVAILABLE','No local test provider is configured');}
@@ -442,7 +444,7 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
           if(actionName==='mute'||actionName==='unmute'){const minutes=b.minutes===undefined?10:v.integer(b.minutes,'minutes',1,1440),until=actionName==='mute'?now()+minutes*60000:0;if(guestTarget)guestModeration.muted_until=until;else store.run('UPDATE members SET muted_until=? WHERE room_id=? AND user_id=?',until,roomId,targetId);}
           if(actionName==='ban'||actionName==='unban'){if(guestTarget)guestModeration.banned=+(actionName==='ban');else store.run('UPDATE members SET banned=? WHERE room_id=? AND user_id=?',+(actionName==='ban'),roomId,targetId);}
           if(actionName==='kick'||actionName==='ban'){const retiredSessions=sessionPrincipals(store,{roomId,userId:targetId,active:false});emitUser(targetId,'moderation',{roomId,action:actionName,userId:targetId,actorId:userId});retiredSessions.forEach(s=>moveSession(store,s.token_hash,null));residentTurns?.policyChanged();presence.delete(`${roomId}:${targetId}`);ice.retireUser(targetId);for(const{token_hash:token}of retiredSessions){arrivals.retire(token);proximityText?.retire(token);proximityControls?.retire(token);}expressions.clear(roomId,targetId);media.leave(targetId,roomId);emitUser(targetId,'media-policy',{selfId:targetId,roomId:null,enabled:false,context:{kind:'none',canPublish:false},peers:[],iceServers:[]});broadcastPresence(roomId);}
-          proximityText?.refresh();proximityControls?.refresh();emitRoom(roomId,'members',{roomId,members:store.members(roomId)});return send(res,200,{ok:true,members:store.members(roomId)});
+          publicResidentChat.reconcile();proximityText?.refresh();proximityControls?.refresh();emitRoom(roomId,'members',{roomId,members:store.members(roomId)});return send(res,200,{ok:true,members:store.members(roomId)});
         }
       }
       match=path.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/members\/([A-Za-z0-9_-]+)$/);
@@ -474,8 +476,8 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
         const arrivalFence=arrivals.captureFence(s);
         const requestFence=proximityControls?.beginPresence(s);
         try{
-        const isGuest=store.isPublicGuest(userId),motionFence=isGuest?null:media.beginControlledPresence(s);
-        const b=await body(req),roomId=v.id(b.roomId),live=arrivals.checkFence(s,arrivalFence);arrivals.authorizeMovement(live,b);store.authorize(roomId,userId);if(live.current_room_id!==roomId||s.current_room_id!==live.current_room_id)v.fail(403,'JOIN_REQUIRED');proximityControls?.checkPresence(live,requestFence);if(isGuest){if(b.followLeaseId!==undefined)v.fail(409,'STALE_FOLLOW_LEASE');}else media.authorizeControlledPresence(live,b,motionFence);
+        const motionFence=media.beginControlledPresence(s);
+        const b=await body(req),roomId=v.id(b.roomId),live=arrivals.checkFence(s,arrivalFence);arrivals.authorizeMovement(live,b);store.authorize(roomId,userId);if(live.current_room_id!==roomId||s.current_room_id!==live.current_room_id)v.fail(403,'JOIN_REQUIRED');proximityControls?.checkPresence(live,requestFence);media.authorizeControlledPresence(live,b,motionFence);
         const fields={};for(const k of ['x','z'])if(b[k]!==undefined)fields[k]=v.finite(b[k],k);if(b.direction!==undefined)fields.direction=v.integer(b.direction,'direction',0,3);if(b.moving!==undefined)fields.moving=v.boolean(b.moving,'moving');if(b.running!==undefined)fields.running=v.boolean(b.running,'running');if(b.velocity!==undefined){v.record(b.velocity,'velocity');fields.velocity={x:v.finite(b.velocity.x,'velocity.x',-32,32),z:v.finite(b.velocity.z,'velocity.z',-32,32)};}if(b.rotation!==undefined)fields.rotation=v.finite(b.rotation,'rotation');if(b.status!==undefined)fields.status=v.oneOf(b.status,STATUS,'status');if(b.emote!==undefined)fields.emote=b.emote===null||b.emote===''?null:v.text(b.emote,'emote',32);
         const movementScene=store.room(roomId,userId).scene;Object.assign(fields,readPresenceMotion(b,{scene:movementScene,previous:presence.get(`${roomId}:${userId}`),presence,userId,roomId,now:now()}));const bounds=movementScene.bounds;if(bounds){for(const [axis,dim]of[['x','width'],['z','depth']])if(fields[axis]!==undefined&&Number.isFinite(bounds[dim])&&Math.abs(fields[axis])>bounds[dim]/2+1)v.fail(400,'OUT_OF_BOUNDS','Position is outside the room');}
         const previous=presence.get(`${roomId}:${userId}`);if(fields.emote&&fields.emote!==previous?.emote)fields.emoteAt=now();putPresence(userId,roomId,fields);expressions.movement(roomId,userId,previous,presence.get(`${roomId}:${userId}`));quests.observeMovement(userId,roomId,previous,presence.get(`${roomId}:${userId}`));if(fields.emote&&fields.emote!==previous?.emote)quests.observeWave(userId,roomId,fields.emote);return send(res,200,{ok:true,presence:presence.get(`${roomId}:${userId}`)});
@@ -497,19 +499,19 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
       if(path==='/api/media/signal'&&method==='POST'){limit(`signal:${userId}`,240);const b=await body(req);const live=session(req);return send(res,200,media.signal(userId,live.current_room_id,b,live));}
       if(path==='/api/signal')v.fail(410,'USE_MEDIA_SIGNAL','Use the area-authorized /api/media/signal endpoint');
       if(path==='/api/events'&&method==='GET') {
-        const live=session(req);let reconnectArrival=null;const previous=presence.get(`${live.current_room_id}:${userId}`);if(live.current_room_id&&(!previous?.admissionId||now()-previous.lastSeen>=60000)){if(!store.isPublicGuest(userId))media.assertAdmission(live,live.current_room_id);reconnectArrival=arrivals.prepare(live.current_room_id,userId,{resume:true});}
+        const live=session(req);let reconnectArrival=null;const previous=presence.get(`${live.current_room_id}:${userId}`);if(live.current_room_id&&(!previous?.admissionId||now()-previous.lastSeen>=60000)){media.assertAdmission(live,live.current_room_id);reconnectArrival=arrivals.prepare(live.current_room_id,userId,{resume:true});}
         let clients=connections.get(s.token_hash);if(!clients){clients=new Set();connections.set(s.token_hash,clients);}if(clients.size>=4)v.fail(429,'TOO_MANY_CONNECTIONS');
         res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.write(': connected\n\n');
         streamCapabilities.set(res,imageProtocol.accepts(req));streamScopes.set(res,{token:live.token_hash,roomId:live.current_room_id});
         const client={res,userId};clients.add(client);quests.disconnected(userId,s.current_room_id);sse(res,'hello',{user:store.user(userId),currentRoomId:s.current_room_id,serverTime:now(),arrivalEpoch:arrivals.epoch,...imageProtocol.status()});if(live.current_room_id){const fields=reconnectArrival?arrivals.commit(live.current_room_id,userId,reconnectArrival):null;sessionRoles.set(live.token_hash,store.role(store.roomRow(live.current_room_id),userId));putPresence(userId,live.current_room_id,fields?{x:fields.x,z:fields.z,admissionId:fields.admissionId,admissionEpoch:fields.admissionEpoch,admissionRevision:fields.admissionRevision,...(!fields.resumed?{y:0,verticalVelocity:0,grounded:true,seatId:null,seatHeight:0,moving:false,running:false,velocity:{x:0,z:0},emote:null}:{})}:{});sse(res,'bots',{roomId:live.current_room_id,bots:bots.snapshot(live.current_room_id)});}
-        if(!store.isPublicGuest(userId)){proximityText?.register(s.token_hash,client);proximityControls?.register(s.token_hash,client);}
+        proximityText?.register(s.token_hash,client);proximityControls?.register(s.token_hash,client);
         req.on('close',()=>{proximityControls?.disconnect(client);proximityText?.disconnect(client);quests.disconnected(userId,s.current_room_id);clients.delete(client);if(!clients.size)connections.delete(s.token_hash);});return;
       }
       v.fail(404,'NOT_FOUND','API endpoint not found');
     } catch(e) { if(e.status===429&&Number.isSafeInteger(e.retryAfter)&&e.retryAfter>=1&&e.retryAfter<=60)res.setHeader('Retry-After',String(e.retryAfter));if(e.status)send(res,e.status,{error:e.code,code:e.code,message:e.message,...e.details});else{console.error('Request failed:',e);send(res,500,{error:'SERVER_ERROR',code:'SERVER_ERROR',message:'The server could not complete the request'});} }
   });
   const heartbeat=setInterval(()=>{
-    if(closed)return;expressions.prune();ice.prune();media.sweep();proximityText?.refresh();proximityControls?.refresh();
+    if(closed)return;publicResidentChat.reconcile();expressions.prune();ice.prune();media.sweep();proximityText?.refresh();proximityControls?.refresh();
     for(const [token,clients] of connections){if(!sessionPrincipal(store,token,now())){for(const client of clients)client.res.end();connections.delete(token);}else for(const client of clients)if(!client.res.destroyed)client.res.write(': heartbeat\n\n');}
     arrivals.sweep();
     const changed=new Set();for(const[key,p]of presence)if(now()-p.lastSeen>60000){presence.delete(key);changed.add(p.roomId);}for(const room of changed)broadcastPresence(room);
@@ -517,5 +519,5 @@ export function createGameServer({ buildInfo = null, database = ':memory:', seed
     pruneGuests();store.run('DELETE FROM sessions WHERE expires_at<?',now());
   },15000);heartbeat.unref();
   server.requestTimeout=15000;server.headersTimeout=10000;
-  return {server,store,presence,setImagePhysicalSizeEnabledForTest:value=>imageProtocol.setEnabledForTest(value),listen(port=runtimeConfig.port){setup.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;await residentTurns?.close();bots.close();proximityControls?.close();proximityText?.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
+  return {server,store,presence,setImagePhysicalSizeEnabledForTest:value=>imageProtocol.setEnabledForTest(value),listen(port=runtimeConfig.port){setup.assertReady();return new Promise((resolve,reject)=>{const onError=error=>reject(error);server.once('error',onError);server.listen(port,host,()=>{server.off('error',onError);resolve(server.address());});});},async close(){closed=true;publicResidentChat.close();await residentTurns?.close();bots.close();proximityControls?.close();proximityText?.close();media.close();clearInterval(heartbeat);for(const clients of connections.values())for(const client of clients)client.res.end();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));store.close();}};
 }

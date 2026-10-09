@@ -130,7 +130,7 @@ test('at-emission recipient revocation and new connection do not inherit capture
 
 test('authority read failure sends nothing, exposes no text in logs, and recovery rejects old scope',async t=>{
  const f=await setup(t,2),a=f.clients[0],p=await f.context(a,f.streams[0]),request=f.envelope(p,'PRIVATE BODY SENTINEL');
- const get=f.app.store.get.bind(f.app.store);let broken=true;f.app.store.get=(sql,...args)=>{if(broken&&sql==='SELECT id,status FROM users WHERE id=?')throw Error('synthetic authority failure');return get(sql,...args);};
+ const user=f.app.store.user.bind(f.app.store);let broken=true;f.app.store.user=(...args)=>{if(broken)throw Error('synthetic authority failure');return user(...args);};
  const original=console.error,logs=[];console.error=(...args)=>logs.push(args.join(' '));try{const r=await a.call('/api/proximity-text/messages','POST',request);assert.equal(r.status,503);assert.equal(texts(f.streams[1]).length,0);assert.equal(logs.join('\n').includes(request.text),false);}finally{console.error=original;broken=false;}
  assert.equal((await a.call('/api/proximity-text/messages','POST',request)).status,409);
 });

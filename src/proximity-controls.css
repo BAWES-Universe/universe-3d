@@ -46,3 +46,14 @@
 @media (prefers-reduced-motion:reduce) { .proximity-controls * { transition: none; } }
 
 .proximity-controls[data-obscured=true] { visibility: hidden; pointer-events: none; }
+
+/* Conversation comes first; follow and lock controls stay on their own row. */
+.proximity-conversation-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:5px; margin-bottom:6px; }
+.proximity-conversation-actions > .proximity-control { background:var(--u-surface-flat,#14121e); }
+.proximity-conversation-actions [data-control=chat] { background:var(--u-primary,#8629fc); }
+
+.proximity-count { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.proximity-advanced { position:relative; }.proximity-advanced > summary { list-style:none;background:var(--u-surface-flat,#14121e); }.proximity-advanced > summary::-webkit-details-marker { display:none; }
+.proximity-advanced[open] { flex-basis:100%; }
+.proximity-advanced[open] > summary { width:max-content;margin:0 auto 4px; }
+.proximity-advanced[open] .proximity-control-strip { max-width:calc(100vw - 24px);justify-content:center; }

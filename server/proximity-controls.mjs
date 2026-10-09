@@ -1,3 +1,4 @@
+import {sessionPrincipal} from './public-guests.mjs';
 import {randomUUID} from 'node:crypto';
 import * as v from './validation.mjs';
 
@@ -146,7 +147,7 @@ export function createProximityControls({media,store,sse,now}){
     const grouped=new Map();
     for(const[id,{token,client}]of streams){
       if(!live(id,token)){streams.delete(id);continue;}
-      const session=store.get('SELECT * FROM sessions WHERE token_hash=? AND expires_at>?',token,now());
+      const session=sessionPrincipal(store,token,now());
       if(roomId&&session?.current_room_id!==roomId)continue;
       if(!session?.current_room_id){sse(client.res,'proximity-controls',{...disabled(),reason:'outside-room',connectionId:id});continue;}
       const list=grouped.get(session.current_room_id)??[];list.push({id,client,session});grouped.set(session.current_room_id,list);
